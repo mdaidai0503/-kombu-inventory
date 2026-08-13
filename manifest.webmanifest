@@ -1,1 +1,12 @@
-{"name": "昆布在庫管理", "short_name": "昆布在庫", "start_url": "./", "display": "standalone", "background_color": "#f4f7fb", "theme_color": "#0b2b55", "lang": "ja"}
+{
+  "name": "昆布在庫管理",
+  "short_name": "昆布在庫管理",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f7fb",
+  "theme_color": "#0b2b55",
+  "lang": "ja",
+  "icons": [{"src":"./icon-180.png","sizes":"180x180","type":"image/png","purpose":"any maskable"}]
+}
