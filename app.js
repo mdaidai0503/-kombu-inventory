@@ -38,7 +38,81 @@ function download(name,content,type){const blob=new Blob([content],{type});const
 function downloadCSV(){const rows=[['組合名','区分','大分類','細分類','在庫kg'],...flatRows()];download('昆布在庫_細分類_'+today()+'.csv','\uFEFF'+rows.map(r=>r.map(v=>'"'+String(v).replaceAll('"','""')+'"').join(',')).join('\r\n'),'text/csv;charset=utf-8')}
 function downloadExcel(){let h='<html><head><meta charset="UTF-8"></head><body><table border="1"><tr><th>組合名</th><th>区分</th>';GROUPS.forEach(g=>g.items.forEach(i=>h+=`<th>${esc(g.name)} ${esc(i)}</th>`));h+='<th>計</th></tr>';state.coops.forEach(c=>{h+=`<tr><td>${esc(c)}</td><td>全区分</td>`;let ct=0;GROUPS.forEach(g=>g.items.forEach(i=>{const v=SEASONS.reduce((s,sn)=>s+(matrix()[[c,g.name,i,sn].join('|')]||0),0);ct+=v;h+=`<td>${v}</td>`}));h+=`<td>${ct}</td></tr>`});h+='</table></body></html>';download('昆布在庫_細分類_'+today()+'.xls','\uFEFF'+h,'application/vnd.ms-excel;charset=utf-8')}
 function exportsPage(){app.innerHTML=`<section class="card"><h2>データ出力・バックアップ</h2><div class="toolbar"><button class="btn" id="ex">Excel形式</button><button class="btn" id="cs">CSV</button><button class="btn secondary" id="bk">バックアップ保存</button><button class="btn secondary" id="rs">バックアップ復元</button></div><input id="file" type="file" accept="application/json,.json" hidden><p class="muted">バックアップには入出庫履歴、漁協マスター、細分類、季節区分が含まれます。</p><button class="btn secondary" id="x">ホームへ戻る</button></section>`;ex.onclick=downloadExcel;cs.onclick=downloadCSV;bk.onclick=backup;rs.onclick=()=>file.click();file.onchange=()=>restore(file.files[0]);x.onclick=home}
-function backup(){download('昆布在庫管理_細分類バックアップ_'+today()+'.json',JSON.stringify({app:'昆布在庫管理',version:3,groups:GROUPS,seasons:SEASONS,exportedAt:new Date().toISOString(),...state},null,2),'application/json;charset=utf-8')}
+function backup(){download('昆布在庫管理_細分類バックアップ_'+today()+'.json',JSON.stringify({app:'昆布在庫管理',version:4,groups:GROUPS,seasons:SEASONS,exportedAt:new Date().toISOString(),...state},null,2),'application/json;charset=utf-8')}
 function restore(file){if(!file)return;const fr=new FileReader();fr.onload=()=>{try{const d=JSON.parse(fr.result);if(!Array.isArray(d.records)||!Array.isArray(d.coops))throw Error();if(!confirm('現在のデータをバックアップ内容に置き換えます。よろしいですか？'))return;state={records:d.records,coops:d.coops};save();alert('復元しました');home()}catch(e){alert('バックアップを読み込めませんでした')}};fr.readAsText(file)}
 function masters(){app.innerHTML=`<section class="card"><h2>マスター設定</h2><p class="muted">PDF準拠の細分類は固定しています。漁協名のみ編集できます。</p><div class="master-list" id="cl"></div><button class="btn secondary" id="ac">＋ 漁協を追加</button><button class="btn" id="sm" style="margin-top:10px">保存</button><button class="btn secondary" id="x" style="margin-top:8px">戻る</button><hr><h3>PDF準拠の細分類</h3><div id="defs"></div></section>`;const render=()=>{cl.innerHTML=state.coops.map((v,i)=>`<div class="master-item"><input value="${esc(v)}" data-c="${i}"><button class="mini danger" data-r="${i}">削除</button></div>`).join('');defs.innerHTML=GROUPS.map(g=>`<p><b>${esc(g.name)}</b>：${g.items.map(esc).join('・')}</p>`).join('')};render();ac.onclick=()=>{state.coops.push('新しい漁協');render()};cl.onclick=e=>{const i=e.target.dataset.r;if(i!==undefined){if(state.coops.length<=1)return alert('漁協は1件以上必要です');state.coops.splice(i,1);render()}};sm.onclick=()=>{const old=[...state.coops];document.querySelectorAll('[data-c]').forEach(x=>state.coops[+x.dataset.c]=x.value.trim());if(state.coops.some(x=>!x)||new Set(state.coops).size!==state.coops.length){state.coops=old;return alert('空欄や重複は使えません')}save();alert('保存しました');home()};x.onclick=home}
 homeBtn.onclick=home;inBtn.onclick=()=>form('in');outBtn.onclick=()=>form('out');stockBtn.onclick=stock;moreBtn.onclick=exportsPage;if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));home();
+
+/* ===== 出荷指示機能 v1 ===== */
+state.shipments=Array.isArray(state.shipments)?state.shipments:[];
+if(!state.shipmentSeq) state.shipmentSeq=1;
+function save2(){save();}
+function shipmentQtyByKey(k, excludeId){
+  return state.shipments.filter(s=>s.id!==excludeId && s.status==='confirmed').reduce((sum,s)=>sum+s.lines.filter(l=>key(l)===k).reduce((a,l)=>a+Number(l.qty||0),0),0);
+}
+function shipmentDraftReserved(k, excludeId){return shipmentQtyByKey(k,excludeId)}
+function stockAvailableForShipment(coop,season,group,item,excludeId){
+  const k=[coop,group,item,season].join('|');
+  return Math.max(0,available(coop,season,group,item)-shipmentDraftReserved(k,excludeId));
+}
+function shipmentId(){return 'S'+String(state.shipmentSeq++).padStart(5,'0')}
+function shipmentForm(id=null){
+  const s=id?state.shipments.find(x=>x.id===id):null;
+  if(s&&s.status==='shipped'){return shipmentDetail(id)}
+  let lines=s?.lines?.length?s.lines.map(x=>({...x})):[];
+  app.innerHTML=`<section class="card"><h2>📦 ${s?'出荷指示修正':'新規出荷指示'}</h2>
+  <div class="form">
+  <div class="subgrid"><label>出荷先<input id="dest" value="${esc(s?.dest||'')}" placeholder="例：山三商事㈱"></label><label>出荷日<input id="shipDate" type="date" value="${s?.shipDate||today()}"></label></div>
+  <div class="subgrid"><label>希望着日<input id="arrivalDate" type="date" value="${s?.arrivalDate||''}"></label><label>備考<input id="shipMemo" value="${esc(s?.memo||'')}" placeholder="配送・梱包等の指示"></label></div>
+  <div id="shipLines"></div>
+  <button class="btn secondary" id="addLine">＋ 明細を追加</button>
+  <div class="toolbar"><button class="btn" id="saveDraft">下書き保存</button><button class="btn secondary" id="backShip">戻る</button></div>
+  </div></section>`;
+  function renderLines(){
+    shipLines.innerHTML=lines.map((l,idx)=>`<div class="card" style="margin:10px 0;padding:12px;background:#f8fafc"><div class="row"><b>明細 ${idx+1}</b><button class="mini danger" data-del-line="${idx}">削除</button></div><div class="form" style="margin-top:8px"><div class="subgrid"><label>漁協<select data-f="coop" data-i="${idx}">${state.coops.map(c=>`<option ${c===l.coop?'selected':''}>${esc(c)}</option>`).join('')}</select></label><label>季節<select data-f="season" data-i="${idx}">${SEASONS.map(x=>`<option ${x===(l.season||'夏')?'selected':''}>${x}</option>`).join('')}</select></label></div><label>大分類・細分類<select data-f="gi" data-i="${idx}">${itemOptions(l.group||GROUPS[0].name,l.item||GROUPS[0].items[0])}</select></label><div class="subgrid"><label>数量（kg）<input data-f="qty" data-i="${idx}" type="number" min="0.01" step="0.01" value="${esc(l.qty||'')}"></label><label>明細備考<input data-f="memo" data-i="${idx}" value="${esc(l.memo||'')}"></label></div></div></div>`).join('')||'<div class="empty">明細を追加してください。</div>';
+    shipLines.querySelectorAll('[data-f]').forEach(el=>el.onchange=()=>{const i=+el.dataset.i,f=el.dataset.f;if(f==='gi'){[lines[i].group,lines[i].item]=el.value.split('|')}else lines[i][f]=el.value});
+    shipLines.querySelectorAll('[data-del-line]').forEach(b=>b.onclick=()=>{lines.splice(+b.dataset.delLine,1);renderLines()});
+  }
+  addLine.onclick=()=>{lines.push({coop:state.coops[0],season:'夏',group:GROUPS[0].name,item:GROUPS[0].items[0],qty:'',memo:''});renderLines()};
+  saveDraft.onclick=()=>{
+    if(!dest.value.trim())return alert('出荷先を入力してください');
+    if(!lines.length)return alert('明細を1件以上追加してください');
+    for(const l of lines){const q=Number(l.qty);if(!q||q<=0)return alert('数量を入力してください');const av=stockAvailableForShipment(l.coop,l.season,l.group,l.item,s?.id);if(q>av)return alert(`${l.coop} ${l.season} ${l.group} ${l.item} の出荷可能在庫は ${fmt(av)}kg です。`)}
+    const obj=s||{id:shipmentId(),status:'draft',createdAt:new Date().toISOString()};Object.assign(obj,{dest:dest.value.trim(),shipDate:shipDate.value,arrivalDate:arrivalDate.value,memo:shipMemo.value,lines,updatedAt:new Date().toISOString()});if(!s)state.shipments.push(obj);save();alert('出荷指示を保存しました');shipmentDetail(obj.id)
+  };
+  backShip.onclick=shipments;
+  renderLines();
+}
+function shipmentDetail(id){
+ const s=state.shipments.find(x=>x.id===id);if(!s)return shipments();
+ const statusName={draft:'下書き',confirmed:'確定・引当済',shipped:'出荷済',cancelled:'取消'}[s.status]||s.status;
+ const totalQ=s.lines.reduce((a,l)=>a+Number(l.qty||0),0);
+ app.innerHTML=`<section class="card"><div class="row"><h2>📦 出荷指示書 ${esc(s.id)}</h2><span class="pill">${statusName}</span></div><p><b>出荷先：</b>${esc(s.dest)}　　<b>出荷日：</b>${esc(s.shipDate||'')}</p><p><b>希望着日：</b>${esc(s.arrivalDate||'未指定')}　　<b>合計：</b>${fmt(totalQ)} kg</p><div class="tablewrap"><table style="min-width:900px"><tr><th>漁協</th><th>季節</th><th>大分類</th><th>細分類</th><th>数量kg</th><th>備考</th></tr>${s.lines.map(l=>`<tr><td>${esc(l.coop)}</td><td>${esc(l.season)}</td><td>${esc(l.group)}</td><td>${esc(l.item)}</td><td>${fmt(l.qty)}</td><td>${esc(l.memo||'')}</td></tr>`).join('')}</table></div><p class="muted">備考：${esc(s.memo||'')}</p><div class="toolbar"><button class="btn" id="pdf">📄 PDF・FAX用</button>${s.status==='draft'?'<button class="btn" id="confirm">確定して引当</button>':''}${s.status==='confirmed'?'<button class="btn" id="shipped">出荷済にする</button>':''}${s.status==='draft'?'<button class="btn secondary" id="edit">修正</button>':''}${s.status!=='shipped'&&s.status!=='cancelled'?'<button class="btn danger" id="cancel">取消</button>':''}<button class="btn secondary" id="back">一覧へ</button></div></section>`;
+ pdf.onclick=()=>printShipment(s.id);
+ if(s.status==='draft')confirm.onclick=()=>{for(const l of s.lines){const av=stockAvailableForShipment(l.coop,l.season,l.group,l.item,s.id);if(Number(l.qty)>av)return alert(`${l.coop} ${l.season} ${l.group} ${l.item} の出荷可能在庫は ${fmt(av)}kg です。`)}s.status='confirmed';s.confirmedAt=new Date().toISOString();save();shipmentDetail(s.id)};
+ if(s.status==='confirmed')shipped.onclick=()=>{if(!confirm('出荷済みにすると、明細数量を在庫から出庫します。よろしいですか？'))return;for(const l of s.lines){state.records.push({id:crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random()),type:'out',coop:l.coop,season:l.season,group:l.group,item:l.item,qty:Number(l.qty),date:s.shipDate||today(),memo:`出荷指示 ${s.id} / ${s.dest}`})}s.status='shipped';s.shippedAt=new Date().toISOString();save();alert('出荷済みとして在庫から減算しました');shipmentDetail(s.id)};
+ if(s.status==='draft')edit.onclick=()=>shipmentForm(s.id);
+ if(s.status!=='shipped'&&s.status!=='cancelled')cancel.onclick=()=>{if(confirm('この出荷指示を取消しますか？')){s.status='cancelled';save();shipmentDetail(s.id)}};
+ back.onclick=shipments;
+}
+function shipments(){
+ const arr=state.shipments.slice().reverse();
+ app.innerHTML=`<section class="card"><div class="row"><h2>📦 出荷指示一覧</h2><button class="mini" id="newS">＋新規</button></div><input class="search" id="ss" placeholder="指示番号・出荷先・状態で検索"><div class="tablewrap"><table style="min-width:900px"><tr><th>指示番号</th><th>出荷先</th><th>出荷日</th><th>希望着日</th><th>数量</th><th>状態</th><th>操作</th></tr><tbody id="stb"></tbody></table></div><button class="btn secondary" id="sx" style="margin-top:10px">ホームへ戻る</button></section>`;
+ const render=()=>{const q=ss.value.trim().toLowerCase();stb.innerHTML=arr.filter(s=>[s.id,s.dest,s.shipDate,s.arrivalDate,s.status].join(' ').toLowerCase().includes(q)).map(s=>`<tr><td>${esc(s.id)}</td><td>${esc(s.dest)}</td><td>${esc(s.shipDate||'')}</td><td>${esc(s.arrivalDate||'')}</td><td>${fmt(s.lines.reduce((a,l)=>a+Number(l.qty||0),0))} kg</td><td>${{draft:'下書き',confirmed:'確定・引当済',shipped:'出荷済',cancelled:'取消'}[s.status]||s.status}</td><td><button class="mini" data-open="${s.id}">開く</button></td></tr>`).join('')||'<tr><td colspan="7" class="empty">出荷指示はありません</td></tr>'};render();ss.oninput=render;stb.onclick=e=>{if(e.target.dataset.open)shipmentDetail(e.target.dataset.open)};newS.onclick=()=>shipmentForm();sx.onclick=home;
+}
+function printShipment(id){
+ const s=state.shipments.find(x=>x.id===id);if(!s)return;
+ const cols=allItems();const by={};s.lines.forEach(l=>by[[l.group,l.item].join('|')]=(by[[l.group,l.item].join('|')]||0)+Number(l.qty||0));
+ const rows=state.coops.map(c=>{const lns=s.lines.filter(x=>x.coop===c);return `<tr><th class="coop">${esc(c)}</th>${cols.map(ci=>`<td>${fmt(lns.filter(x=>x.group===ci.group&&x.item===ci.item).reduce((a,x)=>a+Number(x.qty||0),0)||'')}</td>`).join('')}<td>${fmt(lns.reduce((a,x)=>a+Number(x.qty||0),0))}</td></tr>`}).join('');
+ const seasons=[...new Set(s.lines.map(x=>x.season))].join('・');
+ const w=window.open('','_blank');
+ if(!w)return alert('ポップアップがブロックされました。Safariのポップアップ設定を確認してください。');
+ w.document.write(`<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>出荷指示書 ${esc(s.id)}</title><style>@page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif;color:#000;margin:0;font-size:9px}.head{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #000;padding-bottom:4px}.title{font-size:22px;font-weight:700;letter-spacing:5px}.meta{text-align:right;line-height:1.6}.info{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:7px 0}.box{border:1px solid #000;padding:5px;min-height:25px}.label{font-weight:700}.table{width:100%;border-collapse:collapse;table-layout:fixed}.table th,.table td{border:1px solid #000;padding:2px;text-align:center;height:19px;overflow:hidden;white-space:nowrap}.table thead th{background:#eee}.table .coop{width:55px}.foot{display:grid;grid-template-columns:1fr 2fr 1fr;margin-top:8px;gap:8px}.sign{height:38px;border:1px solid #000;padding:5px}.total{font-weight:700}.note{margin-top:6px;border:1px solid #000;padding:5px;min-height:28px}@media print{.no-print{display:none}}button{padding:8px 16px;font-size:16px}</style></head><body><div class="head"><div class="title">出 荷 指 示 書</div><div class="meta">指示番号：${esc(s.id)}<br>作成日：${esc(today())}</div></div><div class="info"><div class="box"><span class="label">出荷先：</span>${esc(s.dest)} 御中</div><div class="box"><span class="label">出荷日：</span>${esc(s.shipDate||'')}</div><div class="box"><span class="label">希望着日：</span>${esc(s.arrivalDate||'')}</div></div><div class="box" style="margin-bottom:6px"><span class="label">区分：</span>${esc(seasons)}　　<span class="label">合計：</span>${fmt(s.lines.reduce((a,l)=>a+Number(l.qty||0),0))} kg</div><table class="table"><thead><tr><th class="coop" rowspan="2">組合名</th>${GROUPS.map(g=>`<th colspan="${g.items.length}">${esc(g.name)}</th>`).join('')}<th rowspan="2">計</th></tr><tr>${GROUPS.map(g=>g.items.map(i=>`<th>${esc(i)}</th>`).join('')).join('')}</tr></thead><tbody>${rows}</tbody><tfoot><tr class="total"><th>合計</th>${cols.map(ci=>`<td>${fmt(s.lines.filter(l=>l.group===ci.group&&l.item===ci.item).reduce((a,x)=>a+Number(x.qty||0),0)||'')}</td>`).join('')}<td>${fmt(s.lines.reduce((a,l)=>a+Number(l.qty||0),0))}</td></tr></tfoot></table><div class="note"><b>備考：</b>${esc(s.memo||'')}${s.lines.some(l=>l.memo)?'　明細備考：'+esc(s.lines.filter(l=>l.memo).map(l=>l.memo).join('／')):''}</div><div class="foot"><div class="sign">出荷元：㈱浜中運輸</div><div class="sign">受注・配送指示：</div><div class="sign">FAX送信欄：</div></div><div class="no-print" style="margin-top:12px;text-align:center"><button onclick="window.print()">印刷／PDF保存</button></div></body></html>`);w.document.close();setTimeout(()=>w.focus(),300);
+}
+/* ホームに出荷指示を追加 */
+const _homeOriginal=home;
+home=function(){_homeOriginal();const grid=document.querySelector('section.card:nth-of-type(2) .grid');if(grid&&!document.getElementById('shipHome')){const b=document.createElement('button');b.className='action';b.id='shipHome';b.innerHTML='📦 出荷指示<small>新規作成・履歴・PDF/FAX</small>';b.onclick=shipments;grid.appendChild(b)}};
+/* ナビ・その他を更新 */
+moreBtn.onclick=shipments;
+homeBtn.onclick=home;inBtn.onclick=()=>form('in');outBtn.onclick=()=>form('out');stockBtn.onclick=stock;
+home();
