@@ -19,16 +19,14 @@ nav{position:fixed;bottom:0;left:0;right:0;background:#0b2b55;display:flex;justi
 <nav><button id="homeBtn"><span>⌂</span>ホーム</button><button id="inBtn"><span>↓</span>入庫</button><button id="outBtn"><span>↑</span>出庫</button><button id="stockBtn"><span>▦</span>在庫表</button><button id="moreBtn"><span>⋯</span>その他</button></nav>
 <script>
 "use strict";
-/* PDF「R6年度 釧路産昆布 在庫証明書」の見出しを細分類化。PDF上は大分類が8群あります。 */
+/* PDF「R6年度 釧路産昆布 在庫証明書」の見出しを細分類化。対象外2群を除き、大分類6群で管理します。 */
 const GROUPS=[
  {name:"特長",items:["葉①","元①","葉②","元②","葉③","元③","④","花③","花④","水③"]},
  {name:"特厚",items:["①","②","③","④","花③","花④"]},
  {name:"加工用",items:["①","②","③","尺①"]},
  {name:"長頭2段目10k",items:["①","②"]},
  {name:"厚頭2段目10k",items:["①","②"]},
- {name:"長頭束",items:["①"]},
- {name:"コケ",items:["①","②"]},
- {name:"特長・特特",items:["特①","特②"]}
+ {name:"長頭束",items:["①"]}
 ];
 const SEASONS=["夏","秋","拾"];
 const KEY="kombu_local_only_v3";
@@ -39,6 +37,8 @@ if(!state) state={records:[],coops:old?.coops?.length?old.coops:oldCoops};
 state.coops=Array.isArray(state.coops)&&state.coops.length?state.coops:oldCoops;
 if(state.coops.length===5&&oldCoops.every(c=>state.coops.includes(c))) state.coops=[...oldCoops];
 state.records=Array.isArray(state.records)?state.records:[];
+const DELETED_GROUPS=new Set(["コケ","特長・特特"]);
+state.records=state.records.filter(r=>!DELETED_GROUPS.has(r.group));
 function allItems(){return GROUPS.flatMap(g=>g.items.map(item=>({group:g.name,item})));}
 function save(){localStorage.setItem(KEY,JSON.stringify(state))}
 function esc(s){return String(s??"").replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
@@ -88,6 +88,7 @@ homeBtn.onclick=home;inBtn.onclick=()=>form('in');outBtn.onclick=()=>form('out')
 
 /* ===== 出荷指示機能 v1 ===== */
 state.shipments=Array.isArray(state.shipments)?state.shipments:[];
+state.shipments=state.shipments.map(s=>({...s,lines:Array.isArray(s.lines)?s.lines.filter(l=>!DELETED_GROUPS.has(l.group)):[]}));
 if(!state.shipmentSeq) state.shipmentSeq=1;
 function save2(){save();}
 function shipmentQtyByKey(k, excludeId){
