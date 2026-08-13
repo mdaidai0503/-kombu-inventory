@@ -1,0 +1,34 @@
+<!doctype html><html lang="ja"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b2b55"><meta name="apple-mobile-web-app-capable" content="yes">
+<title>昆布在庫管理</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f4f7fb;color:#102a43;font-family:-apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif}
+header{background:#0b2b55;color:#fff;padding:18px;text-align:center;font-size:24px;font-weight:700}
+main{padding:14px 12px 90px;max-width:900px;margin:auto}.card{background:#fff;border-radius:18px;padding:16px;margin-bottom:14px;box-shadow:0 2px 10px #0001}
+h2{font-size:20px;margin:0 0 14px}.grid,.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.action{padding:18px 12px;border:0;border-radius:15px;background:#fff;box-shadow:0 2px 8px #0001;text-align:left;font-size:17px;font-weight:700}.action small{display:block;margin-top:7px;color:#627d98;font-weight:400}
+.green{border-left:6px solid #35a853}.blue{border-left:6px solid #2367c9}.orange{border-left:6px solid #e88700}.purple{border-left:6px solid #635bca}
+.stat{background:#eef4fb;padding:13px;border-radius:13px}.stat b{display:block;font-size:23px;margin-top:4px}
+.form{display:grid;gap:10px}.form input,.form select{width:100%;padding:12px;border:1px solid #ccd6e2;border-radius:10px;font-size:16px;margin-top:4px}
+.btn{width:100%;padding:14px;border:0;border-radius:12px;background:#0b2b55;color:#fff;font-size:16px;font-weight:700}.secondary{background:#e7edf5;color:#102a43}
+.tablewrap{overflow:auto}table{border-collapse:collapse;width:100%;min-width:760px;font-size:14px}th,td{border:1px solid #cfd8e3;padding:9px;text-align:right;white-space:nowrap}th{background:#eaf0f7;text-align:center}th:first-child,td:first-child{text-align:left}.total{font-weight:700;background:#f6f8fb}
+.note{background:#eef8f0;padding:11px;border-radius:10px;color:#216e39}
+nav{position:fixed;bottom:0;left:0;right:0;background:#0b2b55;display:flex;justify-content:space-around;padding:8px 2px calc(8px + env(safe-area-inset-bottom));z-index:9}nav button{border:0;background:none;color:#fff;font-size:12px}nav span{display:block;font-size:21px}
+</style></head><body><header>昆布在庫管理</header><main id="app"></main>
+<nav><button id="homeBtn"><span>⌂</span>ホーム</button><button id="inBtn"><span>↓</span>入庫</button><button id="outBtn"><span>↑</span>出庫</button><button id="stockBtn"><span>▦</span>在庫表</button><button id="logBtn"><span>≡</span>履歴</button></nav>
+<script>
+"use strict";
+const COOPS=["昆布森漁協","東部漁協","散布漁協","厚岸漁協","浜中漁協"];
+const ITEMS=["花","特長","コケ特長","厚頭","長頭","加工用","2段目10kg"];
+const KEY="kombu_local_only_v1";
+let state=JSON.parse(localStorage.getItem(KEY)||"null")||{records:[]};
+function save(){localStorage.setItem(KEY,JSON.stringify(state))}
+function matrix(){const m={};state.records.forEach(r=>{const k=r.coop+"|"+r.item;m[k]=(m[k]||0)+(r.type==="out"?-r.qty:r.qty)});return m}
+function total(){return Object.values(matrix()).reduce((a,b)=>a+b,0)}
+function home(){app.innerHTML=`<section class=card><h2>在庫状況</h2><div class=stats><div class=stat>総在庫<b>${total().toLocaleString()} kg</b></div><div class=stat>漁協数<b>5</b></div><div class=stat>品目数<b>7</b></div><div class=stat>登録履歴<b>${state.records.length}件</b></div></div></section><section class=grid><button class="action green" id=a>↓ 入庫登録<small>在庫を追加</small></button><button class="action blue" id=b>↑ 出庫登録<small>在庫から減算</small></button><button class="action orange" id=c>▦ 在庫表<small>漁協 × 品目</small></button><button class="action purple" id=d>≡ 履歴<small>入出庫を確認</small></button></section><section class=card><h2>データ保存について</h2><div class=note>在庫データはこの端末のブラウザ内だけに保存します。公開Webサイトへ在庫データを送信しません。</div></section>`;a.onclick=()=>form("in");b.onclick=()=>form("out");c.onclick=stock;d.onclick=logs}
+function form(type){app.innerHTML=`<section class=card><h2>${type==="in"?"入庫":"出庫"}登録</h2><div class=form><label>漁協<select id=c>${COOPS.map(x=>`<option>${x}</option>`).join("")}</select></label><label>品目<select id=g>${ITEMS.map(x=>`<option>${x}</option>`).join("")}</select></label><label>数量（kg）<input id=q type=number min=0 inputmode=decimal></label><label>日付<input id=d type=date value="${new Date().toISOString().slice(0,10)}"></label><button class=btn id=s>登録する</button><button class="btn secondary" id=x>戻る</button></div></section>`;x.onclick=home;s.onclick=()=>{const n=Number(q.value),k=c.value+"|"+g.value;if(!n){alert("数量を入力してください");return}if(type==="out"&&n>(matrix()[k]||0)){alert("現在庫を超える出庫はできません");return}state.records.push({type,coop:c.value,item:g.value,qty:n,date:d.value});save();alert(type==="in"?"入庫しました":"出庫しました");stock()}}
+function stock(){const m=matrix(),rows=COOPS.map(c=>{const v=ITEMS.map(g=>m[c+"|"+g]||0);return`<tr><td>${c}</td>${v.map(x=>`<td>${x.toLocaleString()}</td>`).join("")}<td class=total>${v.reduce((a,b)=>a+b,0).toLocaleString()}</td></tr>`}).join(""),t=ITEMS.map(g=>COOPS.reduce((s,c)=>s+(m[c+"|"+g]||0),0));app.innerHTML=`<section class=card><h2>在庫集計表</h2><div class=tablewrap><table><tr><th>組合名</th>${ITEMS.map(g=>`<th>${g}</th>`).join("")}<th>合計</th></tr>${rows}<tr class=total><th>合計</th>${t.map(x=>`<th>${x.toLocaleString()}</th>`).join("")}<th>${t.reduce((a,b)=>a+b,0).toLocaleString()}</th></tr></table></div><button class="btn secondary" id=x>ホームへ戻る</button></section>`;x.onclick=home}
+function logs(){const r=state.records.slice().reverse();app.innerHTML=`<section class=card><h2>入出庫履歴</h2><div class=tablewrap><table><tr><th>日付</th><th>区分</th><th>漁協</th><th>品目</th><th>数量</th></tr>${r.map(x=>`<tr><td>${x.date}</td><td>${x.type==="in"?"入庫":"出庫"}</td><td>${x.coop}</td><td>${x.item}</td><td>${x.qty.toLocaleString()} kg</td></tr>`).join("")||"<tr><td colspan=5>履歴はありません</td></tr>"}</table></div></section>`}
+homeBtn.onclick=home;inBtn.onclick=()=>form("in");outBtn.onclick=()=>form("out");stockBtn.onclick=stock;logBtn.onclick=logs;home();
+</script></body></html>
