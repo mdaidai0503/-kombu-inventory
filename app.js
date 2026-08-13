@@ -35,8 +35,10 @@ function esc(s){return String(s??"").replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&l
 function fmt(n){return Number(n||0).toLocaleString('ja-JP')}
 function today(){return new Date().toLocaleDateString('sv-SE')}
 function key(r){return [r.year||DEFAULT_YEAR,r.coop,r.group,r.item,r.season||"夏"].join("|")}
-function matrix(){const m={};state.records.forEach(r=>{const k=key(r);m[k]=(m[k]||0)+(r.type==='out'?-Number(r.qty):Number(r.qty))});return m}
-function total(year=state.activeYear){return state.records.filter(r=>(r.year||DEFAULT_YEAR)===year).reduce((s,r)=>s+(r.type==='out'?-Number(r.qty):Number(r.qty)),0)}
+function confirmedShipmentLines(){return Array.isArray(state.shipments)?state.shipments.filter(s=>s.status==='confirmed').flatMap(s=>Array.isArray(s.lines)?s.lines:[]):[]}
+function matrix(){const m={};state.records.forEach(r=>{const k=key(r);m[k]=(m[k]||0)+(r.type==='out'?-Number(r.qty):Number(r.qty))});confirmedShipmentLines().forEach(l=>{const k=key(l);m[k]=(m[k]||0)-Number(l.qty||0)});return m}
+function reservedTotal(year=state.activeYear){return confirmedShipmentLines().filter(l=>(l.year||DEFAULT_YEAR)===year).reduce((s,l)=>s+Number(l.qty||0),0)}
+function total(year=state.activeYear){const physical=state.records.filter(r=>(r.year||DEFAULT_YEAR)===year).reduce((s,r)=>s+(r.type==='out'?-Number(r.qty):Number(r.qty)),0);return physical-reservedTotal(year)}
 function yearOptions(selected){return YEARS.map(y=>`<option value="${y}" ${y===(selected||state.activeYear)?'selected':''}>${y}年産</option>`).join('')}
 function setActiveYear(y){if(YEARS.includes(y)){state.activeYear=y;save();}}
 function home(){app.innerHTML=`<section class="card"><div class="row"><h2>在庫状況</h2><select id="homeYear" style="width:auto;padding:8px;border:1px solid #ccd6e2;border-radius:9px;background:#fff;font-size:15px">${yearOptions(state.activeYear)}</select></div><div class="stats"><div class="stat">${esc(state.activeYear)}年産 総在庫<b>${fmt(total(state.activeYear))}</b></div><div class="stat">漁協数<b>${state.coops.length}</b></div><div class="stat">細分類数<b>${allItems().length}</b></div><div class="stat">登録履歴<b>${state.records.filter(r=>(r.year||DEFAULT_YEAR)===state.activeYear).length}件</b></div></div></section><section class="grid"><button class="action green" id="a">↓ 入庫登録<small>生産年度・季節・分類・数量</small></button><button class="action blue" id="b">↑ 出庫登録<small>生産年度別の在庫から減算</small></button><button class="action orange" id="c">▦ PDF型在庫表<small>生産年度別に表示</small></button><button class="action purple" id="d">≡ 入出庫履歴<small>年度を含めて修正・削除</small></button><button class="action gray" id="e">⇩ データ出力<small>Excel・CSV・バックアップ</small></button><button class="action gray" id="f">⚙ マスター設定<small>漁協・細分類を確認</small></button><button class="action" id="shipHome" style="border-left:6px solid #e05a47">📦 出荷指示<small>生産年度指定・PDF・FAX</small></button></section><section class="card"><h2>生産年度</h2><div class="note">在庫は R3年産〜R10年産を別々に管理します。入庫・出庫・PDF取込・出荷指示のすべてに生産年度が付きます。</div></section>`;homeYear.onchange=()=>{setActiveYear(homeYear.value);home()};a.onclick=()=>form('in');b.onclick=()=>form('out');c.onclick=stock;d.onclick=logs;e.onclick=exportsPage;f.onclick=masters;shipHome.onclick=shipments}
@@ -193,7 +195,7 @@ function stock(){
    const v=state.coops.reduce((ss,c)=>ss+SEASONS.reduce((z,se)=>z+(m[[year,c,g.name,i,se].join('|')]||0),0),0);
    html+=`<th>${v?fmt(v):''}</th>`;
  }));
- html+=`<th>${total(year)?fmt(total(year)):''}</th></tr></table></div><p class="muted">${esc(year)}年産の在庫です。0は空欄表示します。</p></section>`;
+ html+=`<th>${total(year)?fmt(total(year)):''}</th></tr></table></div><p class="muted">${esc(year)}年産の利用可能在庫です。確定済みの出荷指示数量を差し引いて表示し、0は空欄表示します。</p>${reservedTotal(year)>0?`<div class="note">確定済み出荷指示による在庫反映：${fmt(reservedTotal(year))}</div>`:''}</section>`;
  app.innerHTML=html;
  stockYear.onchange=()=>{setActiveYear(stockYear.value);stock()};
  x.onclick=home;r.onclick=stock;ex.onclick=downloadExcel;cs.onclick=downloadCSV;
@@ -211,7 +213,7 @@ homeBtn.onclick=home;inBtn.onclick=()=>form('in');outBtn.onclick=()=>form('out')
 
 /* ===== 出荷指示機能 v1 ===== */
 state.shipments=Array.isArray(state.shipments)?state.shipments:[];
-state.shipments=state.shipments.map(s=>({...s,lines:Array.isArray(s.lines)?s.lines.filter(l=>!DELETED_GROUPS.has(l.group)).map(l=>({...l,year:YEARS.includes(l.year)?l.year:DEFAULT_YEAR})):[]}));
+state.shipments=state.shipments.map(s=>({...s,baseYear:YEARS.includes(s.baseYear)?s.baseYear:(Array.isArray(s.lines)&&YEARS.includes(s.lines[0]?.year)?s.lines[0].year:DEFAULT_YEAR),lines:Array.isArray(s.lines)?s.lines.filter(l=>!DELETED_GROUPS.has(l.group)).map(l=>({...l,year:YEARS.includes(l.year)?l.year:DEFAULT_YEAR})):[]}));
 if(!state.shipmentSeq) state.shipmentSeq=1;
 function save2(){save();}
 function shipmentQtyByKey(k, excludeId){
@@ -227,10 +229,12 @@ function shipmentForm(id=null){
   const s=id?state.shipments.find(x=>x.id===id):null;
   if(s&&s.status==='shipped'){return shipmentDetail(id)}
   let lines=s?.lines?.length?s.lines.map(x=>({...x})):[];
+  const baseYear=s?.baseYear||lines[0]?.year||state.activeYear;
   app.innerHTML=`<section class="card"><h2>📦 ${s?'出荷指示修正':'新規出荷指示'}</h2>
   <div class="form">
   <div class="subgrid"><label>出荷先<input id="dest" value="${esc(s?.dest||'')}" placeholder="例：山三商事㈱"></label><label>出荷日<input id="shipDate" type="date" value="${s?.shipDate||today()}"></label></div>
-  <div class="subgrid"><label>希望着日<input id="arrivalDate" type="date" value="${s?.arrivalDate||''}"></label><label>備考<input id="shipMemo" value="${esc(s?.memo||'')}" placeholder="配送・梱包等の指示"></label></div>
+  <div class="subgrid"><label>基本生産年度<select id="shipBaseYear">${yearOptions(baseYear)}</select></label><label>希望着日<input id="arrivalDate" type="date" value="${s?.arrivalDate||''}"></label><label>備考<input id="shipMemo" value="${esc(s?.memo||'')}" placeholder="配送・梱包等の指示"></label></div>
+  <div class="note">出荷指示は生産年度別に管理します。明細ごとに年度変更もできます。指示を確定すると、その数量は在庫表から即時差し引かれます。</div>
   <div id="shipLines"></div>
   <button class="btn secondary" id="addLine">＋ 明細を追加</button>
   <div class="toolbar"><button class="btn" id="saveDraft">下書き保存</button><button class="btn secondary" id="backShip">戻る</button></div>
@@ -240,23 +244,24 @@ function shipmentForm(id=null){
     shipLines.querySelectorAll('[data-f]').forEach(el=>el.onchange=()=>{const i=+el.dataset.i,f=el.dataset.f;if(f==='gi'){[lines[i].group,lines[i].item]=el.value.split('|')}else lines[i][f]=el.value});
     shipLines.querySelectorAll('[data-del-line]').forEach(b=>b.onclick=()=>{lines.splice(+b.dataset.delLine,1);renderLines()});
   }
-  addLine.onclick=()=>{lines.push({year:state.activeYear,coop:state.coops[0],season:'夏',group:GROUPS[0].name,item:GROUPS[0].items[0],qty:'',memo:''});renderLines()};
+  addLine.onclick=()=>{lines.push({year:shipBaseYear.value||state.activeYear,coop:state.coops[0],season:'夏',group:GROUPS[0].name,item:GROUPS[0].items[0],qty:'',memo:''});renderLines()};
   saveDraft.onclick=()=>{
     if(!dest.value.trim())return alert('出荷先を入力してください');
     if(!lines.length)return alert('明細を1件以上追加してください');
     for(const l of lines){const q=Number(l.qty);if(!q||q<=0)return alert('数量を入力してください');const av=stockAvailableForShipment(l.year||DEFAULT_YEAR,l.coop,l.season,l.group,l.item,s?.id);if(q>av)return alert(`${l.year||DEFAULT_YEAR}年産 ${l.coop} ${l.season} ${l.group} ${l.item} の出荷可能在庫は ${fmt(av)} です。`)}
-    const obj=s||{id:shipmentId(),status:'draft',createdAt:new Date().toISOString()};Object.assign(obj,{dest:dest.value.trim(),shipDate:shipDate.value,arrivalDate:arrivalDate.value,memo:shipMemo.value,lines,updatedAt:new Date().toISOString()});if(!s)state.shipments.push(obj);save();alert('出荷指示を保存しました');shipmentDetail(obj.id)
+    const obj=s||{id:shipmentId(),status:'draft',createdAt:new Date().toISOString()};Object.assign(obj,{dest:dest.value.trim(),baseYear:shipBaseYear.value||state.activeYear,shipDate:shipDate.value,arrivalDate:arrivalDate.value,memo:shipMemo.value,lines,updatedAt:new Date().toISOString()});if(!s)state.shipments.push(obj);save();alert('出荷指示を保存しました');shipmentDetail(obj.id)
   };
   backShip.onclick=shipments;
   renderLines();
 }
 function shipmentDetail(id){
  const s=state.shipments.find(x=>x.id===id);if(!s)return shipments();
- const statusName={draft:'下書き',confirmed:'確定・引当済',shipped:'出荷済',cancelled:'取消'}[s.status]||s.status;
+ const statusName={draft:'下書き',confirmed:'確定・在庫反映済',shipped:'出荷済',cancelled:'取消'}[s.status]||s.status;
  const totalQ=s.lines.reduce((a,l)=>a+Number(l.qty||0),0);
- app.innerHTML=`<section class="card"><div class="row"><h2>📦 出荷指示書 ${esc(s.id)}</h2><span class="pill">${statusName}</span></div><p><b>出荷先：</b>${esc(s.dest)}　　<b>出荷日：</b>${esc(s.shipDate||'')}</p><p><b>希望着日：</b>${esc(s.arrivalDate||'未指定')}　　<b>合計：</b>${fmt(totalQ)}</p><div class="tablewrap"><table style="min-width:900px"><tr><th>生産年度</th><th>漁協</th><th>季節</th><th>大分類</th><th>細分類</th><th>数量</th><th>備考</th></tr>${s.lines.map(l=>`<tr><td>${esc(l.year||DEFAULT_YEAR)}年産</td><td>${esc(l.coop)}</td><td>${esc(l.season)}</td><td>${esc(l.group)}</td><td>${esc(l.item)}</td><td>${fmt(l.qty)}</td><td>${esc(l.memo||'')}</td></tr>`).join('')}</table></div><p class="muted">備考：${esc(s.memo||'')}</p><div class="toolbar"><button class="btn" id="pdf">📄 PDF・FAX用</button>${s.status==='draft'?'<button class="btn" id="confirm">確定して引当</button>':''}${s.status==='confirmed'?'<button class="btn" id="shipped">出荷済にする</button>':''}${s.status==='draft'?'<button class="btn secondary" id="edit">修正</button>':''}${s.status!=='shipped'&&s.status!=='cancelled'?'<button class="btn danger" id="cancel">取消</button>':''}<button class="btn secondary" id="back">一覧へ</button></div></section>`;
+ const shipmentYears=[...new Set(s.lines.map(l=>l.year||s.baseYear||DEFAULT_YEAR))].sort((a,b)=>YEARS.indexOf(a)-YEARS.indexOf(b));
+ app.innerHTML=`<section class="card"><div class="row"><h2>📦 出荷指示書 ${esc(s.id)}</h2><span class="pill">${statusName}</span></div><p><b>出荷先：</b>${esc(s.dest)}　　<b>出荷日：</b>${esc(s.shipDate||'')}</p><p><b>生産年度：</b>${esc(shipmentYears.map(y=>y+'年産').join('・'))}　　<b>希望着日：</b>${esc(s.arrivalDate||'未指定')}　　<b>合計：</b>${fmt(totalQ)}</p><div class="tablewrap"><table style="min-width:900px"><tr><th>生産年度</th><th>漁協</th><th>季節</th><th>大分類</th><th>細分類</th><th>数量</th><th>備考</th></tr>${s.lines.map(l=>`<tr><td>${esc(l.year||DEFAULT_YEAR)}年産</td><td>${esc(l.coop)}</td><td>${esc(l.season)}</td><td>${esc(l.group)}</td><td>${esc(l.item)}</td><td>${fmt(l.qty)}</td><td>${esc(l.memo||'')}</td></tr>`).join('')}</table></div><p class="muted">備考：${esc(s.memo||'')}</p><div class="note">下書きでは在庫は変わりません。「出荷指示を確定して在庫反映」を押すと在庫表から即時差し引き、取消時は自動で在庫へ戻します。出荷済みにすると入出庫履歴へ正式な出庫記録を作成します。</div><div class="toolbar"><button class="btn" id="pdf">📄 PDF・FAX用</button>${s.status==='draft'?'<button class="btn" id="confirm">出荷指示を確定して在庫反映</button>':''}${s.status==='confirmed'?'<button class="btn" id="shipped">出荷済にする</button>':''}${s.status==='draft'?'<button class="btn secondary" id="edit">修正</button>':''}${s.status!=='shipped'&&s.status!=='cancelled'?'<button class="btn danger" id="cancel">取消</button>':''}<button class="btn secondary" id="back">一覧へ</button></div></section>`;
  pdf.onclick=()=>printShipment(s.id);
- if(s.status==='draft')confirm.onclick=()=>{for(const l of s.lines){const av=stockAvailableForShipment(l.year||DEFAULT_YEAR,l.coop,l.season,l.group,l.item,s.id);if(Number(l.qty)>av)return alert(`${l.year||DEFAULT_YEAR}年産 ${l.coop} ${l.season} ${l.group} ${l.item} の出荷可能在庫は ${fmt(av)} です。`)}s.status='confirmed';s.confirmedAt=new Date().toISOString();save();shipmentDetail(s.id)};
+ if(s.status==='draft')confirm.onclick=()=>{for(const l of s.lines){const av=stockAvailableForShipment(l.year||DEFAULT_YEAR,l.coop,l.season,l.group,l.item,s.id);if(Number(l.qty)>av)return alert(`${l.year||DEFAULT_YEAR}年産 ${l.coop} ${l.season} ${l.group} ${l.item} の出荷可能在庫は ${fmt(av)} です。`)}s.status='confirmed';s.confirmedAt=new Date().toISOString();save();alert('出荷指示を確定しました。指定した生産年度の在庫表に反映しました。');shipmentDetail(s.id)};
  if(s.status==='confirmed')shipped.onclick=()=>{if(!confirm('出荷済みにすると、明細数量を在庫から出庫します。よろしいですか？'))return;for(const l of s.lines){state.records.push({id:crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random()),type:'out',year:l.year||DEFAULT_YEAR,coop:l.coop,season:l.season,group:l.group,item:l.item,qty:Number(l.qty),date:s.shipDate||today(),memo:`出荷指示 ${s.id} / ${s.dest}`})}s.status='shipped';s.shippedAt=new Date().toISOString();save();alert('出荷済みとして在庫から減算しました');shipmentDetail(s.id)};
  if(s.status==='draft')edit.onclick=()=>shipmentForm(s.id);
  if(s.status!=='shipped'&&s.status!=='cancelled')cancel.onclick=()=>{if(confirm('この出荷指示を取消しますか？')){s.status='cancelled';save();shipmentDetail(s.id)}};
@@ -265,7 +270,7 @@ function shipmentDetail(id){
 function shipments(){
  const arr=state.shipments.slice().reverse();
  app.innerHTML=`<section class="card"><div class="row"><h2>📦 出荷指示一覧</h2><button class="mini" id="newS">＋新規</button></div><input class="search" id="ss" placeholder="指示番号・出荷先・状態で検索"><div class="tablewrap"><table style="min-width:900px"><tr><th>指示番号</th><th>生産年度</th><th>出荷先</th><th>出荷日</th><th>希望着日</th><th>数量</th><th>状態</th><th>操作</th></tr><tbody id="stb"></tbody></table></div><button class="btn secondary" id="sx" style="margin-top:10px">ホームへ戻る</button></section>`;
- const render=()=>{const q=ss.value.trim().toLowerCase();stb.innerHTML=arr.filter(s=>[s.id,...s.lines.map(l=>l.year||DEFAULT_YEAR),s.dest,s.shipDate,s.arrivalDate,s.status].join(' ').toLowerCase().includes(q)).map(s=>`<tr><td>${esc(s.id)}</td><td>${esc([...new Set(s.lines.map(l=>(l.year||DEFAULT_YEAR)+'年産'))].join('・'))}</td><td>${esc(s.dest)}</td><td>${esc(s.shipDate||'')}</td><td>${esc(s.arrivalDate||'')}</td><td>${fmt(s.lines.reduce((a,l)=>a+Number(l.qty||0),0))}</td><td>${{draft:'下書き',confirmed:'確定・引当済',shipped:'出荷済',cancelled:'取消'}[s.status]||s.status}</td><td><button class="mini" data-open="${s.id}">開く</button></td></tr>`).join('')||'<tr><td colspan="8" class="empty">出荷指示はありません</td></tr>'};render();ss.oninput=render;stb.onclick=e=>{if(e.target.dataset.open)shipmentDetail(e.target.dataset.open)};newS.onclick=()=>shipmentForm();sx.onclick=home;
+ const render=()=>{const q=ss.value.trim().toLowerCase();stb.innerHTML=arr.filter(s=>[s.id,...s.lines.map(l=>l.year||DEFAULT_YEAR),s.dest,s.shipDate,s.arrivalDate,s.status].join(' ').toLowerCase().includes(q)).map(s=>`<tr><td>${esc(s.id)}</td><td>${esc([...new Set(s.lines.map(l=>(l.year||DEFAULT_YEAR)+'年産'))].join('・'))}</td><td>${esc(s.dest)}</td><td>${esc(s.shipDate||'')}</td><td>${esc(s.arrivalDate||'')}</td><td>${fmt(s.lines.reduce((a,l)=>a+Number(l.qty||0),0))}</td><td>${{draft:'下書き',confirmed:'確定・在庫反映済',shipped:'出荷済',cancelled:'取消'}[s.status]||s.status}</td><td><button class="mini" data-open="${s.id}">開く</button></td></tr>`).join('')||'<tr><td colspan="8" class="empty">出荷指示はありません</td></tr>'};render();ss.oninput=render;stb.onclick=e=>{if(e.target.dataset.open)shipmentDetail(e.target.dataset.open)};newS.onclick=()=>shipmentForm();sx.onclick=home;
 }
 function printShipment(id){
  const s=state.shipments.find(x=>x.id===id);if(!s)return;
@@ -286,7 +291,7 @@ home();
 /* 出荷機能の安全性・復元対応 */
 const _backupV4=backup;
 backup=function(){download('昆布在庫管理_業務バックアップ_'+today()+'.json',JSON.stringify({app:'昆布在庫管理',version:5,groups:GROUPS,seasons:SEASONS,years:YEARS,exportedAt:new Date().toISOString(),...state},null,2),'application/json;charset=utf-8')};
-restore=function(file){if(!file)return;const fr=new FileReader();fr.onload=()=>{try{const d=JSON.parse(fr.result);if(!Array.isArray(d.records)||!Array.isArray(d.coops))throw Error();if(!confirm('現在のデータをバックアップ内容に置き換えます。よろしいですか？'))return;state={records:d.records.map(r=>({...r,year:YEARS.includes(r.year)?r.year:DEFAULT_YEAR})),coops:d.coops,shipments:Array.isArray(d.shipments)?d.shipments.map(s=>({...s,lines:Array.isArray(s.lines)?s.lines.map(l=>({...l,year:YEARS.includes(l.year)?l.year:DEFAULT_YEAR})):[]})):[],shipmentSeq:Number(d.shipmentSeq||1),pdfImports:Array.isArray(d.pdfImports)?d.pdfImports:[],activeYear:YEARS.includes(d.activeYear)?d.activeYear:DEFAULT_YEAR};save();alert('復元しました');home()}catch(e){alert('バックアップを読み込めませんでした')}};fr.readAsText(file)};
+restore=function(file){if(!file)return;const fr=new FileReader();fr.onload=()=>{try{const d=JSON.parse(fr.result);if(!Array.isArray(d.records)||!Array.isArray(d.coops))throw Error();if(!confirm('現在のデータをバックアップ内容に置き換えます。よろしいですか？'))return;state={records:d.records.map(r=>({...r,year:YEARS.includes(r.year)?r.year:DEFAULT_YEAR})),coops:d.coops,shipments:Array.isArray(d.shipments)?d.shipments.map(s=>({...s,baseYear:YEARS.includes(s.baseYear)?s.baseYear:(Array.isArray(s.lines)&&YEARS.includes(s.lines[0]?.year)?s.lines[0].year:DEFAULT_YEAR),lines:Array.isArray(s.lines)?s.lines.map(l=>({...l,year:YEARS.includes(l.year)?l.year:DEFAULT_YEAR})):[]})):[],shipmentSeq:Number(d.shipmentSeq||1),pdfImports:Array.isArray(d.pdfImports)?d.pdfImports:[],activeYear:YEARS.includes(d.activeYear)?d.activeYear:DEFAULT_YEAR};save();alert('復元しました');home()}catch(e){alert('バックアップを読み込めませんでした')}};fr.readAsText(file)};
 const _shipmentDetailOriginal=shipmentDetail;
 shipmentDetail=function(id){
   _shipmentDetailOriginal(id);
