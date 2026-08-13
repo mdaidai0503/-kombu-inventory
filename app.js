@@ -21,6 +21,7 @@ if(!state) state={records:[],coops:old?.coops?.length?old.coops:oldCoops};
 state.coops=Array.isArray(state.coops)&&state.coops.length?state.coops:oldCoops;
 if(state.coops.length===5&&oldCoops.every(c=>state.coops.includes(c))) state.coops=[...oldCoops];
 state.records=Array.isArray(state.records)?state.records:[];
+state.pdfImports=Array.isArray(state.pdfImports)?state.pdfImports:[];
 const DELETED_GROUPS=new Set(["コケ","特長・特特"]);
 state.records=state.records.filter(r=>!DELETED_GROUPS.has(r.group));
 function allItems(){return GROUPS.flatMap(g=>g.items.map(item=>({group:g.name,item})));}
