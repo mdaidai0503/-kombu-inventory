@@ -769,3 +769,71 @@ companyMasterPage=function(){
 
 bindNav();
 productLanding();
+
+/* ===== v39: unified shipment history across all products ===== */
+function shipmentStatusJa(status){return {draft:'下書き',confirmed:'確定・在庫反映済',shipped:'出荷済',cancelled:'取消'}[status]||status||''}
+function globalShipmentRows(){
+  const packs=[
+    {product:'kushiro',name:'釧路産昆布',items:Array.isArray(state.shipments)?state.shipments:[]},
+    {product:'hidaka',name:'日高昆布',items:Array.isArray(hState.shipments)?hState.shipments:[]},
+    {product:'nemuro',name:'根室産昆布',items:Array.isArray(nState.shipments)?nState.shipments:[]},
+    {product:'sanmae',name:'釧路産棹前昆布',items:Array.isArray(smState.shipments)?smState.shipments:[]}
+  ];
+  return packs.flatMap(p=>p.items.map(s=>{
+    let src='',dst='';
+    if(p.product==='kushiro'){
+      src=shipmentSource(s).name||'';dst=shipmentDest(s).name||'';
+    }else{
+      src=(s.source&&s.source.name)||'';
+      dst=(s.dest&&s.dest.name)||(s.destInfo&&s.destInfo.name)||(typeof s.dest==='string'?s.dest:'')||'';
+    }
+    return {product:p.product,productName:p.name,s,src,dst,qty:(s.lines||[]).reduce((a,l)=>a+Number(l.qty||0),0)};
+  }));
+}
+function openGlobalShipment(product,id){
+  currentProduct=product;
+  const names={kushiro:'釧路産昆布',hidaka:'日高昆布',nemuro:'根室産昆布',sanmae:'釧路産棹前昆布'};
+  setHeader((names[product]||'昆布')+' 出荷指示');setNavVisible(true);bindNav();
+  if(product==='hidaka')return hShipDetail(id);
+  if(product==='nemuro')return nShipDetail(id);
+  if(product==='sanmae')return smShipDetail(id);
+  return shipmentDetail(id);
+}
+function allShipmentHistory(){
+  currentProduct=null;setHeader('出荷指示一覧');setNavVisible(false);
+  app.innerHTML=`<section class="card" style="margin-top:22px"><div class="row"><h2>📋 全昆布 出荷指示一覧</h2><span class="pill">v39</span></div><p class="muted">4種類の昆布の出荷指示をまとめて時系列で表示します。</p><div class="subgrid" style="margin-top:12px"><label>検索<input id="gShipSearch" class="search" placeholder="番号・昆布・会社名・日付"></label><label>状態<select id="gShipStatus"><option value="">すべて</option><option value="draft">下書き</option><option value="confirmed">確定・在庫反映済</option><option value="shipped">出荷済</option><option value="cancelled">取消</option></select></label><label>並び順<select id="gShipSort"><option value="desc">新しい順</option><option value="asc">古い順</option></select></label></div><div class="tablewrap" style="margin-top:12px"><table style="min-width:980px"><thead><tr><th>出荷日</th><th>番号</th><th>昆布の種類</th><th>出荷先</th><th>出荷元</th><th>数量</th><th>状態</th><th></th></tr></thead><tbody id="gShipBody"></tbody></table></div><button class="btn secondary" id="gShipBack" style="margin-top:14px">← 出荷指示メニューへ戻る</button></section>`;
+  const render=()=>{
+    const q=gShipSearch.value.trim().toLowerCase(),status=gShipStatus.value,dir=gShipSort.value;
+    const rows=globalShipmentRows().filter(r=>!status||r.s.status===status).filter(r=>[r.s.id,r.productName,r.src,r.dst,r.s.shipDate,r.s.arrivalDate,shipmentStatusJa(r.s.status)].join(' ').toLowerCase().includes(q));
+    rows.sort((a,b)=>{
+      const ad=a.s.shipDate||a.s.createdAt||a.s.updatedAt||'',bd=b.s.shipDate||b.s.createdAt||b.s.updatedAt||'';
+      const c=String(ad).localeCompare(String(bd));
+      if(c!==0)return dir==='asc'?c:-c;
+      const ai=a.s.createdAt||a.s.updatedAt||'',bi=b.s.createdAt||b.s.updatedAt||'';
+      const c2=String(ai).localeCompare(String(bi));return dir==='asc'?c2:-c2;
+    });
+    gShipBody.innerHTML=rows.map(r=>`<tr><td>${esc(r.s.shipDate||'')}</td><td>${esc(r.s.id||'')}</td><td><b>${esc(r.productName)}</b></td><td>${esc(r.dst)}</td><td>${esc(r.src)}</td><td>${fmt(r.qty)}</td><td>${esc(shipmentStatusJa(r.s.status))}</td><td><button class="mini" data-gprod="${r.product}" data-gid="${esc(r.s.id||'')}">開く</button></td></tr>`).join('')||'<tr><td colspan="8" class="empty">出荷指示はありません</td></tr>';
+  };
+  render();gShipSearch.oninput=render;gShipStatus.onchange=render;gShipSort.onchange=render;
+  gShipBody.onclick=e=>{const b=e.target.closest('[data-gid]');if(b)openGlobalShipment(b.dataset.gprod,b.dataset.gid)};
+  gShipBack.onclick=()=>productChoicePage('shipment');
+}
+
+const _v38ProductChoiceForV39=productChoicePage;
+productChoicePage=function(mode){
+  _v38ProductChoiceForV39(mode);
+  const pill=app.querySelector('.pill');if(pill)pill.textContent='v39';
+  if(mode==='shipment'){
+    const card=app.querySelector('.card'),back=document.getElementById('v38Back');
+    if(card&&back){
+      const btn=document.createElement('button');btn.className='btn';btn.id='v39AllShipments';btn.style.marginTop='16px';btn.textContent='📋 出荷指示一覧（全昆布・時系列）';card.insertBefore(btn,back);btn.onclick=allShipmentHistory;
+    }
+  }
+};
+
+const _v38LandingForV39=productLanding;
+productLanding=function(){_v38LandingForV39();const pill=app.querySelector('.pill');if(pill)pill.textContent='v39'};
+const _v38CompanyForV39=companyMasterPage;
+companyMasterPage=function(){_v38CompanyForV39();const pill=app.querySelector('.pill');if(pill)pill.textContent='v39'};
+
+bindNav();productLanding();
