@@ -801,7 +801,7 @@ function openGlobalShipment(product,id){
 }
 function allShipmentHistory(){
   currentProduct=null;setHeader('出荷指示一覧');setNavVisible(false);
-  app.innerHTML=`<section class="card" style="margin-top:22px"><div class="row"><h2>📋 全昆布 出荷指示一覧</h2><span class="pill">v40</span></div><p class="muted">4種類の昆布の出荷指示をまとめて時系列で表示します。</p><div class="subgrid" style="margin-top:12px"><label>検索<input id="gShipSearch" class="search" placeholder="番号・昆布・会社名・日付"></label><label>状態<select id="gShipStatus"><option value="">すべて</option><option value="draft">下書き</option><option value="confirmed">確定・在庫反映済</option><option value="shipped">出荷済</option><option value="cancelled">取消</option></select></label><label>並び順<select id="gShipSort"><option value="desc">新しい順</option><option value="asc">古い順</option></select></label></div><div class="tablewrap" style="margin-top:12px"><table style="min-width:980px"><thead><tr><th>出荷日</th><th>番号</th><th>昆布の種類</th><th>出荷先</th><th>出荷元</th><th>数量</th><th>状態</th><th></th></tr></thead><tbody id="gShipBody"></tbody></table></div><button class="btn secondary" id="gShipBack" style="margin-top:14px">← 出荷指示メニューへ戻る</button></section>`;
+  app.innerHTML=`<section class="card" style="margin-top:22px"><div class="row"><h2>📋 全昆布 出荷指示一覧</h2><span class="pill">v41</span></div><p class="muted">4種類の昆布の出荷指示をまとめて時系列で表示します。</p><div class="subgrid" style="margin-top:12px"><label>検索<input id="gShipSearch" class="search" placeholder="番号・昆布・会社名・日付"></label><label>状態<select id="gShipStatus"><option value="">すべて</option><option value="draft">下書き</option><option value="confirmed">確定・在庫反映済</option><option value="shipped">出荷済</option><option value="cancelled">取消</option></select></label><label>並び順<select id="gShipSort"><option value="desc">新しい順</option><option value="asc">古い順</option></select></label></div><div class="tablewrap" style="margin-top:12px"><table style="min-width:980px"><thead><tr><th>出荷日</th><th>番号</th><th>昆布の種類</th><th>出荷先</th><th>出荷元</th><th>数量</th><th>状態</th><th></th></tr></thead><tbody id="gShipBody"></tbody></table></div><button class="btn secondary" id="gShipBack" style="margin-top:14px">← 出荷指示メニューへ戻る</button></section>`;
   const render=()=>{
     const q=gShipSearch.value.trim().toLowerCase(),status=gShipStatus.value,dir=gShipSort.value;
     const rows=globalShipmentRows().filter(r=>!status||r.s.status===status).filter(r=>[r.s.id,r.productName,r.src,r.dst,r.s.shipDate,r.s.arrivalDate,shipmentStatusJa(r.s.status)].join(' ').toLowerCase().includes(q));
@@ -837,3 +837,90 @@ const _v38CompanyForV39=companyMasterPage;
 companyMasterPage=function(){_v38CompanyForV39();const pill=app.querySelector('.pill');if(pill)pill.textContent='v40'};
 
 bindNav();productLanding();
+
+/* ===== v41: 出荷指示確定をiPhone Safariで確実に実行 ===== */
+function v41ShowResult(message,isError){
+  let box=document.getElementById('shipmentActionResult');
+  if(!box){
+    box=document.createElement('div');
+    box.id='shipmentActionResult';
+    box.style.cssText='margin:12px 0;padding:12px 14px;border-radius:12px;font-weight:700;line-height:1.55;';
+    const toolbar=app.querySelector('.toolbar');
+    if(toolbar)toolbar.parentNode.insertBefore(box,toolbar); else app.prepend(box);
+  }
+  box.style.background=isError?'#fff1f0':'#edf9ef';
+  box.style.color=isError?'#a61b12':'#216e39';
+  box.style.border=isError?'1px solid #f0b7b2':'1px solid #b8dfbf';
+  box.textContent=message;
+  try{box.scrollIntoView({behavior:'smooth',block:'center'});}catch(e){}
+}
+function v41GroupNeeds(lines,keyFn){
+  const m=new Map();
+  for(const l of (lines||[])){
+    const k=keyFn(l);m.set(k,(m.get(k)||0)+Number(l.qty||0));
+  }
+  return m;
+}
+function v41ConfirmKushiro(id){
+  const s=state.shipments.find(x=>x.id===id);if(!s||s.status!=='draft')return;
+  try{
+    if(!Array.isArray(s.lines)||!s.lines.length)throw new Error('出荷明細がありません。');
+    const needs=v41GroupNeeds(s.lines,l=>[l.year||DEFAULT_YEAR,l.coop,l.season,l.group,l.item].join('|'));
+    for(const [k,need] of needs){
+      const [year,coop,season,group,item]=k.split('|');
+      const av=stockAvailableForShipment(year,coop,season,group,item,s.id);
+      if(need>av)throw new Error(`${year}年産 ${coop} ${season} ${group} ${item} の出荷可能在庫は ${fmt(av)} です（指示数量 ${fmt(need)}）。`);
+    }
+    s.status='confirmed';s.confirmedAt=new Date().toISOString();s.updatedAt=s.confirmedAt;
+    save();
+    shipmentDetail(s.id);
+    v41ShowResult('出荷指示を確定し、在庫表へ反映しました。',false);
+  }catch(err){
+    v41ShowResult('確定できませんでした：'+(err&&err.message?err.message:String(err)),true);
+  }
+}
+function v41ConfirmHidaka(id){
+  const s=hState.shipments.find(x=>x.id===id);if(!s||s.status!=='draft')return;
+  try{
+    const needs=v41GroupNeeds(s.lines,l=>[l.year,l.location,l.section,l.grade].join('|'));
+    for(const [k,need] of needs){const [y,loc,sec,grade]=k.split('|');const av=hAvail(y,loc,sec,grade,s.id);if(need>av)throw new Error(`${y}年産 ${loc} ${sec} ${grade} の出荷可能在庫は ${fmt(av)} です（指示数量 ${fmt(need)}）。`)}
+    s.status='confirmed';s.confirmedAt=new Date().toISOString();hSave();hShipDetail(id);v41ShowResult('出荷指示を確定し、在庫表へ反映しました。',false);
+  }catch(err){v41ShowResult('確定できませんでした：'+(err&&err.message?err.message:String(err)),true)}
+}
+function v41ConfirmNemuro(id){
+  const s=nState.shipments.find(x=>x.id===id);if(!s||s.status!=='draft')return;
+  try{
+    const needs=v41GroupNeeds(s.lines,l=>[l.year,l.coop,l.season,l.group,l.item].join('|'));
+    for(const [k,need] of needs){const [y,coop,season,group,item]=k.split('|');const av=nAvail(y,coop,season,group,item,s.id);if(need>av)throw new Error(`${y}年産 ${coop} ${season} ${group} ${item} の出荷可能在庫は ${fmt(av)} です（指示数量 ${fmt(need)}）。`)}
+    s.status='confirmed';s.confirmedAt=new Date().toISOString();nSave();nShipDetail(id);v41ShowResult('出荷指示を確定し、在庫表へ反映しました。',false);
+  }catch(err){v41ShowResult('確定できませんでした：'+(err&&err.message?err.message:String(err)),true)}
+}
+function v41ConfirmSanmae(id){
+  const s=smState.shipments.find(x=>x.id===id);if(!s||s.status!=='draft')return;
+  try{
+    const needs=v41GroupNeeds(s.lines,l=>[l.year,l.coop,l.season,l.group,l.item].join('|'));
+    for(const [k,need] of needs){const [y,coop,season,group,item]=k.split('|');const av=smAvail(y,coop,season,group,item,s.id);if(need>av)throw new Error(`${y}年産 ${coop} ${season} ${group} ${item} の出荷可能在庫は ${fmt(av)} です（指示数量 ${fmt(need)}）。`)}
+    s.status='confirmed';s.confirmedAt=new Date().toISOString();smSave();smShipDetail(id);v41ShowResult('出荷指示を確定し、在庫表へ反映しました。',false);
+  }catch(err){v41ShowResult('確定できませんでした：'+(err&&err.message?err.message:String(err)),true)}
+}
+
+document.addEventListener('click',function(e){
+  const b=e.target&&e.target.closest?e.target.closest('button'):null;if(!b)return;
+  const id=b.id;
+  if(!['confirmShipmentBtn','hconf','nconf','smconf'].includes(id))return;
+  e.preventDefault();e.stopPropagation();if(e.stopImmediatePropagation)e.stopImmediatePropagation();
+  b.disabled=true;const old=b.textContent;b.textContent='処理中…';
+  setTimeout(()=>{
+    try{
+      if(id==='confirmShipmentBtn'){
+        const s=state.shipments.find(x=>x.status==='draft'&&document.body.textContent.includes(x.id));if(!s)throw new Error('対象の出荷指示を特定できませんでした。');v41ConfirmKushiro(s.id);
+      }else if(id==='hconf'){
+        const s=hState.shipments.find(x=>x.status==='draft'&&document.body.textContent.includes(x.id));if(!s)throw new Error('対象の出荷指示を特定できませんでした。');v41ConfirmHidaka(s.id);
+      }else if(id==='nconf'){
+        const s=nState.shipments.find(x=>x.status==='draft'&&document.body.textContent.includes(x.id));if(!s)throw new Error('対象の出荷指示を特定できませんでした。');v41ConfirmNemuro(s.id);
+      }else if(id==='smconf'){
+        const s=smState.shipments.find(x=>x.status==='draft'&&document.body.textContent.includes(x.id));if(!s)throw new Error('対象の出荷指示を特定できませんでした。');v41ConfirmSanmae(s.id);
+      }
+    }catch(err){v41ShowResult('確定できませんでした：'+(err&&err.message?err.message:String(err)),true);b.disabled=false;b.textContent=old;}
+  },0);
+},true);
