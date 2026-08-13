@@ -44,7 +44,7 @@ function itemOptions(selectedGroup,selectedItem){return GROUPS.map(g=>`<optgroup
 function form(type,editId=null){
  const r=editId?state.records.find(x=>x.id===editId):null;
  const g=r?.group||GROUPS[0].name,i=r?.item||GROUPS[0].items[0],yr=r?.year||state.activeYear;
- const pdfButton=(!r&&type==='in')?`<button class="btn secondary" id="pdfImportBtn" type="button">📄 PDFから入庫</button><input id="pdfImportFile" type="file" accept="application/pdf,.pdf" hidden><div class="note">在庫表PDFの生産年度も読み取り、登録前に確認できます。同じPDFの二重登録は自動で防止します。</div>`:'';
+ const pdfButton=(!r&&type==='in')?`<button class="btn secondary" id="pdfImportBtn" type="button">📄 PDFから入庫</button><input id="pdfImportFile" type="file" accept="application/pdf,.pdf" hidden><div class="note">50〜60ページ程度のPDFから「釧路産昆布」だけを抽出し、生産年度・漁協・区分・細分類ごとに合算します。同じPDFの二重登録は自動で防止します。</div>`:'';
  app.innerHTML=`<section class="card"><h2>${r?'入出庫修正':type==='in'?'入庫登録':'出庫登録'}</h2><div class="form">${pdfButton}<label>区分<select id="t"><option value="in" ${r?.type==='in'?'selected':''}>入庫</option><option value="out" ${r?.type==='out'?'selected':''}>出庫</option></select></label><label>生産年度<select id="y">${yearOptions(yr)}</select></label><label>漁協<select id="c">${state.coops.map(x=>`<option ${x===r?.coop?'selected':''}>${esc(x)}</option>`).join('')}</select></label><label>季節区分<select id="s">${SEASONS.map(x=>`<option ${x===(r?.season||'夏')?'selected':''}>${x}</option>`).join('')}</select></label><label>大分類＋細分類<select id="gi">${itemOptions(g,i)}</select></label><label>数量<input id="q" type="number" min="0" step="0.01" inputmode="decimal" value="${r?esc(r.qty):''}"></label><label>日付<input id="d" type="date" value="${r?.date||today()}"></label><label>備考<input id="memo" type="text" maxlength="100" value="${esc(r?.memo||'')}"></label><button class="btn" id="saveBtn">${r?'修正を保存':'登録する'}</button><button class="btn secondary" id="back">戻る</button></div></section>`;
  back.onclick=()=>r?logs():home;
  if(!r&&type==='in'){pdfImportBtn.onclick=()=>pdfImportFile.click();pdfImportFile.onchange=()=>{const f=pdfImportFile.files?.[0];if(f)importInventoryPdf(f)}}
@@ -82,43 +82,59 @@ function nearestPdfCol(x,pageWidth){
  return Math.abs(x-center)<=10*scale?idx:-1;
 }
 async function parseInventoryPdf(file){
- if(!window.pdfjsLib)throw new Error('PDF読取ライブラリを読み込めませんでした。インターネット接続を確認してください。');
- pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
- const data=new Uint8Array(await file.arrayBuffer());
- const pdf=await pdfjsLib.getDocument({data}).promise;
- if(pdf.numPages<1)throw new Error('PDFにページがありません。');
- const page=await pdf.getPage(1),viewport=page.getViewport({scale:1}),tc=await page.getTextContent();
- const items=tc.items.filter(x=>String(x.str||'').trim()).map(x=>({str:String(x.str).trim(),x:Number(x.transform[4]||0),y:Number(x.transform[5]||0),w:Number(x.width||0)}));
- const fullText=items.map(x=>x.str).join('');
- if(!fullText.includes('在庫証明書')&&!fullText.includes('在庫証明'))throw new Error('「在庫証明書」と確認できないPDFです。');
- const seasonItems=items.filter(x=>SEASONS.includes(x.str)&&x.x<viewport.width*0.18).sort((a,b)=>b.y-a.y);
- const rowTriples=[];
- for(let i=0;i<=seasonItems.length-3;i++){
-   const a=seasonItems[i],b=seasonItems[i+1],c=seasonItems[i+2];
-   if(a.str==='夏'&&b.str==='秋'&&c.str==='拾'&&a.y>b.y&&b.y>c.y){rowTriples.push([a,b,c]);i+=2;if(rowTriples.length===5)break;}
- }
- if(rowTriples.length!==5)throw new Error('この在庫表の「夏・秋・拾」行を正しく認識できませんでした。');
- const cols=allItems(),rows=[];
- rowTriples.forEach((triple,coopIndex)=>triple.forEach(row=>{
-   const cells=Array.from({length:cols.length},()=>[]);
-   items.forEach(it=>{
-     if(Math.abs(it.y-row.y)>3.2)return;
-     const cx=it.x+(it.w||0)/2,ci=nearestPdfCol(cx,viewport.width);
-     if(ci<0)return;
-     if(!/^[\d,.-]+$/.test(it.str))return;
-     cells[ci].push(it);
-   });
-   cells.forEach((parts,ci)=>{
-     if(!parts.length)return;
-     const raw=parts.sort((a,b)=>a.x-b.x).map(x=>x.str).join('').replace(/,/g,'');
-     if(raw==='-'||raw==='.'||raw==='')return;
-     const qty=Number(raw.replace(/[^0-9.]/g,''));
-     if(!Number.isFinite(qty)||qty<=0)return;
-     rows.push({coop:PDF_COOPS[coopIndex],season:row.str,group:cols[ci].group,item:cols[ci].item,qty});
-   });
- }));
- if(!rows.length)throw new Error('数量を読み取れませんでした。PDF形式を確認してください。');
- return {rows,date:reiwaDateFromText(fullText),year:productionYearFromText(fullText),pageCount:pdf.numPages};
+  if(!window.pdfjsLib)throw new Error('PDF読取ライブラリを読み込めませんでした。インターネット接続を確認してください。');
+  pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const data=new Uint8Array(await file.arrayBuffer());
+  const pdf=await pdfjsLib.getDocument({data}).promise;
+  if(pdf.numPages<1)throw new Error('PDFにページがありません。');
+  const allRows=[],matchedPages=[],skippedPages=[];
+  let statementDate=today();
+  for(let pageNo=1;pageNo<=pdf.numPages;pageNo++){
+    const page=await pdf.getPage(pageNo),viewport=page.getViewport({scale:1}),tc=await page.getTextContent();
+    const items=tc.items.filter(x=>String(x.str||'').trim()).map(x=>({str:String(x.str).trim(),x:Number(x.transform[4]||0),y:Number(x.transform[5]||0),w:Number(x.width||0)}));
+    const fullText=items.map(x=>x.str).join('');
+    const normalized=fullText.replace(/\s/g,'').replace(/[Ｒｒ]/g,'R');
+    if(pageNo===1||statementDate===today())statementDate=reiwaDateFromText(fullText);
+    // 「釧路産昆布」だけを対象にし、「釧路産棹前昆布」は別品種として除外する。
+    if(!normalized.includes('釧路産昆布')||normalized.includes('釧路産棹前昆布'))continue;
+    const year=productionYearFromText(fullText);
+    const seasonItems=items.filter(x=>SEASONS.includes(x.str)&&x.x<viewport.width*0.18).sort((a,b)=>b.y-a.y);
+    const rowTriples=[];
+    for(let i=0;i<=seasonItems.length-3;i++){
+      const a=seasonItems[i],b=seasonItems[i+1],c=seasonItems[i+2];
+      if(a.str==='夏'&&b.str==='秋'&&c.str==='拾'&&a.y>b.y&&b.y>c.y){rowTriples.push([a,b,c]);i+=2;if(rowTriples.length===5)break;}
+    }
+    if(rowTriples.length!==5){skippedPages.push(pageNo);continue;}
+    const cols=allItems(),pageRows=[];
+    rowTriples.forEach((triple,coopIndex)=>triple.forEach(row=>{
+      const cells=Array.from({length:cols.length},()=>[]);
+      items.forEach(it=>{
+        if(Math.abs(it.y-row.y)>3.2)return;
+        const cx=it.x+(it.w||0)/2,ci=nearestPdfCol(cx,viewport.width);
+        if(ci<0||!/^[\d,.-]+$/.test(it.str))return;
+        cells[ci].push(it);
+      });
+      cells.forEach((parts,ci)=>{
+        if(!parts.length)return;
+        const raw=parts.sort((a,b)=>a.x-b.x).map(x=>x.str).join('').replace(/,/g,'');
+        if(raw==='-'||raw==='.'||raw==='')return;
+        const qty=Number(raw.replace(/[^0-9.]/g,''));
+        if(!Number.isFinite(qty)||qty<=0)return;
+        pageRows.push({year,coop:PDF_COOPS[coopIndex],season:row.str,group:cols[ci].group,item:cols[ci].item,qty,page:pageNo});
+      });
+    }));
+    if(pageRows.length){allRows.push(...pageRows);matchedPages.push(pageNo);}else skippedPages.push(pageNo);
+  }
+  if(!allRows.length)throw new Error('PDF内から「釧路産昆布」の数量を読み取れませんでした。');
+  // 同じ生産年度・漁協・季節・分類を、取引先/ページをまたいで合算する。
+  const agg=new Map();
+  for(const r of allRows){
+    const k=[r.year,r.coop,r.season,r.group,r.item].join('|');
+    const cur=agg.get(k)||{year:r.year,coop:r.coop,season:r.season,group:r.group,item:r.item,qty:0,pages:[]};
+    cur.qty+=Number(r.qty);if(!cur.pages.includes(r.page))cur.pages.push(r.page);agg.set(k,cur);
+  }
+  const rows=[...agg.values()].sort((a,b)=>YEARS.indexOf(a.year)-YEARS.indexOf(b.year)||PDF_COOPS.indexOf(a.coop)-PDF_COOPS.indexOf(b.coop)||SEASONS.indexOf(a.season)-SEASONS.indexOf(b.season)||allItems().findIndex(x=>x.group===a.group&&x.item===a.item)-allItems().findIndex(x=>x.group===b.group&&x.item===b.item));
+  return {rows,date:statementDate,pageCount:pdf.numPages,matchedPages,skippedPages,years:[...new Set(rows.map(r=>r.year))]};
 }
 async function importInventoryPdf(file){
  try{
@@ -133,17 +149,17 @@ async function importInventoryPdf(file){
  }catch(e){alert(`PDFを読み込めませんでした。\n${e?.message||e}`);form('in');}
 }
 function showPdfImportConfirm(file,hash,parsed){
- const totalQty=parsed.rows.reduce((s,r)=>s+Number(r.qty||0),0);
- const preview=parsed.rows.map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.coop)}</td><td>${esc(r.season)}</td><td>${esc(r.group)}</td><td>${esc(r.item)}</td><td>${fmt(r.qty)}</td></tr>`).join('');
- app.innerHTML=`<section class="card"><h2>📄 PDF入庫 内容確認</h2><div class="stats"><div class="stat">読み込み件数<b>${parsed.rows.length}件</b></div><div class="stat">合計数量<b>${fmt(totalQty)}</b></div></div><div class="form" style="margin-top:12px"><label>生産年度<select id="pdfYear">${yearOptions(parsed.year)}</select></label></div><p><b>PDF：</b>${esc(file.name)}<br><b>在庫表日付：</b>${esc(parsed.date)}</p><div class="warning">まだ在庫には反映されていません。生産年度と内容を確認してから登録してください。</div><div class="tablewrap" style="margin-top:12px"><table style="min-width:760px"><tr><th>No.</th><th>漁協</th><th>区分</th><th>大分類</th><th>細分類</th><th>数量</th></tr>${preview}</table></div><div class="toolbar" style="margin-top:12px"><button class="btn" id="pdfCommit">この内容で入庫登録</button><button class="btn secondary" id="pdfCancel">キャンセル</button></div></section>`;
- pdfCancel.onclick=()=>form('in');
- pdfCommit.onclick=()=>{
-   const dup=pdfDuplicate(hash);if(dup)return alert('このPDFはすでに登録済みです。二重登録はできません。');
-   const year=pdfYear.value,ids=[];
-   parsed.rows.forEach(r=>{const id=crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random());ids.push(id);state.records.push({id,type:'in',year,coop:r.coop,season:r.season,group:r.group,item:r.item,qty:Number(r.qty),date:parsed.date,memo:`PDF入庫：${file.name}`})});
-   state.pdfImports.push({hash,fileName:file.name,year,statementDate:parsed.date,importedAt:new Date().toISOString(),count:parsed.rows.length,total:totalQty,recordIds:ids});
-   setActiveYear(year);save();alert(`${year}年産として ${parsed.rows.length}件、合計 ${fmt(totalQty)} を入庫登録しました。`);stock();
- };
+  const totalQty=parsed.rows.reduce((s,r)=>s+Number(r.qty||0),0);
+  const preview=parsed.rows.map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.year)}年産</td><td>${esc(r.coop)}</td><td>${esc(r.season)}</td><td>${esc(r.group)}</td><td>${esc(r.item)}</td><td>${fmt(r.qty)}</td></tr>`).join('');
+  app.innerHTML=`<section class="card"><h2>📄 PDF一括入庫 内容確認</h2><div class="stats"><div class="stat">対象ページ<b>${parsed.matchedPages.length} / ${parsed.pageCount}</b></div><div class="stat">集計後明細<b>${parsed.rows.length}件</b></div><div class="stat">生産年度<b>${parsed.years.map(y=>esc(y)).join('・')}</b></div><div class="stat">合計数量<b>${fmt(totalQty)}</b></div></div><p><b>PDF：</b>${esc(file.name)}<br><b>在庫表日付：</b>${esc(parsed.date)}<br><b>対象ページ：</b>${esc(parsed.matchedPages.join(', '))}</p><div class="note">「釧路産昆布」のページだけを抽出し、取引先をまたいで、生産年度・漁協・夏秋拾・細分類ごとに合算しています。「釧路産棹前昆布」は除外しています。</div>${parsed.skippedPages.length?`<div class="warning" style="margin-top:8px">釧路産昆布と判定したものの表を認識できなかったページ：${esc(parsed.skippedPages.join(', '))}</div>`:''}<div class="warning" style="margin-top:8px">まだ在庫には反映されていません。内容を確認してから登録してください。</div><div class="tablewrap" style="margin-top:12px"><table style="min-width:850px"><tr><th>No.</th><th>生産年度</th><th>漁協</th><th>区分</th><th>大分類</th><th>細分類</th><th>数量</th></tr>${preview}</table></div><div class="toolbar" style="margin-top:12px"><button class="btn" id="pdfCommit">この集計内容で一括入庫</button><button class="btn secondary" id="pdfCancel">キャンセル</button></div></section>`;
+  pdfCancel.onclick=()=>form('in');
+  pdfCommit.onclick=()=>{
+    const dup=pdfDuplicate(hash);if(dup)return alert('このPDFはすでに登録済みです。二重登録はできません。');
+    const ids=[];
+    parsed.rows.forEach(r=>{const id=crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random());ids.push(id);state.records.push({id,type:'in',year:r.year,coop:r.coop,season:r.season,group:r.group,item:r.item,qty:Number(r.qty),date:parsed.date,memo:`PDF一括入庫：${file.name}`})});
+    state.pdfImports.push({hash,fileName:file.name,years:parsed.years,statementDate:parsed.date,importedAt:new Date().toISOString(),count:parsed.rows.length,total:totalQty,pageCount:parsed.pageCount,matchedPages:parsed.matchedPages,recordIds:ids});
+    if(parsed.years.length)setActiveYear(parsed.years[parsed.years.length-1]);save();alert(`${parsed.years.join('・')}年産を集計し、${parsed.rows.length}件、合計 ${fmt(totalQty)} を一括入庫しました。`);stock();
+  };
 }
 
 function available(year,coop,season,group,item){return state.records.filter(r=>(r.year||DEFAULT_YEAR)===year&&r.coop===coop&&r.season===season&&r.group===group&&r.item===item).reduce((s,r)=>s+(r.type==='out'?-Number(r.qty):Number(r.qty)),0)}
