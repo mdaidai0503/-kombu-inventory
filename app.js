@@ -261,7 +261,7 @@ function shipmentDetail(id){
  const totalQ=s.lines.reduce((a,l)=>a+Number(l.qty||0),0);
  const shipmentYears=[...new Set(s.lines.map(l=>l.year||s.baseYear||DEFAULT_YEAR))].sort((a,b)=>YEARS.indexOf(a)-YEARS.indexOf(b));
  app.innerHTML=`<section class="card"><div class="row"><h2>📦 出荷指示書 ${esc(s.id)}</h2><span class="pill">${statusName}</span></div><p><b>出荷先：</b>${esc(s.dest)}　　<b>出荷日：</b>${esc(s.shipDate||'')}</p><p><b>生産年度：</b>${esc(shipmentYears.map(y=>y+'年産').join('・'))}　　<b>希望着日：</b>${esc(s.arrivalDate||'未指定')}　　<b>合計：</b>${fmt(totalQ)}</p><div class="tablewrap"><table style="min-width:900px"><tr><th>生産年度</th><th>漁協</th><th>季節</th><th>大分類</th><th>細分類</th><th>数量</th><th>備考</th></tr>${s.lines.map(l=>`<tr><td>${esc(l.year||DEFAULT_YEAR)}年産</td><td>${esc(l.coop)}</td><td>${esc(l.season)}</td><td>${esc(l.group)}</td><td>${esc(l.item)}</td><td>${fmt(l.qty)}</td><td>${esc(l.memo||'')}</td></tr>`).join('')}</table></div><p class="muted">備考：${esc(s.memo||'')}</p><div class="note">下書きでは在庫は変わりません。「出荷指示を確定して在庫反映」を押すと在庫表から即時差し引き、取消時は自動で在庫へ戻します。出荷済みにすると入出庫履歴へ正式な出庫記録を作成します。</div><div class="toolbar"><button class="btn" id="pdf">📄 PDF・FAX用</button>${s.status==='draft'?'<button class="btn" id="confirm">出荷指示を確定して在庫反映</button>':''}${s.status==='confirmed'?'<button class="btn" id="shipped">出荷済にする</button>':''}${s.status==='draft'?'<button class="btn secondary" id="edit">修正</button>':''}${s.status!=='shipped'&&s.status!=='cancelled'?'<button class="btn danger" id="cancel">取消</button>':''}<button class="btn secondary" id="back">一覧へ</button></div></section>`;
- pdf.onclick=()=>printShipment(s.id);
+ pdf.onclick=()=>openShipmentPdfDirect(s.id);
  if(s.status==='draft')confirm.onclick=()=>{for(const l of s.lines){const av=stockAvailableForShipment(l.year||DEFAULT_YEAR,l.coop,l.season,l.group,l.item,s.id);if(Number(l.qty)>av)return alert(`${l.year||DEFAULT_YEAR}年産 ${l.coop} ${l.season} ${l.group} ${l.item} の出荷可能在庫は ${fmt(av)} です。`)}s.status='confirmed';s.confirmedAt=new Date().toISOString();save();alert('出荷指示を確定しました。指定した生産年度の在庫表に反映しました。');shipmentDetail(s.id)};
  if(s.status==='confirmed')shipped.onclick=()=>{if(!confirm('出荷済みにすると、明細数量を在庫から出庫します。よろしいですか？'))return;for(const l of s.lines){state.records.push({id:crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random()),type:'out',year:l.year||DEFAULT_YEAR,coop:l.coop,season:l.season,group:l.group,item:l.item,qty:Number(l.qty),date:s.shipDate||today(),memo:`出荷指示 ${s.id} / ${s.dest}`})}s.status='shipped';s.shippedAt=new Date().toISOString();save();alert('出荷済みとして在庫から減算しました');shipmentDetail(s.id)};
  if(s.status==='draft')edit.onclick=()=>shipmentForm(s.id);
@@ -324,6 +324,27 @@ window._shipmentPdfBlobById=async function(id){
  if(!ship)throw new Error('出荷指示データが見つかりません。');
  return _shipmentPdfBlob(ship);
 };
+
+async function openShipmentPdfDirect(id){
+ const s=state.shipments.find(x=>x.id===id);
+ if(!s)return alert('出荷指示データが見つかりません。');
+ // Open the destination tab synchronously from the user's tap so iPhone/Safari does not block it.
+ const w=window.open('about:blank','_blank');
+ if(!w)return alert('PDF表示用の画面を開けませんでした。Safariのポップアップ設定を確認してください。');
+ try{
+  w.document.write('<!doctype html><html lang="ja"><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>出荷指示書 PDF作成中</title></head><body style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:32px;text-align:center"><h3>A4横向きPDFを作成しています…</h3><p>そのままお待ちください。</p></body></html>');
+  w.document.close();
+  const blob=await _shipmentPdfBlob(s);
+  const url=URL.createObjectURL(blob);
+  // Open the actual landscape PDF immediately. No second "create PDF" button is required.
+  w.location.replace(url);
+  // Keep the URL alive long enough for iOS/Safari's PDF viewer and share/print actions.
+  setTimeout(()=>URL.revokeObjectURL(url),10*60*1000);
+ }catch(e){
+  try{w.document.open();w.document.write('<meta name="viewport" content="width=device-width"><div style="font-family:-apple-system;padding:30px"><h3>PDF作成に失敗しました。</h3><p>'+String(e&&e.message?e.message:e).replace(/[&<>]/g,function(c){return ({'&':'&amp;','<':'&lt;','>':'&gt;'})[c]})+'</p><button onclick="window.close()" style="font-size:16px;padding:10px 16px">元の画面に戻る</button></div>');w.document.close()}catch(_e){}
+ }
+}
+
 function printShipment(id){
  const s=state.shipments.find(x=>x.id===id);if(!s)return;const cols=allItems();const printYears=[...new Set(s.lines.map(l=>l.year||DEFAULT_YEAR))].sort((a,b)=>YEARS.indexOf(a)-YEARS.indexOf(b));const seasons=[...new Set(s.lines.map(x=>x.season))].join('・');
  const rows=printYears.flatMap(y=>state.coops.flatMap(c=>SEASONS.map((season,si)=>{const lns=s.lines.filter(x=>(x.year||DEFAULT_YEAR)===y&&x.coop===c&&x.season===season);const rowTotal=lns.reduce((a,x)=>a+Number(x.qty||0),0);return `<tr><th>${si===0?esc(y)+'年産':''}</th><th class="coop">${si===0?esc(c):''}</th><th class="season">${esc(season)}</th>${cols.map(ci=>`<td>${fmtBlankZero(lns.filter(x=>x.group===ci.group&&x.item===ci.item).reduce((a,x)=>a+Number(x.qty||0),0))}</td>`).join('')}<td>${fmtBlankZero(rowTotal)}</td></tr>`}))).join('');
