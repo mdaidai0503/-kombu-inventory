@@ -707,3 +707,65 @@ const _v36SmShipForm=smShipForm; smShipForm=function(id=null){_v36SmShipForm(id)
 
 bindNav();
 productLanding();
+
+/* ===== v38: split inventory management and shipment entry ===== */
+function openProductContext(product, mode){
+  currentProduct=product;
+  const names={kushiro:'釧路産昆布',hidaka:'日高昆布',nemuro:'根室産昆布',sanmae:'釧路産棹前昆布'};
+  const name=names[product]||'昆布';
+  setHeader(name+(mode==='shipment'?' 出荷指示':' 在庫管理'));
+  setNavVisible(true);bindNav();
+  if(mode==='shipment'){
+    if(product==='hidaka')return hShipments();
+    if(product==='nemuro')return nShipments();
+    if(product==='sanmae')return smShipments();
+    return shipments();
+  }
+  if(product==='hidaka')return hHome();
+  if(product==='nemuro')return nHome();
+  if(product==='sanmae')return smHome();
+  return home();
+}
+
+function productChoicePage(mode){
+  currentProduct=null;
+  const isShip=mode==='shipment';
+  setHeader(isShip?'出荷指示':'在庫管理');
+  setNavVisible(false);
+  const title=isShip?'出荷指示する昆布を選択':'在庫管理する昆布を選択';
+  const lead=isShip?'昆布を選ぶと、その昆布の出荷指示一覧へ直接進みます。':'昆布を選ぶと、その昆布の在庫状況トップへ進みます。';
+  const detail=isShip?'出荷指示一覧・新規作成・PDF/FAX':'在庫表・入出庫・PDF入庫・マスター';
+  app.innerHTML=`<section class="card" style="margin-top:22px"><div class="row"><h2>${title}</h2><span class="pill">v38</span></div><p class="muted">${lead}</p><div class="grid" style="margin-top:16px"><button class="action orange" id="v38K"><b style="font-size:20px">釧路産昆布</b><small>${detail}</small></button><button class="action green" id="v38H"><b style="font-size:20px">日高昆布</b><small>${detail}</small></button><button class="action blue" id="v38N"><b style="font-size:20px">根室産昆布</b><small>${detail}</small></button><button class="action purple" id="v38S"><b style="font-size:20px">釧路産棹前昆布</b><small>${detail}</small></button></div><button class="btn secondary" id="v38Back" style="margin-top:16px">← 最初のトップ画面へ</button></section>`;
+  v38K.onclick=()=>openProductContext('kushiro',mode);
+  v38H.onclick=()=>openProductContext('hidaka',mode);
+  v38N.onclick=()=>openProductContext('nemuro',mode);
+  v38S.onclick=()=>openProductContext('sanmae',mode);
+  v38Back.onclick=productLanding;
+}
+
+productLanding=function(){
+  currentProduct=null;setHeader('昆布在庫管理');setNavVisible(false);
+  app.innerHTML=`<section class="card" style="margin-top:22px"><div class="row"><h2>昆布在庫・出荷管理</h2><span class="pill">v38</span></div><p class="muted">行いたい業務を選択してください。在庫管理と出荷指示を入口から分けています。</p><div style="display:grid;gap:12px;margin-top:18px"><button class="action orange" id="v38Inventory" style="width:100%;padding:22px 16px"><b style="font-size:22px">📊 在庫管理</b><small>4種類の昆布から選択して、在庫状況・入出庫・在庫表を管理</small></button><button class="action blue" id="v38Shipment" style="width:100%;padding:22px 16px"><b style="font-size:22px">📦 出荷指示</b><small>4種類の昆布から選択して、出荷指示を作成・PDF/FAX出力</small></button><button class="action gray" id="v38Company" style="width:100%;padding:18px 16px"><b style="font-size:19px">⚙ 会社マスター</b><small>会社名・住所・電話番号を編集</small></button></div></section>`;
+  v38Inventory.onclick=()=>productChoicePage('inventory');
+  v38Shipment.onclick=()=>productChoicePage('shipment');
+  v38Company.onclick=companyMasterPage;
+};
+
+// Kushiro home: make the existing selector button describe the new top-level navigation.
+const _v37HomeForV38=home;
+home=function(){
+  _v37HomeForV38();
+  const b=document.getElementById('kProductSelect');
+  if(b){b.innerHTML='← 最初のトップ画面へ<small>在庫管理・出荷指示の選択へ戻る</small>';b.onclick=productLanding;}
+};
+
+// Company master wording/version update while keeping the same stored data.
+const _v37CompanyMasterForV38=companyMasterPage;
+companyMasterPage=function(){
+  _v37CompanyMasterForV38();
+  const pill=app.querySelector('.pill');if(pill)pill.textContent='v38';
+  const back=document.getElementById('globalMasterBack');if(back){back.textContent='← 最初のトップ画面へ戻る';back.onclick=productLanding;}
+};
+
+bindNav();
+productLanding();
