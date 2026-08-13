@@ -1,4 +1,4 @@
-const CACHE='kombu-inventory-v12-shipment-year-stock';
+const CACHE='kombu-inventory-v13-shipment-pdf-blank-zero';
 const ASSETS=['./','./index.html','./manifest.webmanifest','./icon-180.png','./app.js'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(Promise.all([
