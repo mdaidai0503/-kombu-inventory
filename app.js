@@ -9,6 +9,10 @@ const GROUPS=[
  {name:"長頭束",items:["①"]}
 ];
 const SEASONS=["夏","秋","拾"];
+const PDF_COOPS=["東部漁協","昆布森漁協","厚岸漁協","散布漁協","浜中漁協"];
+const PDF_PAGE_WIDTH=841.8898;
+const PDF_COL_X0=126.6;
+const PDF_COL_STEP=22.07;
 const KEY="kombu_local_only_v3";
 let state=JSON.parse(localStorage.getItem(KEY)||"null");
 const old=JSON.parse(localStorage.getItem("kombu_local_only_v2")||"null");
@@ -29,7 +33,117 @@ function matrix(){const m={};state.records.forEach(r=>{const k=key(r);m[k]=(m[k]
 function total(){return state.records.reduce((s,r)=>s+(r.type==='out'?-Number(r.qty):Number(r.qty)),0)}
 function home(){app.innerHTML=`<section class="card"><h2>在庫状況</h2><div class="stats"><div class="stat">総在庫<b>${fmt(total())}</b></div><div class="stat">漁協数<b>${state.coops.length}</b></div><div class="stat">細分類数<b>${allItems().length}</b></div><div class="stat">登録履歴<b>${state.records.length}件</b></div></div></section><section class="grid"><button class="action green" id="a">↓ 入庫登録<small>季節・大分類・細分類・数量</small></button><button class="action blue" id="b">↑ 出庫登録<small>在庫から減算</small></button><button class="action orange" id="c">▦ PDF型在庫表<small>漁協 × 細分類 × 夏秋拾</small></button><button class="action purple" id="d">≡ 入出庫履歴<small>修正・削除</small></button><button class="action gray" id="e">⇩ データ出力<small>Excel・CSV・バックアップ</small></button><button class="action gray" id="f">⚙ マスター設定<small>漁協・細分類を確認</small></button><button class="action" id="shipHome" style="border-left:6px solid #e05a47">📦 出荷指示<small>新規作成・履歴・PDF・FAX</small></button></section><section class="card"><h2>PDF準拠設定</h2><div class="note">R6年度「釧路産昆布 在庫証明書」の区分を基準に、夏・秋・拾の3区分と、①②③④などの細分類を登録できます。</div><p class="muted">PDFの見出しを忠実に反映すると、不要な末尾2群を除外した帳票仕様で管理します。</p></section>`;a.onclick=()=>form('in');b.onclick=()=>form('out');c.onclick=stock;d.onclick=logs;e.onclick=exportsPage;f.onclick=masters;shipHome.onclick=shipments}
 function itemOptions(selectedGroup,selectedItem){return GROUPS.map(g=>`<optgroup label="${esc(g.name)}">${g.items.map(i=>`<option value="${esc(g.name)}|${esc(i)}" ${(g.name===selectedGroup&&i===selectedItem)?'selected':''}>${esc(i)}</option>`).join('')}</optgroup>`).join('')}
-function form(type,editId=null){const r=editId?state.records.find(x=>x.id===editId):null;const g=r?.group||GROUPS[0].name,i=r?.item||GROUPS[0].items[0];app.innerHTML=`<section class="card"><h2>${r?'入出庫修正':type==='in'?'入庫登録':'出庫登録'}</h2><div class="form"><label>区分<select id="t"><option value="in" ${r?.type==='in'?'selected':''}>入庫</option><option value="out" ${r?.type==='out'?'selected':''}>出庫</option></select></label><label>漁協<select id="c">${state.coops.map(x=>`<option ${x===r?.coop?'selected':''}>${esc(x)}</option>`).join('')}</select></label><label>季節区分<select id="s">${SEASONS.map(x=>`<option ${x===(r?.season||'夏')?'selected':''}>${x}</option>`).join('')}</select></label><label>大分類＋細分類<select id="gi">${itemOptions(g,i)}</select></label><label>数量<input id="q" type="number" min="0" step="0.01" inputmode="decimal" value="${r?esc(r.qty):''}"></label><label>日付<input id="d" type="date" value="${r?.date||today()}"></label><label>備考<input id="memo" type="text" maxlength="100" value="${esc(r?.memo||'')}"></label><button class="btn" id="saveBtn">${r?'修正を保存':'登録する'}</button><button class="btn secondary" id="back">戻る</button></div></section>`;back.onclick=()=>r?logs():home;saveBtn.onclick=()=>{const n=Number(q.value);if(!n||n<0)return alert('数量を入力してください');const [group,item]=gi.value.split('|');if(r){const idx=state.records.findIndex(x=>x.id===r.id);state.records[idx]={...r,type:t.value,coop:c.value,season:s.value,group,item,qty:n,date:d.value,memo:memo.value}}else{if(t.value==='out'){const avail=stockAvailableForShipment(c.value,s.value,group,item);if(n>avail)return alert(`出荷可能在庫は ${fmt(avail)} です。確定済み出荷を含めた残り在庫を超える出庫はできません。`)}state.records.push({id:crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random()),type:t.value,coop:c.value,season:s.value,group,item,qty:n,date:d.value,memo:memo.value})}save();alert(r?'修正しました':t.value==='in'?'入庫しました':'出庫しました');r?logs():stock()}}
+function form(type,editId=null){
+ const r=editId?state.records.find(x=>x.id===editId):null;
+ const g=r?.group||GROUPS[0].name,i=r?.item||GROUPS[0].items[0];
+ const pdfButton=(!r&&type==='in')?`<button class="btn secondary" id="pdfImportBtn" type="button">📄 PDFから入庫</button><input id="pdfImportFile" type="file" accept="application/pdf,.pdf" hidden><div class="note">在庫表PDFを選択すると、登録前に読み込み内容を確認できます。同じPDFの二重登録は自動で防止します。</div>`:'';
+ app.innerHTML=`<section class="card"><h2>${r?'入出庫修正':type==='in'?'入庫登録':'出庫登録'}</h2><div class="form">${pdfButton}<label>区分<select id="t"><option value="in" ${r?.type==='in'?'selected':''}>入庫</option><option value="out" ${r?.type==='out'?'selected':''}>出庫</option></select></label><label>漁協<select id="c">${state.coops.map(x=>`<option ${x===r?.coop?'selected':''}>${esc(x)}</option>`).join('')}</select></label><label>季節区分<select id="s">${SEASONS.map(x=>`<option ${x===(r?.season||'夏')?'selected':''}>${x}</option>`).join('')}</select></label><label>大分類＋細分類<select id="gi">${itemOptions(g,i)}</select></label><label>数量<input id="q" type="number" min="0" step="0.01" inputmode="decimal" value="${r?esc(r.qty):''}"></label><label>日付<input id="d" type="date" value="${r?.date||today()}"></label><label>備考<input id="memo" type="text" maxlength="100" value="${esc(r?.memo||'')}"></label><button class="btn" id="saveBtn">${r?'修正を保存':'登録する'}</button><button class="btn secondary" id="back">戻る</button></div></section>`;
+ back.onclick=()=>r?logs():home;
+ if(!r&&type==='in'){
+   pdfImportBtn.onclick=()=>pdfImportFile.click();
+   pdfImportFile.onchange=()=>{const f=pdfImportFile.files?.[0];if(f)importInventoryPdf(f)};
+ }
+ saveBtn.onclick=()=>{
+   const n=Number(q.value);if(!n||n<0)return alert('数量を入力してください');
+   const [group,item]=gi.value.split('|');
+   if(r){
+     const idx=state.records.findIndex(x=>x.id===r.id);
+     state.records[idx]={...r,type:t.value,coop:c.value,season:s.value,group,item,qty:n,date:d.value,memo:memo.value};
+   }else{
+     if(t.value==='out'){
+       const avail=stockAvailableForShipment(c.value,s.value,group,item);
+       if(n>avail)return alert(`出荷可能在庫は ${fmt(avail)} です。確定済み出荷を含めた残り在庫を超える出庫はできません。`);
+     }
+     state.records.push({id:crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random()),type:t.value,coop:c.value,season:s.value,group,item,qty:n,date:d.value,memo:memo.value});
+   }
+   save();alert(r?'修正しました':t.value==='in'?'入庫しました':'出庫しました');r?logs():stock();
+ };
+}
+
+async function sha256File(file){
+ const buf=await file.arrayBuffer();
+ const hash=await crypto.subtle.digest('SHA-256',buf);
+ return [...new Uint8Array(hash)].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+function reiwaDateFromText(text){
+ const m=String(text||'').replace(/\s/g,'').match(/令和(\d+)年(\d+)月(\d+)日/);
+ if(!m)return today();
+ const y=2018+Number(m[1]),mo=String(m[2]).padStart(2,'0'),d=String(m[3]).padStart(2,'0');
+ return `${y}-${mo}-${d}`;
+}
+function pdfDuplicate(hash){return state.pdfImports.find(x=>x.hash===hash)}
+function nearestPdfCol(x,pageWidth){
+ const scale=pageWidth/PDF_PAGE_WIDTH;
+ const idx=Math.round((x/scale-PDF_COL_X0)/PDF_COL_STEP);
+ if(idx<0||idx>=allItems().length)return -1;
+ const center=(PDF_COL_X0+PDF_COL_STEP*idx)*scale;
+ return Math.abs(x-center)<=10*scale?idx:-1;
+}
+async function parseInventoryPdf(file){
+ if(!window.pdfjsLib)throw new Error('PDF読取ライブラリを読み込めませんでした。インターネット接続を確認してください。');
+ pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+ const data=new Uint8Array(await file.arrayBuffer());
+ const pdf=await pdfjsLib.getDocument({data}).promise;
+ if(pdf.numPages<1)throw new Error('PDFにページがありません。');
+ const page=await pdf.getPage(1),viewport=page.getViewport({scale:1}),tc=await page.getTextContent();
+ const items=tc.items.filter(x=>String(x.str||'').trim()).map(x=>({str:String(x.str).trim(),x:Number(x.transform[4]||0),y:Number(x.transform[5]||0),w:Number(x.width||0)}));
+ const fullText=items.map(x=>x.str).join('');
+ if(!fullText.includes('在庫証明書')&&!fullText.includes('在庫証明'))throw new Error('「在庫証明書」と確認できないPDFです。');
+ const seasonItems=items.filter(x=>SEASONS.includes(x.str)&&x.x<viewport.width*0.18).sort((a,b)=>b.y-a.y);
+ const rowTriples=[];
+ for(let i=0;i<=seasonItems.length-3;i++){
+   const a=seasonItems[i],b=seasonItems[i+1],c=seasonItems[i+2];
+   if(a.str==='夏'&&b.str==='秋'&&c.str==='拾'&&a.y>b.y&&b.y>c.y){rowTriples.push([a,b,c]);i+=2;if(rowTriples.length===5)break;}
+ }
+ if(rowTriples.length!==5)throw new Error('この在庫表の「夏・秋・拾」行を正しく認識できませんでした。');
+ const cols=allItems(),rows=[];
+ rowTriples.forEach((triple,coopIndex)=>triple.forEach(row=>{
+   const cells=Array.from({length:cols.length},()=>[]);
+   items.forEach(it=>{
+     if(Math.abs(it.y-row.y)>3.2)return;
+     const cx=it.x+(it.w||0)/2,ci=nearestPdfCol(cx,viewport.width);
+     if(ci<0)return;
+     if(!/^[\d,.-]+$/.test(it.str))return;
+     cells[ci].push(it);
+   });
+   cells.forEach((parts,ci)=>{
+     if(!parts.length)return;
+     const raw=parts.sort((a,b)=>a.x-b.x).map(x=>x.str).join('').replace(/,/g,'');
+     if(raw==='-'||raw==='.'||raw==='')return;
+     const qty=Number(raw.replace(/[^0-9.]/g,''));
+     if(!Number.isFinite(qty)||qty<=0)return;
+     rows.push({coop:PDF_COOPS[coopIndex],season:row.str,group:cols[ci].group,item:cols[ci].item,qty});
+   });
+ }));
+ if(!rows.length)throw new Error('数量を読み取れませんでした。PDF形式を確認してください。');
+ return {rows,date:reiwaDateFromText(fullText),pageCount:pdf.numPages};
+}
+async function importInventoryPdf(file){
+ try{
+   app.innerHTML=`<section class="card"><h2>📄 PDFから入庫</h2><p>「${esc(file.name)}」を読み込んでいます…</p><p class="muted">PDF内の表を解析しています。</p></section>`;
+   const hash=await sha256File(file),dup=pdfDuplicate(hash);
+   if(dup){
+     alert(`このPDFはすでに入庫済みです。\n取込日：${new Date(dup.importedAt).toLocaleString('ja-JP')}\nファイル：${dup.fileName}`);
+     return form('in');
+   }
+   const parsed=await parseInventoryPdf(file);
+   showPdfImportConfirm(file,hash,parsed);
+ }catch(e){alert(`PDFを読み込めませんでした。\n${e?.message||e}`);form('in');}
+}
+function showPdfImportConfirm(file,hash,parsed){
+ const totalQty=parsed.rows.reduce((s,r)=>s+Number(r.qty||0),0);
+ const preview=parsed.rows.map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.coop)}</td><td>${esc(r.season)}</td><td>${esc(r.group)}</td><td>${esc(r.item)}</td><td>${fmt(r.qty)}</td></tr>`).join('');
+ app.innerHTML=`<section class="card"><h2>📄 PDF入庫 内容確認</h2><div class="stats"><div class="stat">読み込み件数<b>${parsed.rows.length}件</b></div><div class="stat">合計数量<b>${fmt(totalQty)}</b></div></div><p><b>PDF：</b>${esc(file.name)}<br><b>在庫表日付：</b>${esc(parsed.date)}</p><div class="warning">まだ在庫には反映されていません。内容を確認してから登録してください。</div><div class="tablewrap" style="margin-top:12px"><table style="min-width:760px"><tr><th>No.</th><th>漁協</th><th>区分</th><th>大分類</th><th>細分類</th><th>数量</th></tr>${preview}</table></div><div class="toolbar" style="margin-top:12px"><button class="btn" id="pdfCommit">この内容で入庫登録</button><button class="btn secondary" id="pdfCancel">キャンセル</button></div></section>`;
+ pdfCancel.onclick=()=>form('in');
+ pdfCommit.onclick=()=>{
+   const dup=pdfDuplicate(hash);if(dup)return alert('このPDFはすでに登録済みです。二重登録はできません。');
+   const ids=[];
+   parsed.rows.forEach(r=>{const id=crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random());ids.push(id);state.records.push({id,type:'in',coop:r.coop,season:r.season,group:r.group,item:r.item,qty:Number(r.qty),date:parsed.date,memo:`PDF入庫：${file.name}`})});
+   state.pdfImports.push({hash,fileName:file.name,statementDate:parsed.date,importedAt:new Date().toISOString(),count:parsed.rows.length,total:totalQty,recordIds:ids});
+   save();alert(`${parsed.rows.length}件、合計 ${fmt(totalQty)} を入庫登録しました。`);stock();
+ };
+}
+
 function available(coop,season,group,item){return state.records.filter(r=>r.coop===coop&&r.season===season&&r.group===group&&r.item===item).reduce((s,r)=>s+(r.type==='out'?-Number(r.qty):Number(r.qty)),0)}
 function stock(){
  const m=matrix();
@@ -142,7 +256,7 @@ home();
 /* 出荷機能の安全性・復元対応 */
 const _backupV4=backup;
 backup=function(){download('昆布在庫管理_業務バックアップ_'+today()+'.json',JSON.stringify({app:'昆布在庫管理',version:4,groups:GROUPS,seasons:SEASONS,exportedAt:new Date().toISOString(),...state},null,2),'application/json;charset=utf-8')};
-restore=function(file){if(!file)return;const fr=new FileReader();fr.onload=()=>{try{const d=JSON.parse(fr.result);if(!Array.isArray(d.records)||!Array.isArray(d.coops))throw Error();if(!confirm('現在のデータをバックアップ内容に置き換えます。よろしいですか？'))return;state={records:d.records,coops:d.coops,shipments:Array.isArray(d.shipments)?d.shipments:[],shipmentSeq:Number(d.shipmentSeq||1)};save();alert('復元しました');home()}catch(e){alert('バックアップを読み込めませんでした')}};fr.readAsText(file)};
+restore=function(file){if(!file)return;const fr=new FileReader();fr.onload=()=>{try{const d=JSON.parse(fr.result);if(!Array.isArray(d.records)||!Array.isArray(d.coops))throw Error();if(!confirm('現在のデータをバックアップ内容に置き換えます。よろしいですか？'))return;state={records:d.records,coops:d.coops,shipments:Array.isArray(d.shipments)?d.shipments:[],shipmentSeq:Number(d.shipmentSeq||1),pdfImports:Array.isArray(d.pdfImports)?d.pdfImports:[]};save();alert('復元しました');home()}catch(e){alert('バックアップを読み込めませんでした')}};fr.readAsText(file)};
 const _shipmentDetailOriginal=shipmentDetail;
 shipmentDetail=function(id){
   _shipmentDetailOriginal(id);
