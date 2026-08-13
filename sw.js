@@ -1,4 +1,4 @@
-const CACHE='kombu-inventory-v31-kushiro-hidaka';
+const CACHE='kombu-inventory-v32-kushiro-hidaka-nemuro';
 const ASSETS=['./','./index.html','./manifest.webmanifest','./icon-180.png','./app.js'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(Promise.all([
