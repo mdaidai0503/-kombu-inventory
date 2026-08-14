@@ -142,3 +142,9 @@ v48:
 - app-v48.js / pdf-v48.js / pdf-worker-v48.js / sw-v48.js
 - 新Service WorkerではignoreSearchを使用せず完全一致キャッシュ。
 - PDF.js本体とWorkerをclassic scriptとして読み込み。
+
+v49:
+- iPhone/GitHubアップロードでvendorフォルダが欠落した問題を解消。
+- PDF.js / Worker / app / Service WorkerをすべてZIPのトップ階層へ配置。
+- vendorフォルダは使用しない。
+- index.htmlは pdf-v49.js / pdf-worker-v49.js / app-v49.js / sw-v49.js を直接参照。
