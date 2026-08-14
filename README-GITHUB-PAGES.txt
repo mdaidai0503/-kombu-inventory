@@ -130,3 +130,6 @@ v44: iPhone SafariでPDF.jsをES Moduleとして読み込んで停止する問�
 
 
 v45: PDF.js ESモジュールを先に読み込み、完了後に既存app.jsを通常スクリプトとして起動するiPhone Safari対応修正。
+
+
+v46: PDF.js module namespaceを __KOMBU_PDFJS__ で保持し、app.js内のPDFJS定数へ明示的に受け渡すSafari対策。

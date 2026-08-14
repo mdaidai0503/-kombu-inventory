@@ -1,4 +1,4 @@
-const CACHE='kombu-inventory-v45-offline';
+const CACHE='kombu-inventory-v46-offline';
 const APP_SHELL=[
   './',
   './index.html',
