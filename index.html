@@ -21,19 +21,17 @@ nav{position:fixed;bottom:0;left:0;right:0;background:#0b2b55;display:flex;justi
 (function(){
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function(){
-      navigator.serviceWorker.register('./sw.js?v=43', {scope:'./'}).catch(function(err){
+      navigator.serviceWorker.register('./sw.js?v=44', {scope:'./'}).catch(function(err){
         console.warn('Service Worker登録に失敗しました:', err);
       });
     });
   }
 })();
 </script>
-<script type="module">
-import * as pdfjsLib from './vendor/pdf.js?v=43';
-globalThis.pdfjsLib = pdfjsLib;
-pdfjsLib.GlobalWorkerOptions.workerSrc = './vendor/pdf.worker.js?v=43';
-const appScript = document.createElement('script');
-appScript.src = './app.js?v=43';
-appScript.async = false;
-document.body.appendChild(appScript);
-</script></body></html>
+<script src="./vendor/pdf.js?v=44"></script>
+<script>
+if (globalThis.pdfjsLib) {
+  globalThis.pdfjsLib.GlobalWorkerOptions.workerSrc = './vendor/pdf.worker.js?v=44';
+}
+</script>
+<script src="./app.js?v=44"></script></body></html>
