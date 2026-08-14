@@ -154,3 +154,10 @@ v50:
 - ReadableStream.prototype.values / Symbol.asyncIterator のpolyfillをPDF.js読込前に追加。
 - Promise.withResolversも互換実装を追加。
 - 主要ファイルをv50名へ変更し旧キャッシュを回避。
+
+v51:
+- 出荷指示書のiPhone Safariホワイトアウト対策。
+- 釧路産昆布・日高昆布・根室産昆布のPDF/FAXをBlob PDF直開きから、
+  アプリ内帳票プレビュー → window.print()方式へ統一。
+- 釧路産棹前昆布は既存の同画面プレビュー方式を維持。
+- 出荷指示PDF/FAXでは新規タブ・Blob URLを使わない。
