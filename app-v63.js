@@ -955,7 +955,7 @@ function v42ResultMeta(r){
 async function v42BulkPdfImport(file){
   if(!file)return;
   currentProduct=null;setHeader('PDFから一括入庫');setNavVisible(false);
-  app.innerHTML=`<section class="card" style="margin-top:22px"><div class="row"><h2>📄 4種類 PDF一括入庫</h2><span class="pill">v61</span></div><p><b>${esc(file.name)}</b></p><div class="note">PDFを1回読み込み、釧路産昆布・日高昆布・根室産昆布・釧路産棹前昆布を自動判別しています。</div><p id="v42Progress" style="margin-top:16px;font-weight:700">PDFを準備しています…</p></section>`;
+  app.innerHTML=`<section class="card" style="margin-top:22px"><div class="row"><h2>📄 4種類 PDF一括入庫</h2><span class="pill">v63</span></div><p><b>${esc(file.name)}</b></p><div class="note">PDFを1回読み込み、釧路産昆布・日高昆布・根室産昆布・釧路産棹前昆布を自動判別しています。</div><p id="v42Progress" style="margin-top:16px;font-weight:700">PDFを準備しています…</p></section>`;
   const progress=document.getElementById('v42Progress');
   try{
     const hash=await sha256File(file),dups=v42ImportAlready(hash,file);
@@ -967,7 +967,7 @@ async function v42BulkPdfImport(file){
     const metas=results.map(v42ResultMeta),importable=results.filter(x=>x.status==='ok');
     const grandCount=metas.reduce((a,x)=>a+x.count,0),grandTotal=metas.reduce((a,x)=>a+x.total,0);
     const cards=results.map((r,i)=>{const m=metas[i];return `<div class="card" style="margin:0;padding:12px;background:#f8fafc"><b style="font-size:17px">${esc(r.label)}</b><div style="margin-top:7px"><span class="pill">${esc(m.statusText)}</span></div><div class="small" style="margin-top:8px">生産年度：${esc(m.years)}<br>対象ページ：${esc(m.pages)}<br>明細：${m.count}件 ／ 合計：${fmt(m.total)}</div>${r.status==='error'?`<div class="warning" style="margin-top:8px">${esc(r.error&&r.error.message?r.error.message:String(r.error))}</div>`:''}</div>`}).join('');
-    app.innerHTML=`<section class="card" style="margin-top:22px"><div class="row"><h2>📄 PDF一括入庫 内容確認</h2><span class="pill">v61</span></div><p><b>PDF：</b>${esc(file.name)}</p><div class="stats"><div class="stat">入庫対象<b>${importable.length}種類</b></div><div class="stat">明細合計<b>${grandCount}件</b></div><div class="stat">数量合計<b>${fmt(grandTotal)}</b></div><div class="stat">PDFハッシュ<b style="font-size:12px">${esc(hash.slice(0,12))}…</b></div></div><div class="subgrid" style="margin-top:14px">${cards}</div><div class="warning" style="margin-top:14px">まだ在庫には反映されていません。「4種類へ一括反映」を押すと、入庫対象になった昆布だけを一度に登録します。取込済みの種類は二重登録しません。</div><div class="toolbar" style="margin-top:14px"><button class="btn" id="v42Commit" ${importable.length?'':'disabled'}>4種類へ一括反映</button><button class="btn secondary" id="v42Cancel">キャンセル</button></div></section>`;
+    app.innerHTML=`<section class="card" style="margin-top:22px"><div class="row"><h2>📄 PDF一括入庫 内容確認</h2><span class="pill">v63</span></div><p><b>PDF：</b>${esc(file.name)}</p><div class="stats"><div class="stat">入庫対象<b>${importable.length}種類</b></div><div class="stat">明細合計<b>${grandCount}件</b></div><div class="stat">数量合計<b>${fmt(grandTotal)}</b></div><div class="stat">PDFハッシュ<b style="font-size:12px">${esc(hash.slice(0,12))}…</b></div></div><div class="subgrid" style="margin-top:14px">${cards}</div><div class="warning" style="margin-top:14px">まだ在庫には反映されていません。「4種類へ一括反映」を押すと、入庫対象になった昆布だけを一度に登録します。取込済みの種類は二重登録しません。</div><div class="toolbar" style="margin-top:14px"><button class="btn" id="v42Commit" ${importable.length?'':'disabled'}>4種類へ一括反映</button><button class="btn secondary" id="v42Cancel">キャンセル</button></div></section>`;
     const commit=document.getElementById('v42Commit'),cancel=document.getElementById('v42Cancel');
     cancel.onclick=()=>productChoicePage('inventory');
     if(commit)commit.onclick=()=>{
@@ -1003,7 +1003,7 @@ async function v42BulkPdfImport(file){
 const _v41ProductChoiceForV42=productChoicePage;
 productChoicePage=function(mode){
   _v41ProductChoiceForV42(mode);
-  const pill=app.querySelector('.pill');if(pill)pill.textContent='v61';
+  const pill=app.querySelector('.pill');if(pill)pill.textContent='v63';
   if(mode==='inventory'){
     const card=app.querySelector('.card'),back=document.getElementById('v38Back');
     if(card&&back&&!document.getElementById('v42BulkPdfBtn')){
@@ -1015,9 +1015,9 @@ productChoicePage=function(mode){
   }
 };
 const _v41LandingForV42=productLanding;
-productLanding=function(){_v41LandingForV42();const pill=app.querySelector('.pill');if(pill)pill.textContent='v61'};
+productLanding=function(){_v41LandingForV42();const pill=app.querySelector('.pill');if(pill)pill.textContent='v63'};
 const _v41CompanyForV42=companyMasterPage;
-companyMasterPage=function(){_v41CompanyForV42();const pill=app.querySelector('.pill');if(pill)pill.textContent='v61'};
+companyMasterPage=function(){_v41CompanyForV42();const pill=app.querySelector('.pill');if(pill)pill.textContent='v63'};
 
 bindNav();productLanding();
 
@@ -1328,9 +1328,9 @@ function v55ShowShipmentCanvasPreview(title, shipment, canvases, backFn){
       header,nav,.v55bar,.v55note{display:none!important}
       main{margin:0!important;padding:0!important;max-width:none!important;width:297mm!important;min-height:0!important}
       .v55preview{overflow:visible!important;background:#fff!important;padding:0!important;margin:0!important;width:297mm!important}
-      .v55page{width:296mm!important;height:209mm!important;margin:0!important;padding:0!important;box-shadow:none!important;display:flex!important;align-items:flex-start!important;justify-content:flex-start!important;break-after:auto!important;page-break-after:auto!important;overflow:hidden!important}
+      .v55page{width:295mm!important;height:208mm!important;margin:0!important;padding:0!important;box-shadow:none!important;display:flex!important;align-items:flex-start!important;justify-content:flex-start!important;break-after:auto!important;page-break-after:auto!important;overflow:hidden!important}
       .v55page:not(:last-child){break-after:page!important;page-break-after:always!important}
-      .v55page canvas{display:block!important;width:296mm!important;height:209mm!important;max-width:296mm!important;max-height:209mm!important;object-fit:contain!important;margin:0!important;padding:0!important}
+      .v55page canvas{display:block!important;width:295mm!important;height:208mm!important;max-width:295mm!important;max-height:208mm!important;object-fit:contain!important;margin:0!important;padding:0!important}
     }
    </style>
    <div class="v55bar"><button class="v55print" id="v55print">PDF・印刷・FAXへ</button><button class="v55back" id="v55back">出荷指示へ戻る</button></div>
