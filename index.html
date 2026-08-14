@@ -19,9 +19,21 @@ nav{position:fixed;bottom:0;left:0;right:0;background:#0b2b55;display:flex;justi
 <nav><button id="homeNavBtn"><span>🏠</span>ホーム</button><button id="shipNavBtn"><span>📦</span>出荷指示</button><button id="stockNavBtn"><span>▦</span>在庫表</button><button id="logsNavBtn"><span>≡</span>入出庫履歴</button><button id="inNavBtn"><span>↓</span>入庫登録</button><button id="moreBtn"><span>⋯</span>その他</button></nav>
 <script>
 (function(){
-  try{if('serviceWorker' in navigator){navigator.serviceWorker.getRegistrations().then(function(rs){rs.forEach(function(r){r.unregister()})})}}catch(e){}
-  try{if(window.caches){caches.keys().then(function(ks){ks.forEach(function(k){if(k.indexOf('kombu-')===0||k.indexOf('kombu-inventory-')===0)caches.delete(k)})})}}catch(e){}
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('./sw.js?v=43', {scope:'./'}).catch(function(err){
+        console.warn('Service Worker登録に失敗しました:', err);
+      });
+    });
+  }
 })();
 </script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="./app.js?v=42"></script></body></html>
+<script type="module">
+import * as pdfjsLib from './vendor/pdf.js?v=43';
+globalThis.pdfjsLib = pdfjsLib;
+pdfjsLib.GlobalWorkerOptions.workerSrc = './vendor/pdf.worker.js?v=43';
+const appScript = document.createElement('script');
+appScript.src = './app.js?v=43';
+appScript.async = false;
+document.body.appendChild(appScript);
+</script></body></html>

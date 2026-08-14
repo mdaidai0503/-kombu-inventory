@@ -111,3 +111,16 @@
 
 
 v39: 下部ナビ左端にホーム追加、釧路産昆布に昆布選択画面ボタン追加、トップ画面に会社マスター追加。
+
+
+## v43: 外部CDNなし・PDF.jsローカル同梱・オフライン対応
+- PDF読取ライブラリ PDF.js（Mozilla公式配布版 6.3.169 / legacy build）を `vendor/` に同梱しました。
+- `cdnjs.cloudflare.com` など外部CDNへの実行時アクセスを削除しました。
+- PDF.js本体とWorkerはアプリと同じGitHub Pages配下から読み込みます。
+- Service Workerが index.html / app.js / manifest / アイコン / PDF.js本体 / PDF.js Worker を端末へキャッシュします。
+- v43をオンラインで一度正常に開き、Service Workerのインストールが完了した後は、オフラインでもアプリ起動・在庫閲覧/入力・PDF解析/一括入庫を利用できます。
+- 在庫、入出庫履歴、出荷指示、会社マスター、PDF取込履歴などの業務データは従来どおり端末ブラウザのlocalStorageに保存します。
+- 選択した在庫PDFはブラウザ内で解析し、外部サーバーへアップロードする処理はありません。
+- 初回のv43取得時、および更新確認時にGitHub Pagesとの通信は発生します。業務データを送信する通信ではありません。
+- Safariの「Webサイトデータを削除」や端末変更でlocalStorageが消える可能性があるため、定期的なバックアップ保存を推奨します。
+- PDF.jsはApache License 2.0です。ライセンス全文を `vendor/PDFJS-LICENSE.txt` に同梱しています。
