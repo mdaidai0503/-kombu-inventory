@@ -148,3 +148,9 @@ v49:
 - PDF.js / Worker / app / Service WorkerをすべてZIPのトップ階層へ配置。
 - vendorフォルダは使用しない。
 - index.htmlは pdf-v49.js / pdf-worker-v49.js / app-v49.js / sw-v49.js を直接参照。
+
+v50:
+- iPhone SafariでPDF.jsのgetTextContent()がReadableStream非同期反復で停止する問題を修正。
+- ReadableStream.prototype.values / Symbol.asyncIterator のpolyfillをPDF.js読込前に追加。
+- Promise.withResolversも互換実装を追加。
+- 主要ファイルをv50名へ変更し旧キャッシュを回避。

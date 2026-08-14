@@ -21,14 +21,68 @@ nav{position:fixed;bottom:0;left:0;right:0;background:#0b2b55;display:flex;justi
 (function(){
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function(){
-      navigator.serviceWorker.register('./sw-v49.js', {scope:'./'}).catch(function(err){
+      navigator.serviceWorker.register('./sw-v50.js', {scope:'./'}).catch(function(err){
         console.warn('Service Worker登録に失敗しました:', err);
       });
     });
   }
 })();
 </script>
-<script src="./pdf-v49.js"></script>
+<script>
+/* iPhone Safari compatibility for locally bundled PDF.js */
+(function(){
+  if (typeof Promise !== 'undefined' && typeof Promise.withResolvers !== 'function') {
+    Promise.withResolvers = function() {
+      var resolve, reject;
+      var promise = new Promise(function(res, rej){ resolve = res; reject = rej; });
+      return { promise: promise, resolve: resolve, reject: reject };
+    };
+  }
+
+  if (typeof ReadableStream !== 'undefined' && typeof Symbol !== 'undefined') {
+    if (typeof ReadableStream.prototype.values !== 'function') {
+      ReadableStream.prototype.values = function(options) {
+        var stream = this;
+        var preventCancel = !!(options && options.preventCancel);
+        var reader = stream.getReader();
+        var finished = false;
+
+        var iterator = {
+          next: function() {
+            return reader.read().then(function(result) {
+              if (result.done) {
+                finished = true;
+                try { reader.releaseLock(); } catch(e) {}
+              }
+              return result;
+            });
+          },
+          return: function(value) {
+            finished = true;
+            var done = preventCancel
+              ? Promise.resolve()
+              : Promise.resolve(reader.cancel(value)).catch(function(){});
+            return done.then(function() {
+              try { reader.releaseLock(); } catch(e) {}
+              return { done: true, value: value };
+            });
+          }
+        };
+        iterator[Symbol.asyncIterator] = function(){ return iterator; };
+        return iterator;
+      };
+    }
+
+    if (Symbol.asyncIterator &&
+        typeof ReadableStream.prototype[Symbol.asyncIterator] !== 'function') {
+      ReadableStream.prototype[Symbol.asyncIterator] = function() {
+        return this.values();
+      };
+    }
+  }
+})();
+</script>
+<script src="./pdf-v50.js"></script>
 <script>
 (function(){
   if (!globalThis.pdfjsLib || typeof globalThis.pdfjsLib.getDocument !== 'function') {
@@ -37,14 +91,14 @@ nav{position:fixed;bottom:0;left:0;right:0;background:#0b2b55;display:flex;justi
     return;
   }
   globalThis.__KOMBU_PDFJS__ = globalThis.pdfjsLib;
-  globalThis.pdfjsLib.GlobalWorkerOptions.workerSrc = './pdf-worker-v49.js';
+  globalThis.pdfjsLib.GlobalWorkerOptions.workerSrc = './pdf-worker-v50.js';
 
   var appScript = document.createElement('script');
-  appScript.src = './app-v49.js';
+  appScript.src = './app-v50.js';
   appScript.async = false;
   appScript.onerror = function(){
     document.getElementById('app').innerHTML =
-      '<section class="card"><h2>アプリ読込エラー</h2><div class="warning">app-v49.jsを読み込めませんでした。</div></section>';
+      '<section class="card"><h2>アプリ読込エラー</h2><div class="warning">app-v50.jsを読み込めませんでした。</div></section>';
   };
   document.body.appendChild(appScript);
 })();
