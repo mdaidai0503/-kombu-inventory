@@ -136,3 +136,9 @@ v46: PDF.js module namespaceを __KOMBU_PDFJS__ で保持し、app.js内のPDFJS
 
 
 v47: PDF.jsをES module読込からclassic script読込へ変更。globalThis.pdfjsLibを直接利用し、iPhone Safariのmodule import失敗を回避。
+
+v48:
+- 旧Service Workerが同名ファイルを返す問題を回避するため主要ファイル名を変更。
+- app-v48.js / pdf-v48.js / pdf-worker-v48.js / sw-v48.js
+- 新Service WorkerではignoreSearchを使用せず完全一致キャッシュ。
+- PDF.js本体とWorkerをclassic scriptとして読み込み。
