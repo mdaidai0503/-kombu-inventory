@@ -127,3 +127,6 @@ v39: 下部ナビ左端にホーム追加、釧路産昆布に昆布選択画面
 
 
 v44: iPhone SafariでPDF.jsをES Moduleとして読み込んで停止する問題を修正。通常script方式で読み込み。
+
+
+v45: PDF.js ESモジュールを先に読み込み、完了後に既存app.jsを通常スクリプトとして起動するiPhone Safari対応修正。

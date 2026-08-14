@@ -1,12 +1,12 @@
-const CACHE='kombu-inventory-v44-offline';
+const CACHE='kombu-inventory-v45-offline';
 const APP_SHELL=[
   './',
   './index.html',
-  './app.js?v=44',
+  './app.js?v=45',
   './manifest.webmanifest',
   './icon-180.png',
-  './vendor/pdf.js?v=44',
-  './vendor/pdf.worker.js?v=44',
+  './vendor/pdf.js?v=45',
+  './vendor/pdf.worker.js?v=45',
   './vendor/PDFJS-LICENSE.txt'
 ];
 

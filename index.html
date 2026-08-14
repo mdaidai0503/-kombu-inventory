@@ -21,17 +21,32 @@ nav{position:fixed;bottom:0;left:0;right:0;background:#0b2b55;display:flex;justi
 (function(){
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function(){
-      navigator.serviceWorker.register('./sw.js?v=44', {scope:'./'}).catch(function(err){
+      navigator.serviceWorker.register('./sw.js?v=45', {scope:'./'}).catch(function(err){
         console.warn('Service Worker登録に失敗しました:', err);
       });
     });
   }
 })();
 </script>
-<script src="./vendor/pdf.js?v=44"></script>
-<script>
-if (globalThis.pdfjsLib) {
-  globalThis.pdfjsLib.GlobalWorkerOptions.workerSrc = './vendor/pdf.worker.js?v=44';
-}
-</script>
-<script src="./app.js?v=44"></script></body></html>
+<script type="module">
+(async function(){
+  try {
+    const pdfjsLib = await import('./vendor/pdf.js?v=45');
+    globalThis.pdfjsLib = pdfjsLib;
+    pdfjsLib.GlobalWorkerOptions.workerSrc = './vendor/pdf.worker.js?v=45';
+
+    const appScript = document.createElement('script');
+    appScript.src = './app.js?v=45';
+    appScript.async = false;
+    appScript.onerror = function(){
+      document.getElementById('app').innerHTML =
+        '<section class="card"><h2>アプリ読込エラー</h2><div class="warning">app.jsを読み込めませんでした。Safariで再読み込みしてください。</div></section>';
+    };
+    document.body.appendChild(appScript);
+  } catch (err) {
+    console.error('PDF.js loading failed', err);
+    document.getElementById('app').innerHTML =
+      '<section class="card"><h2>PDF読取ライブラリの読込エラー</h2><div class="warning">PDF.jsを読み込めませんでした。GitHubへv45のvendorフォルダを含めて上書きし、Safariで再読み込みしてください。</div></section>';
+  }
+})();
+</script></body></html>
