@@ -133,3 +133,6 @@ v45: PDF.js ESモジュールを先に読み込み、完了後に既存app.jsを
 
 
 v46: PDF.js module namespaceを __KOMBU_PDFJS__ で保持し、app.js内のPDFJS定数へ明示的に受け渡すSafari対策。
+
+
+v47: PDF.jsをES module読込からclassic script読込へ変更。globalThis.pdfjsLibを直接利用し、iPhone Safariのmodule import失敗を回避。

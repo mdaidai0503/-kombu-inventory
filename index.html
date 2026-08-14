@@ -21,32 +21,30 @@ nav{position:fixed;bottom:0;left:0;right:0;background:#0b2b55;display:flex;justi
 (function(){
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function(){
-      navigator.serviceWorker.register('./sw.js?v=46', {scope:'./'}).catch(function(err){
+      navigator.serviceWorker.register('./sw.js?v=47', {scope:'./'}).catch(function(err){
         console.warn('Service Worker登録に失敗しました:', err);
       });
     });
   }
 })();
 </script>
-<script type="module">
-(async function(){
-  try {
-    const pdfjsLib = await import('./vendor/pdf.js?v=46');
-    globalThis.__KOMBU_PDFJS__ = pdfjsLib;
-    pdfjsLib.GlobalWorkerOptions.workerSrc = './vendor/pdf.worker.js?v=46';
-
-    const appScript = document.createElement('script');
-    appScript.src = './app.js?v=46';
-    appScript.async = false;
-    appScript.onerror = function(){
-      document.getElementById('app').innerHTML =
-        '<section class="card"><h2>アプリ読込エラー</h2><div class="warning">app.jsを読み込めませんでした。Safariで再読み込みしてください。</div></section>';
-    };
-    document.body.appendChild(appScript);
-  } catch (err) {
-    console.error('PDF.js loading failed', err);
+<script src="./vendor/pdf.js?v=47"></script>
+<script>
+(function(){
+  if (!globalThis.pdfjsLib || typeof globalThis.pdfjsLib.getDocument !== 'function') {
     document.getElementById('app').innerHTML =
-      '<section class="card"><h2>PDF読取ライブラリの読込エラー</h2><div class="warning">PDF.jsを読み込めませんでした。GitHubへv46のvendorフォルダを含めて上書きし、Safariで再読み込みしてください。</div></section>';
+      '<section class="card"><h2>PDF読取ライブラリの読込エラー</h2><div class="warning">ローカルPDF.jsを起動できませんでした。Safariでページを再読み込みしてください。</div></section>';
+    return;
   }
+  globalThis.__KOMBU_PDFJS__ = globalThis.pdfjsLib;
+  globalThis.pdfjsLib.GlobalWorkerOptions.workerSrc = './vendor/pdf.worker.js?v=47';
+  var appScript = document.createElement('script');
+  appScript.src = './app.js?v=47';
+  appScript.async = false;
+  appScript.onerror = function(){
+    document.getElementById('app').innerHTML =
+      '<section class="card"><h2>アプリ読込エラー</h2><div class="warning">app.jsを読み込めませんでした。Safariで再読み込みしてください。</div></section>';
+  };
+  document.body.appendChild(appScript);
 })();
 </script></body></html>
