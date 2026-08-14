@@ -21,7 +21,7 @@ nav{position:fixed;bottom:0;left:0;right:0;background:#0b2b55;display:flex;justi
 (function(){
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function(){
-      navigator.serviceWorker.register('./sw-v53.js', {scope:'./'}).catch(function(err){
+      navigator.serviceWorker.register('./sw-v56.js', {scope:'./'}).catch(function(err){
         console.warn('Service Worker登録に失敗しました:', err);
       });
     });
@@ -82,7 +82,7 @@ nav{position:fixed;bottom:0;left:0;right:0;background:#0b2b55;display:flex;justi
   }
 })();
 </script>
-<script src="./pdf-v53.js"></script>
+<script src="./pdf-v56.js"></script>
 <script>
 (function(){
   if (!globalThis.pdfjsLib || typeof globalThis.pdfjsLib.getDocument !== 'function') {
@@ -91,14 +91,14 @@ nav{position:fixed;bottom:0;left:0;right:0;background:#0b2b55;display:flex;justi
     return;
   }
   globalThis.__KOMBU_PDFJS__ = globalThis.pdfjsLib;
-  globalThis.pdfjsLib.GlobalWorkerOptions.workerSrc = './pdf-worker-v53.js';
+  globalThis.pdfjsLib.GlobalWorkerOptions.workerSrc = './pdf-worker-v56.js';
 
   var appScript = document.createElement('script');
-  appScript.src = './app-v53.js';
+  appScript.src = './app-v56.js';
   appScript.async = false;
   appScript.onerror = function(){
     document.getElementById('app').innerHTML =
-      '<section class="card"><h2>アプリ読込エラー</h2><div class="warning">app-v53.jsを読み込めませんでした。</div></section>';
+      '<section class="card"><h2>アプリ読込エラー</h2><div class="warning">app-v56.jsを読み込めませんでした。</div></section>';
   };
   document.body.appendChild(appScript);
 })();
