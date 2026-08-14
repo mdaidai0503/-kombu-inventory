@@ -924,3 +924,99 @@ document.addEventListener('click',function(e){
     }catch(err){v41ShowResult('確定できませんでした：'+(err&&err.message?err.message:String(err)),true);b.disabled=false;b.textContent=old;}
   },0);
 },true);
+
+/* ===== v42: 4種類の昆布をPDF1回で一括入庫 ===== */
+function v42IsNoRowsError(err){
+  const m=String(err&&err.message?err.message:err||'');
+  return m.includes('数量を読み取れません')||m.includes('数量を読み取れませんでした');
+}
+function v42NewId(){return crypto.randomUUID?crypto.randomUUID():String(Date.now())+'-'+Math.random().toString(36).slice(2)}
+function v42ImportAlready(hash,file){
+  return {
+    kushiro:state.pdfImports.some(x=>x.hash===hash),
+    hidaka:hState.pdfImports.some(x=>x.hash===hash)||(hState.pdfImports.some(x=>!x.hash&&x.fileName===file.name)),
+    nemuro:nState.pdfImports.some(x=>x.hash===hash),
+    sanmae:smState.pdfImports.some(x=>x.hash===hash)
+  };
+}
+async function v42ParseOne(label,fn,file,already,statusEl){
+  if(already)return {label,status:'duplicate',parsed:null,error:null};
+  if(statusEl)statusEl.textContent=label+'を解析中…';
+  try{return {label,status:'ok',parsed:await fn(file),error:null}}
+  catch(err){if(v42IsNoRowsError(err))return {label,status:'none',parsed:null,error:null};return {label,status:'error',parsed:null,error:err}}
+}
+function v42ResultMeta(r){
+  if(r.status==='duplicate')return {statusText:'取込済みのためスキップ',count:0,total:0,years:'—',pages:'—'};
+  if(r.status==='none')return {statusText:'対象ページなし',count:0,total:0,years:'—',pages:'—'};
+  if(r.status==='error')return {statusText:'解析エラー',count:0,total:0,years:'—',pages:'—'};
+  const p=r.parsed,rows=p.rows||[];
+  return {statusText:'入庫対象',count:rows.length,total:rows.reduce((a,x)=>a+Number(x.qty||0),0),years:(p.years||[]).join('・')||'—',pages:(p.matchedPages||p.matched||[]).join(', ')||'—'};
+}
+async function v42BulkPdfImport(file){
+  if(!file)return;
+  currentProduct=null;setHeader('PDFから一括入庫');setNavVisible(false);
+  app.innerHTML=`<section class="card" style="margin-top:22px"><div class="row"><h2>📄 4種類 PDF一括入庫</h2><span class="pill">v42</span></div><p><b>${esc(file.name)}</b></p><div class="note">PDFを1回読み込み、釧路産昆布・日高昆布・根室産昆布・釧路産棹前昆布を自動判別しています。</div><p id="v42Progress" style="margin-top:16px;font-weight:700">PDFを準備しています…</p></section>`;
+  const progress=document.getElementById('v42Progress');
+  try{
+    const hash=await sha256File(file),dups=v42ImportAlready(hash,file);
+    const results=[];
+    results.push(await v42ParseOne('釧路産昆布',parseInventoryPdf,file,dups.kushiro,progress));
+    results.push(await v42ParseOne('日高昆布',hParsePdf,file,dups.hidaka,progress));
+    results.push(await v42ParseOne('根室産昆布',nParsePdf,file,dups.nemuro,progress));
+    results.push(await v42ParseOne('釧路産棹前昆布',smParsePdf,file,dups.sanmae,progress));
+    const metas=results.map(v42ResultMeta),importable=results.filter(x=>x.status==='ok');
+    const grandCount=metas.reduce((a,x)=>a+x.count,0),grandTotal=metas.reduce((a,x)=>a+x.total,0);
+    const cards=results.map((r,i)=>{const m=metas[i];return `<div class="card" style="margin:0;padding:12px;background:#f8fafc"><b style="font-size:17px">${esc(r.label)}</b><div style="margin-top:7px"><span class="pill">${esc(m.statusText)}</span></div><div class="small" style="margin-top:8px">生産年度：${esc(m.years)}<br>対象ページ：${esc(m.pages)}<br>明細：${m.count}件 ／ 合計：${fmt(m.total)}</div>${r.status==='error'?`<div class="warning" style="margin-top:8px">${esc(r.error&&r.error.message?r.error.message:String(r.error))}</div>`:''}</div>`}).join('');
+    app.innerHTML=`<section class="card" style="margin-top:22px"><div class="row"><h2>📄 PDF一括入庫 内容確認</h2><span class="pill">v42</span></div><p><b>PDF：</b>${esc(file.name)}</p><div class="stats"><div class="stat">入庫対象<b>${importable.length}種類</b></div><div class="stat">明細合計<b>${grandCount}件</b></div><div class="stat">数量合計<b>${fmt(grandTotal)}</b></div><div class="stat">PDFハッシュ<b style="font-size:12px">${esc(hash.slice(0,12))}…</b></div></div><div class="subgrid" style="margin-top:14px">${cards}</div><div class="warning" style="margin-top:14px">まだ在庫には反映されていません。「4種類へ一括反映」を押すと、入庫対象になった昆布だけを一度に登録します。取込済みの種類は二重登録しません。</div><div class="toolbar" style="margin-top:14px"><button class="btn" id="v42Commit" ${importable.length?'':'disabled'}>4種類へ一括反映</button><button class="btn secondary" id="v42Cancel">キャンセル</button></div></section>`;
+    const commit=document.getElementById('v42Commit'),cancel=document.getElementById('v42Cancel');
+    cancel.onclick=()=>productChoicePage('inventory');
+    if(commit)commit.onclick=()=>{
+      if(!confirm(`PDFの入庫対象 ${importable.length}種類・${grandCount}件・合計${fmt(grandTotal)}を在庫へ反映します。よろしいですか？`))return;
+      commit.disabled=true;commit.textContent='反映中…';
+      try{
+        const now=new Date().toISOString();
+        const k=results[0],h=results[1],n=results[2],s=results[3];
+        if(k.status==='ok'){
+          const ids=[];k.parsed.rows.forEach(r=>{const id=v42NewId();ids.push(id);state.records.push({id,type:'in',year:r.year,coop:r.coop,season:r.season,group:r.group,item:r.item,qty:Number(r.qty),date:k.parsed.date,memo:`PDF一括入庫：${file.name}`})});
+          state.activeYear=k.parsed.years.at(-1)||state.activeYear;state.pdfImports.push({hash,fileName:file.name,years:k.parsed.years,statementDate:k.parsed.date,importedAt:now,count:k.parsed.rows.length,total:k.parsed.rows.reduce((a,x)=>a+Number(x.qty||0),0),pageCount:k.parsed.pageCount,matchedPages:k.parsed.matchedPages,recordIds:ids,bulkV42:true});save();
+        }
+        if(h.status==='ok'){
+          h.parsed.rows.forEach(r=>hState.records.push({id:v42NewId(),type:'in',year:r.year,location:r.location,section:r.section,grade:r.grade,qty:Number(r.qty),date:h.parsed.date,memo:`PDF一括入庫：${file.name}`}));
+          hState.activeYear=h.parsed.years.at(-1)||hState.activeYear;hState.pdfImports.push({hash,fileName:file.name,date:h.parsed.date,years:h.parsed.years,pages:h.parsed.matched,importedAt:now,bulkV42:true});hSave();
+        }
+        if(n.status==='ok'){
+          n.parsed.rows.forEach(r=>nState.records.push({id:v42NewId(),type:'in',year:r.year,coop:r.coop,season:r.season,group:r.group,item:r.item,qty:Number(r.qty),date:n.parsed.date,memo:`PDF一括入庫：${file.name}`}));
+          nState.activeYear=n.parsed.years.at(-1)||nState.activeYear;nState.pdfImports.push({hash,fileName:file.name,date:n.parsed.date,years:n.parsed.years,pages:n.parsed.matched,importedAt:now,bulkV42:true});nSave();
+        }
+        if(s.status==='ok'){
+          s.parsed.rows.forEach(r=>smState.records.push({id:v42NewId(),type:'in',year:r.year,coop:r.coop,season:r.season,group:r.group,item:r.item,qty:Number(r.qty),date:s.parsed.date,memo:`PDF一括入庫：${file.name}`}));
+          smState.activeYear=s.parsed.years.at(-1)||smState.activeYear;smState.pdfImports.push({hash,fileName:file.name,date:s.parsed.date,years:s.parsed.years,pages:s.parsed.matched,importedAt:now,bulkV42:true});smSave();
+        }
+        alert(`${importable.length}種類、${grandCount}件、合計${fmt(grandTotal)}を一括入庫しました。`);productChoicePage('inventory');
+      }catch(err){commit.disabled=false;commit.textContent='4種類へ一括反映';alert('一括入庫中にエラーが発生しました。\n'+(err&&err.message?err.message:String(err)))}
+    };
+  }catch(err){
+    app.innerHTML=`<section class="card" style="margin-top:22px"><h2>PDFを読み込めませんでした</h2><div class="warning">${esc(err&&err.message?err.message:String(err))}</div><button class="btn secondary" id="v42ErrorBack" style="margin-top:14px">在庫管理へ戻る</button></section>`;document.getElementById('v42ErrorBack').onclick=()=>productChoicePage('inventory');
+  }
+}
+
+const _v41ProductChoiceForV42=productChoicePage;
+productChoicePage=function(mode){
+  _v41ProductChoiceForV42(mode);
+  const pill=app.querySelector('.pill');if(pill)pill.textContent='v42';
+  if(mode==='inventory'){
+    const card=app.querySelector('.card'),back=document.getElementById('v38Back');
+    if(card&&back&&!document.getElementById('v42BulkPdfBtn')){
+      const btn=document.createElement('button');btn.className='btn';btn.id='v42BulkPdfBtn';btn.style.marginTop='16px';btn.textContent='📄 PDFから4種類を一括入庫';
+      const input=document.createElement('input');input.id='v42BulkPdfFile';input.type='file';input.accept='application/pdf,.pdf';input.hidden=true;
+      card.insertBefore(btn,back);card.insertBefore(input,back);
+      btn.onclick=()=>input.click();input.onchange=()=>{const f=input.files&&input.files[0];if(f)v42BulkPdfImport(f)};
+    }
+  }
+};
+const _v41LandingForV42=productLanding;
+productLanding=function(){_v41LandingForV42();const pill=app.querySelector('.pill');if(pill)pill.textContent='v42'};
+const _v41CompanyForV42=companyMasterPage;
+companyMasterPage=function(){_v41CompanyForV42();const pill=app.querySelector('.pill');if(pill)pill.textContent='v42'};
+
+bindNav();productLanding();
