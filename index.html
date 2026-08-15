@@ -21,7 +21,7 @@ nav{position:fixed;bottom:0;left:0;right:0;background:#0b2b55;display:flex;justi
 (function(){
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function(){
-      navigator.serviceWorker.register('./sw-v84.js', {scope:'./'}).catch(function(err){
+      navigator.serviceWorker.register('./sw-v85.js', {scope:'./'}).catch(function(err){
         console.warn('Service Worker登録に失敗しました:', err);
       });
     });
@@ -94,11 +94,11 @@ nav{position:fixed;bottom:0;left:0;right:0;background:#0b2b55;display:flex;justi
   globalThis.pdfjsLib.GlobalWorkerOptions.workerSrc = './pdf-worker-v58.js';
 
   var appScript = document.createElement('script');
-  appScript.src = './app-v84.js';
+  appScript.src = './app-v85.js';
   appScript.async = false;
   appScript.onerror = function(){
     document.getElementById('app').innerHTML =
-      '<section class="card"><h2>アプリ読込エラー</h2><div class="warning">app-v84.jsを読み込めませんでした。</div></section>';
+      '<section class="card"><h2>アプリ読込エラー</h2><div class="warning">app-v85.jsを読み込めませんでした。</div></section>';
   };
   document.body.appendChild(appScript);
 })();
