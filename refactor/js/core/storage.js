@@ -11,7 +11,9 @@
 window.KombuRefactor = window.KombuRefactor || {};
 
 window.KombuRefactor.Storage = {
-
+  init() {
+    console.log('[KombuRefactor] Storage module ready');
+  },
   read(key, fallback = null) {
     try {
       const raw = localStorage.getItem(key);
