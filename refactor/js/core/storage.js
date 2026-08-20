@@ -10,7 +10,7 @@
 
 window.KombuRefactor = window.KombuRefactor || {};
 
-window.KombuRefactor.storage = {
+window.KombuRefactor.Storage = {
 
   read(key, fallback = null) {
     try {
