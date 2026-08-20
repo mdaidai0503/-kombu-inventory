@@ -113,3 +113,10 @@ window.KombuRefactor.info = {
     '現段階では現行アプリには接続されていません。'
 
 };
+window.KombuRefactor.Core = {
+  version: '1.0.0',
+
+  init() {
+    console.log('[KombuRefactor] Core module ready');
+  }
+};
