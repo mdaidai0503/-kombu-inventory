@@ -19,6 +19,11 @@
       margin-bottom: 8px;
     }
 
+    h2 {
+      font-size: 18px;
+      margin-top: 28px;
+    }
+
     .sub {
       font-size: 14px;
       color: #666;
@@ -50,6 +55,12 @@
       margin-top: 6px;
     }
 
+    .detail {
+      margin-top: 8px;
+      line-height: 1.7;
+      font-size: 14px;
+    }
+
     #summary {
       margin-top: 20px;
       padding: 16px;
@@ -63,10 +74,14 @@
 <body>
 
   <h1>昆布在庫管理</h1>
-  <div class="sub">refactor-v1 モジュール動作確認</div>
+  <div class="sub">refactor-v1 モジュール・既存データ読取テスト</div>
 
+  <h2>① モジュール確認</h2>
   <div id="results"></div>
   <div id="summary">確認中...</div>
+
+  <h2>② 既存データ読取確認</h2>
+  <div id="dataResults"></div>
 
   <!-- 分割したモジュール -->
   <script src="./js/core/refactor-core.js"></script>
@@ -85,6 +100,7 @@
       const app = window.KombuRefactor || {};
       const results = document.getElementById('results');
       const summary = document.getElementById('summary');
+      const dataResults = document.getElementById('dataResults');
 
       const tests = [
         ['Core', app.Core],
@@ -138,6 +154,49 @@
           '❌ の項目を確認してください。';
         summary.style.color = '#c62828';
       }
+
+      const products = [
+        ['kushiro', '釧路産昆布'],
+        ['hidaka', '日高昆布'],
+        ['nemuro', '根室産昆布'],
+        ['sanmae', '釧路産棹前昆布']
+      ];
+
+      products.forEach(function (item) {
+
+        const productId = item[0];
+        const label = item[1];
+
+        const card = document.createElement('div');
+        card.className = 'card';
+
+        const title = document.createElement('div');
+        title.className = 'name';
+        title.textContent = label;
+
+        const detail = document.createElement('div');
+        detail.className = 'detail';
+
+        try {
+          const info = app.Inventory.summary(productId);
+
+          detail.innerHTML =
+            '保存キー：' + (info.storageKey || '-') + '<br>' +
+            '保存データ：' + (info.exists ? '✅ あり' : '－ なし') + '<br>' +
+            '選択年産：' + (info.activeYear || '-') + '<br>' +
+            '入出庫履歴：' + info.records + '件<br>' +
+            '出荷指示：' + info.shipments + '件';
+
+        } catch (error) {
+          detail.className = 'ng';
+          detail.textContent =
+            '❌ 読取エラー：' + (error.message || error);
+        }
+
+        card.appendChild(title);
+        card.appendChild(detail);
+        dataResults.appendChild(card);
+      });
 
     });
   </script>
