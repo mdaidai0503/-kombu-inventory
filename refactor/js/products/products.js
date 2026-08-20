@@ -10,26 +10,34 @@
 
 window.KombuRefactor = window.KombuRefactor || {};
 
-window.KombuRefactor.Products = Object.freeze({
+window.KombuRefactor.Products = {
 
-  kushiro: {
-    id: 'kushiro',
-    name: '釧路産昆布'
+  init() {
+    console.log('[KombuRefactor] Products module ready');
   },
 
-  hidaka: {
-    id: 'hidaka',
-    name: '日高昆布'
-  },
+  items: Object.freeze({
 
-  nemuro: {
-    id: 'nemuro',
-    name: '根室産昆布'
-  },
+    kushiro: {
+      id: 'kushiro',
+      name: '釧路産昆布'
+    },
 
-  sanmae: {
-    id: 'sanmae',
-    name: '釧路産棹前昆布'
-  }
+    hidaka: {
+      id: 'hidaka',
+      name: '日高昆布'
+    },
 
-});
+    nemuro: {
+      id: 'nemuro',
+      name: '根室産昆布'
+    },
+
+    sanmae: {
+      id: 'sanmae',
+      name: '釧路産棹前昆布'
+    }
+
+  })
+
+};
