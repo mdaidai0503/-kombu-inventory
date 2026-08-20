@@ -22,7 +22,7 @@
 (function () {
   'use strict';
 
-  window.KombuApp = window.KombuApp || {};
+  window.KombuRefactor = window.KombuRefactor || {};
 
   const PDF = {
     version: '1.0.0',
@@ -35,6 +35,6 @@
     }
   };
 
-  window.KombuApp.PDF = PDF;
+  window.KombuRefactor.PDF = PDF;
 
 })();
