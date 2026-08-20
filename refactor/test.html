@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>昆布在庫管理 refactor-v1 テスト</title>
+
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f5f7fa;
+      color: #222;
+    }
+
+    h1 {
+      font-size: 22px;
+      margin-bottom: 8px;
+    }
+
+    .sub {
+      font-size: 14px;
+      color: #666;
+      margin-bottom: 20px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.08);
+    }
+
+    .name {
+      font-weight: bold;
+      font-size: 17px;
+    }
+
+    .ok {
+      color: #138a36;
+      font-weight: bold;
+      margin-top: 6px;
+    }
+
+    .ng {
+      color: #c62828;
+      font-weight: bold;
+      margin-top: 6px;
+    }
+
+    #summary {
+      margin-top: 20px;
+      padding: 16px;
+      border-radius: 12px;
+      background: #fff;
+      font-weight: bold;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>昆布在庫管理</h1>
+  <div class="sub">refactor-v1 モジュール動作確認</div>
+
+  <div id="results"></div>
+  <div id="summary">確認中...</div>
+
+  <!-- 分割したモジュール -->
+  <script src="./js/core/refactor-core.js"></script>
+  <script src="./js/core/storage.js"></script>
+  <script src="./js/products/products.js"></script>
+  <script src="./js/inventory/inventory.js"></script>
+  <script src="./js/shipping/shipping.js"></script>
+  <script src="./js/pdf/pdf.js"></script>
+
+  <!-- 最後に bootstrap -->
+  <script src="./js/bootstrap.js"></script>
+
+  <script>
+    window.addEventListener('load', function () {
+
+      const app = window.KombuRefactor || {};
+      const results = document.getElementById('results');
+      const summary = document.getElementById('summary');
+
+      const tests = [
+        ['Core', app.Core],
+        ['Storage', app.Storage],
+        ['Products', app.Products],
+        ['Inventory', app.Inventory],
+        ['Shipping', app.Shipping],
+        ['PDF', app.PDF],
+        ['bootstrap', app.bootstrap]
+      ];
+
+      let okCount = 0;
+
+      tests.forEach(function (item) {
+
+        const name = item[0];
+        const module = item[1];
+
+        const card = document.createElement('div');
+        card.className = 'card';
+
+        const title = document.createElement('div');
+        title.className = 'name';
+        title.textContent = name;
+
+        const status = document.createElement('div');
+
+        if (module) {
+          status.className = 'ok';
+          status.textContent = '✅ 正常に読み込まれました';
+          okCount++;
+        } else {
+          status.className = 'ng';
+          status.textContent = '❌ 読み込まれていません';
+        }
+
+        card.appendChild(title);
+        card.appendChild(status);
+        results.appendChild(card);
+      });
+
+      if (okCount === tests.length) {
+        summary.innerHTML =
+          '✅ 全モジュール正常<br><br>' +
+          'refactor-v1 の基本構成は正常です。';
+        summary.style.color = '#138a36';
+      } else {
+        summary.innerHTML =
+          '⚠️ ' + okCount + ' / ' + tests.length +
+          ' モジュールが正常です。<br>' +
+          '❌ の項目を確認してください。';
+        summary.style.color = '#c62828';
+      }
+
+    });
+  </script>
+
+</body>
+</html>
