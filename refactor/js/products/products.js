@@ -10,7 +10,7 @@
 
 window.KombuRefactor = window.KombuRefactor || {};
 
-window.KombuRefactor.products = Object.freeze({
+window.KombuRefactor.Products = Object.freeze({
 
   kushiro: {
     id: 'kushiro',
