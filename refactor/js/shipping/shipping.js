@@ -21,7 +21,7 @@
 (function () {
   'use strict';
 
-  window.KombuApp = window.KombuApp || {};
+  window.KombuRefactor = window.KombuRefactor || {};
 
   const Shipping = {
     version: '1.0.0',
@@ -34,6 +34,6 @@
     }
   };
 
-  window.KombuApp.Shipping = Shipping;
+  window.KombuRefactor.Shipping = Shipping;
 
 })();
