@@ -20,7 +20,7 @@
 (function () {
   'use strict';
 
-  window.KombuApp = window.KombuApp || {};
+  window.KombuRefactor = window.KombuRefactor || {};
 
   const Inventory = {
     version: '1.0.0',
@@ -33,6 +33,6 @@
     }
   };
 
-  window.KombuApp.Inventory = Inventory;
+  window.KombuRefactor.Inventory = Inventory;
 
 })();
