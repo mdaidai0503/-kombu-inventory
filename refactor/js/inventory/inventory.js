@@ -114,7 +114,43 @@
           ? state.shipments.length
           : 0
       };
+    },
+    getQuantity(productId, filters = {}) {
+      if (!['kushiro', 'nemuro', 'sanmae'].includes(productId)) {
+        return null;
+      }
+
+      const records = this.getRecords(productId);
+      const shipments = this.getShipments(productId);
+
+      const matches = item =>
+        (!filters.year || (item.year || 'R7') === filters.year) &&
+        (!filters.coop || item.coop === filters.coop) &&
+        (!filters.season || item.season === filters.season) &&
+        (!filters.group || item.group === filters.group) &&
+        (!filters.item || item.item === filters.item);
+
+      const physical = records
+        .filter(matches)
+        .reduce((total, record) => {
+          const qty = Number(record.qty || 0);
+          return total + (record.type === 'out' ? -qty : qty);
+        }, 0);
+
+      const reserved = shipments
+        .filter(shipment => shipment.status === 'confirmed')
+        .flatMap(shipment =>
+          Array.isArray(shipment.lines) ? shipment.lines : []
+        )
+        .filter(matches)
+        .reduce(
+          (total, line) => total + Number(line.qty || 0),
+          0
+        );
+
+      return physical - reserved;
     }
+    
 
   };
 
