@@ -527,7 +527,65 @@ function hLogs(){const a=hState.records.slice().reverse();app.innerHTML=`<sectio
 function hShipId(){return 'H'+String(hState.shipmentSeq++).padStart(5,'0')}
 function hShipments(){app.innerHTML=`<section class="card"><div class="row"><h2>日高昆布 出荷指示</h2><button class="mini" id="hnew">＋新規</button></div><div class="tablewrap"><table><tr><th>番号</th><th>出荷元</th><th>出荷先</th><th>出荷日</th><th>数量</th><th>状態</th><th></th></tr>${hState.shipments.slice().reverse().map(s=>`<tr><td>${s.id}</td><td>${esc(s.source?.name||'')}</td><td>${esc(s.dest?.name||'')}</td><td>${s.shipDate||''}</td><td>${fmt((s.lines||[]).reduce((a,l)=>a+Number(l.qty||0),0))}</td><td>${s.status}</td><td><button class="mini" data-hs="${s.id}">開く</button></td></tr>`).join('')}</table></div><button class="btn secondary" id="hsb">戻る</button></section>`;hnew.onclick=()=>hShipForm();app.querySelectorAll('[data-hs]').forEach(b=>b.onclick=()=>hShipDetail(b.dataset.hs));hsb.onclick=hHome}
 function hShipForm(id=null){const s=id?hState.shipments.find(x=>x.id===id):null;let lines=s?.lines?.map(x=>({...x}))||[];app.innerHTML=`<section class="card"><h2>日高昆布 ${s?'出荷指示修正':'新規出荷指示'}</h2><div class="form"><label>出荷元 会社名<input id="hsrc" value="${esc(s?.source?.name||'㈱浜中運輸')}"></label><label>出荷元 住所<input id="hsrca" value="${esc(s?.source?.address||'')}"></label><label>出荷元 電話<input id="hsrcp" value="${esc(s?.source?.phone||'')}"></label><label>出荷先 会社名<input id="hdst" value="${esc(s?.dest?.name||'')}"></label><label>出荷先 住所<input id="hdsta" value="${esc(s?.dest?.address||'')}"></label><label>出荷先 電話<input id="hdstp" value="${esc(s?.dest?.phone||'')}"></label><div class="subgrid"><label>出荷日<input id="hsd" type="date" value="${s?.shipDate||today()}"></label><label>希望着日<input id="had" type="date" value="${s?.arrivalDate||''}"></label></div><div id="hsl"></div><button class="btn secondary" id="hala">＋明細追加</button><button class="btn" id="hssv">保存</button><button class="btn secondary" id="hsfb">戻る</button></div></section>`;function rend(){hsl.innerHTML=lines.map((l,i)=>`<div class="card" style="background:#f8fafc"><label>年度<select data-hi="${i}" data-hf="year">${hYearOptions(l.year)}</select></label><label>産地<select data-hi="${i}" data-hf="location">${H_LOCATIONS.map(x=>`<option ${x===l.location?'selected':''}>${x}</option>`).join('')}</select></label><label>区分・等級<select data-hi="${i}" data-hf="sg">${hGradeOptions(l.section,l.grade)}</select></label><label>数量<input type="number" value="${esc(l.qty||'')}" data-hi="${i}" data-hf="qty"></label><button class="mini danger" data-hr="${i}">削除</button></div>`).join('');hsl.querySelectorAll('[data-hf]').forEach(e=>e.onchange=()=>{const i=+e.dataset.hi;if(e.dataset.hf==='sg'){[lines[i].section,lines[i].grade]=e.value.split('|')}else lines[i][e.dataset.hf]=e.value});hsl.querySelectorAll('[data-hr]').forEach(e=>e.onclick=()=>{lines.splice(+e.dataset.hr,1);rend()})}hala.onclick=()=>{lines.push({year:hState.activeYear,location:H_LOCATIONS[0],section:'走り',grade:'1等',qty:''});rend()};hssv.onclick=()=>{if(!hdst.value.trim()||!lines.length)return alert('出荷先と明細を入力してください。');for(const l of lines){l.qty=Number(l.qty);if(!l.qty||l.qty>hAvail(l.year,l.location,l.section,l.grade,s?.id))return alert(`${l.location} ${l.section} ${l.grade} の在庫が不足しています。`)}const o=s||{id:hShipId(),status:'draft',createdAt:new Date().toISOString()};Object.assign(o,{source:{name:hsrc.value,address:hsrca.value,phone:hsrcp.value},dest:{name:hdst.value,address:hdsta.value,phone:hdstp.value},shipDate:hsd.value,arrivalDate:had.value,lines});if(!s)hState.shipments.push(o);hSave();hShipDetail(o.id)};hsfb.onclick=hShipments;rend()}
-function hShipDetail(id){const s=hState.shipments.find(x=>x.id===id);if(!s)return hShipments();app.innerHTML=`<section class="card"><div class="row"><h2>日高昆布 出荷指示 ${s.id}</h2><span class="pill">${s.status}</span></div><p><b>出荷先：</b>${esc(s.dest?.name||'')}　<b>出荷元：</b>${esc(s.source?.name||'')}</p><p><b>出荷日：</b>${s.shipDate||''}　<b>合計：</b>${fmt((s.lines||[]).reduce((a,l)=>a+Number(l.qty||0),0))}</p><div class="toolbar"><button class="btn" id="hpdfs">PDF・FAX用</button>${s.status==='draft'?'<button class="btn" id="hconf">確定・在庫反映</button><button class="btn secondary" id="hedit">修正</button>':''}${s.status==='confirmed'?'<button class="btn" id="hshipped">出荷済</button>':''}<button class="btn secondary" id="hback">一覧へ</button></div></section>`;const pdf=document.getElementById('hpdfs');if(pdf)pdf.onclick=()=>hOpenShipPdf(s);if(s.status==='draft'){const c=document.getElementById('hconf');if(c)c.onclick=()=>{for(const l of s.lines)if(Number(l.qty)>hAvail(l.year,l.location,l.section,l.grade,s.id))return alert('在庫不足があります。');s.status='confirmed';s.confirmedAt=new Date().toISOString();hSave();alert('出荷指示を確定し、在庫表へ反映しました。');hShipDetail(id)};const e=document.getElementById('hedit');if(e)e.onclick=()=>v114UnifiedShipmentForm('hidaka',id)}if(s.status==='confirmed'){const sh=document.getElementById('hshipped');if(sh)sh.onclick=()=>{if(!window.confirm('出荷済みにしますか？'))return;s.lines.forEach(l=>hState.records.push({id:crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random()),type:'out',year:l.year,location:l.location,section:l.section,grade:l.grade,qty:Number(l.qty),date:s.shipDate||today(),memo:`出荷指示 ${s.id}`}));s.status='shipped';s.shippedAt=new Date().toISOString();hSave();hShipDetail(id)}}const b=document.getElementById('hback');if(b)b.onclick=hShipments}
+function hShipDetail(id){const s=hState.shipments.find(x=>x.id===id);if(!s)return hShipments();app.innerHTML=`<section class="card"><div class="row"><h2>日高昆布 出荷指示 ${s.id}</h2><span class="pill">${s.status}</span></div><p><b>出荷先：</b>${esc(s.dest?.name||'')}　<b>出荷元：</b>${esc(s.source?.name||'')}</p><p><b>出荷日：</b>${s.shipDate||''}　<b>合計：</b>${fmt((s.lines||[]).reduce((a,l)=>a+Number(l.qty||0),0))}</p><div class="toolbar"><button class="btn" id="hpdfs">PDF・FAX用</button>${s.status==='draft'?'<button class="btn" id="hconf">確定・在庫反映</button><button class="btn secondary" id="hedit">修正</button>':''}${s.status==='confirmed'?'<button class="btn" id="hshipped">出荷済</button>':''}<button class="btn secondary" id="hback">一覧へ</button></div></section>`;const pdf=document.getElementById('hpdfs');if(pdf)pdf.onclick=()=>hOpenShipPdf(s);if(s.status==='draft'){const c=document.getElementById('hconf');if(c)c.onclick=()=>{for(const l of s.lines)if(Number(l.qty)>hAvail(l.year,l.location,l.section,l.grade,s.id))return alert('在庫不足があります。');s.status='confirmed';s.confirmedAt=new Date().toISOString();hSave();alert('出荷指示を確定し、在庫表へ反映しました。');hShipDetail(id)};const e=document.getElementById('hedit');if(e)e.onclick=()=>v114UnifiedShipmentForm('hidaka',id)}if(s.status==='confirmed'){
+  const sh=document.getElementById('hshipped');
+
+  if(sh)sh.onclick=()=>{
+    const inv=window.KombuRefactor?.Inventory;
+
+    for(const l of s.lines){
+      const av=inv?.getHidakaAvailableQuantity
+        ? inv.getHidakaAvailableQuantity(
+            {
+              year:l.year,
+              location:l.location,
+              section:l.section,
+              grade:l.grade
+            },
+            s.id
+          )
+        : hAvail(
+            l.year,
+            l.location,
+            l.section,
+            l.grade,
+            s.id
+          );
+
+      if(Number(l.qty)>Math.max(0,Number(av||0))){
+        return alert(
+          `${l.location} ${l.section} ${l.grade} の出荷可能在庫が不足しています。`
+        );
+      }
+    }
+
+    if(!window.confirm(
+      '出荷済みにすると、明細数量を在庫から出庫します。よろしいですか？'
+    ))return;
+
+    s.lines.forEach(l=>
+      hState.records.push({
+        id:crypto.randomUUID
+          ? crypto.randomUUID()
+          : String(Date.now()+Math.random()),
+        type:'out',
+        year:l.year,
+        location:l.location,
+        section:l.section,
+        grade:l.grade,
+        qty:Number(l.qty),
+        date:s.shipDate||today(),
+        memo:`出荷指示 ${s.id}`
+      })
+    );
+
+    s.status='shipped';
+    s.shippedAt=new Date().toISOString();
+
+    hSave();
+    hShipDetail(id);
+  };
+}const b=document.getElementById('hback');if(b)b.onclick=hShipments}
 async function hOpenShipPdf(s){const w=window.open('about:blank','_blank');if(!w)return alert('PDF画面を開けません。');try{const ys=[...new Set(s.lines.map(l=>l.year))],imgs=[];for(const y of ys){const tmp={...hState};const mt={};s.lines.filter(l=>l.year===y).forEach(l=>mt[hKey(l)]=(mt[hKey(l)]||0)+Number(l.qty));const old=hMatrix;/* shipment canvas uses stock-style layout; values are overlaid by temporary state */const savedRecords=hState.records,savedShip=hState.shipments;hState.records=s.lines.filter(l=>l.year===y).map(l=>({...l,type:'in'}));hState.shipments=[];imgs.push(hShipCanvas(s,y));hState.records=savedRecords;hState.shipments=savedShip}const b=imgs.length===1?await _singleCanvasPdfBlob(imgs[0]):await (async()=>{const ims=[];for(const cc of imgs)ims.push({bytes:await _canvasJpegBytes(cc),w:cc.width,h:cc.height});const objs=[],pageIds=[],imgIds=[],contentIds=[];let id=1,catalog=id++,pages=id++;ims.forEach(()=>{pageIds.push(id++);imgIds.push(id++);contentIds.push(id++)});objs[catalog]=_ascii(`<< /Type /Catalog /Pages ${pages} 0 R >>`);objs[pages]=_ascii(`<< /Type /Pages /Count ${ims.length} /Kids [${pageIds.map(x=>x+' 0 R').join(' ')}] >>`);ims.forEach((im,i)=>{objs[pageIds[i]]=_ascii(`<< /Type /Page /Parent ${pages} 0 R /MediaBox [0 0 841.89 595.28] /Resources << /XObject << /Im0 ${imgIds[i]} 0 R >> >> /Contents ${contentIds[i]} 0 R >>`);objs[imgIds[i]]=_concatBytes([_ascii(`<< /Type /XObject /Subtype /Image /Width ${im.w} /Height ${im.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${im.bytes.length} >>\nstream\n`),im.bytes,_ascii('\nendstream')]);const st='q\n841.89 0 0 595.28 0 0 cm\n/Im0 Do\nQ\n';objs[contentIds[i]]=_ascii(`<< /Length ${st.length} >>\nstream\n${st}endstream`)});const n=id-1,parts=[_ascii('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n')],offs=Array(n+1).fill(0);let pos=parts[0].length;for(let i=1;i<=n;i++){offs[i]=pos;const a=_ascii(`${i} 0 obj\n`),bb=objs[i],cc=_ascii('\nendobj\n');parts.push(a,bb,cc);pos+=a.length+bb.length+cc.length}const xp=pos;let xr=`xref\n0 ${n+1}\n0000000000 65535 f \n`;for(let i=1;i<=n;i++)xr+=String(offs[i]).padStart(10,'0')+' 00000 n \n';xr+=`trailer\n<< /Size ${n+1} /Root ${catalog} 0 R >>\nstartxref\n${xp}\n%%EOF`;parts.push(_ascii(xr));return new Blob(parts,{type:'application/pdf'})})();const u=URL.createObjectURL(b);w.location.replace(u);setTimeout(()=>URL.revokeObjectURL(u),600000)}catch(e){try{w.close()}catch{}alert('PDF作成に失敗しました。\n'+(e.message||e))}}
 function hMore(){app.innerHTML=`<section class="card"><h2>日高昆布 その他</h2><div class="form"><button class="btn secondary" id="hprod">← 昆布選択画面へ</button><button class="btn secondary" id="hbk">日高昆布バックアップ保存</button><input id="hrf" type="file" accept="application/json" hidden><button class="btn secondary" id="hrs">日高昆布バックアップ復元</button><button class="btn secondary" id="hhm">ホーム</button></div></section>`;hprod.onclick=productLanding;hbk.onclick=()=>download('日高昆布バックアップ_'+today()+'.json',JSON.stringify(hState,null,2),'application/json');hrs.onclick=()=>hrf.click();hrf.onchange=()=>{const f=hrf.files?.[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{try{hState=JSON.parse(rd.result);hSave();alert('復元しました');hHome()}catch{alert('復元できませんでした')}};rd.readAsText(f)};hhm.onclick=hHome}
 
