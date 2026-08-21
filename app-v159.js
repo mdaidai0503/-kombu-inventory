@@ -328,7 +328,81 @@ function shipmentForm(id=null){
   };
   backShip.onclick=shipments;renderLines();
 }
+function v160AvailableForShipmentLine(product,l,excludeShipmentId=null){
+  const inv=window.KombuRefactor?.Inventory;
 
+  if(product==='hidaka'){
+    return inv?.getHidakaAvailableQuantity
+      ? inv.getHidakaAvailableQuantity({
+          year:l.year||H_DEFAULT_YEAR,
+          location:l.location,
+          section:l.section,
+          grade:l.grade
+        },excludeShipmentId)
+      : hAvail(
+          l.year||H_DEFAULT_YEAR,
+          l.location,
+          l.section,
+          l.grade,
+          excludeShipmentId
+        );
+  }
+
+  if(product==='nemuro'){
+    return inv?.getAvailableQuantity
+      ? inv.getAvailableQuantity('nemuro',{
+          year:l.year||N_DEFAULT_YEAR,
+          coop:l.coop,
+          season:l.season,
+          group:l.group,
+          item:l.item
+        },excludeShipmentId)
+      : nAvail(
+          l.year||N_DEFAULT_YEAR,
+          l.coop,
+          l.season,
+          l.group,
+          l.item,
+          excludeShipmentId
+        );
+  }
+
+  if(product==='sanmae'){
+    return inv?.getAvailableQuantity
+      ? inv.getAvailableQuantity('sanmae',{
+          year:l.year||SM_DEFAULT_YEAR,
+          coop:l.coop,
+          season:l.season,
+          group:l.group,
+          item:l.item
+        },excludeShipmentId)
+      : smAvail(
+          l.year||SM_DEFAULT_YEAR,
+          l.coop,
+          l.season,
+          l.group,
+          l.item,
+          excludeShipmentId
+        );
+  }
+
+  return inv?.getAvailableQuantity
+    ? inv.getAvailableQuantity('kushiro',{
+        year:l.year||DEFAULT_YEAR,
+        coop:l.coop,
+        season:l.season,
+        group:l.group,
+        item:l.item
+      },excludeShipmentId)
+    : stockAvailableForShipment(
+        l.year||DEFAULT_YEAR,
+        l.coop,
+        l.season,
+        l.group,
+        l.item,
+        excludeShipmentId
+      );
+}
 function shipmentDetail(id){
  const s=state.shipments.find(x=>x.id===id);if(!s)return shipments();
  const statusName={draft:'下書き',confirmed:'確定・在庫反映済',shipped:'出荷済',cancelled:'取消'}[s.status]||s.status;
