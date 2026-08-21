@@ -2810,7 +2810,35 @@ const _v81SmHome=smHome;smHome=function(){const r=_v81SmHome();v81ReplaceHomeSum
     home
   });
 }
-  function sanmaeSplit(y,home=false){const m=smMatrix(),cols=smItems();return groupSplit({year:y,coops:S_COOPS,seasons:S_SEASONS,groups:S_GROUPS,cols,getValue:(co,se,c)=>m[[y,co,se,c.group,c.item].join('|')]||0,totalValue:()=>smTotal(y),home})}
+  function sanmaeSplit(y,home=false){
+  const m=smMatrix(),cols=smItems(),inv=window.KombuRefactor?.Inventory;
+
+  return groupSplit({
+    year:y,
+    coops:S_COOPS,
+    seasons:S_SEASONS,
+    groups:S_GROUPS,
+    cols,
+
+    getValue:(co,se,c)=>
+      inv?.getQuantity
+        ? inv.getQuantity('sanmae',{
+            year:y,
+            coop:co,
+            season:se,
+            group:c.group,
+            item:c.item
+          })
+        : (m[[y,co,se,c.group,c.item].join('|')]||0),
+
+    totalValue:()=>
+      inv?.getQuantity
+        ? inv.getQuantity('sanmae',{year:y})
+        : smTotal(y),
+
+    home
+  });
+}
 
   // Full stock screens: all four products use the same true split layout.
   stock=function(){const y=state.activeYear;app.innerHTML=`<section class="card"><div class="row"><h2>釧路産昆布 在庫集計表</h2><select id="v91y" style="width:auto">${yearOptions(y)}</select></div><div class="toolbar"><button class="btn smallbtn" id="v91ex">Excel出力</button><button class="btn smallbtn" id="v91cs">CSV出力</button><button class="btn smallbtn" id="v91pdf">PDF出力</button><button class="btn secondary smallbtn" id="v91home">ホーム</button></div>${kushiroSplit(y)}<p class="muted v91-compact-note">${esc(y)}年産の利用可能在庫です。0は空欄表示です。</p></section>`;v91y.onchange=()=>{setActiveYear(v91y.value);stock()};v91home.onclick=home;v91ex.onclick=downloadExcel;v91cs.onclick=downloadCSV;v91pdf.onclick=()=>openStockPdfDirect(y)};
