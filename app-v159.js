@@ -669,7 +669,69 @@ function smLogs(){const a=smState.records.slice().reverse();app.innerHTML=`<sect
 function smShipId(){return 'S'+String(smState.shipmentSeq++).padStart(5,'0')}
 function smShipments(){app.innerHTML=`<section class="card"><div class="row"><h2>釧路産棹前昆布 出荷指示</h2><button class="mini" id="nnew">＋新規</button></div><div class="tablewrap"><table><tr><th>番号</th><th>出荷元</th><th>出荷先</th><th>出荷日</th><th>数量</th><th>状態</th><th></th></tr>${smState.shipments.slice().reverse().map(s=>`<tr><td>${s.id}</td><td>${esc(s.source?.name||'')}</td><td>${esc(s.dest?.name||'')}</td><td>${s.shipDate||''}</td><td>${fmt((s.lines||[]).reduce((a,l)=>a+Number(l.qty||0),0))}</td><td>${s.status}</td><td><button class="mini" data-ns="${s.id}">開く</button></td></tr>`).join('')}</table></div><button class="btn secondary" id="nsb">戻る</button></section>`;nnew.onclick=()=>smShipForm();app.querySelectorAll('[data-ns]').forEach(b=>b.onclick=()=>smShipDetail(b.dataset.ns));nsb.onclick=smHome}
 function smShipForm(id=null){const s=id?smState.shipments.find(x=>x.id===id):null;let lines=s?.lines?.map(x=>({...x}))||[];app.innerHTML=`<section class="card"><h2>釧路産棹前昆布 ${s?'出荷指示修正':'新規出荷指示'}</h2><div class="form"><label>出荷元 会社名<input id="nsrc" value="${esc(s?.source?.name||'㈱浜中運輸')}"></label><label>出荷元 住所<input id="nsrca" value="${esc(s?.source?.address||'')}"></label><label>出荷元 電話<input id="nsrcp" value="${esc(s?.source?.phone||'')}"></label><label>出荷先 会社名<input id="ndst" value="${esc(s?.dest?.name||'')}"></label><label>出荷先 住所<input id="ndsta" value="${esc(s?.dest?.address||'')}"></label><label>出荷先 電話<input id="ndstp" value="${esc(s?.dest?.phone||'')}"></label><div class="subgrid"><label>出荷日<input id="nsd" type="date" value="${s?.shipDate||today()}"></label><label>希望着日<input id="nad" type="date" value="${s?.arrivalDate||''}"></label></div><div id="nsl"></div><button class="btn secondary" id="nala">＋明細追加</button><button class="btn" id="nssv">保存</button><button class="btn secondary" id="nsfb">戻る</button></div></section>`;function rend(){nsl.innerHTML=lines.map((l,i)=>`<div class="card" style="background:#f8fafc"><label>年度<select data-ni="${i}" data-nf="year">${smYearOptions(l.year)}</select></label><label>漁協<select data-ni="${i}" data-nf="coop">${S_COOPS.map(x=>`<option ${x===l.coop?'selected':''}>${x}</option>`).join('')}</select></label><label>区分<select data-ni="${i}" data-nf="season">${S_SEASONS.map(x=>`<option ${x===l.season?'selected':''}>${x}</option>`).join('')}</select></label><label>分類<select data-ni="${i}" data-nf="gi">${smItemOptions(l.group,l.item)}</select></label><label>数量<input type="number" value="${esc(l.qty||'')}" data-ni="${i}" data-nf="qty"></label><button class="mini danger" data-nr="${i}">削除</button></div>`).join('');nsl.querySelectorAll('[data-nf]').forEach(e=>e.onchange=()=>{const i=+e.dataset.ni;if(e.dataset.nf==='gi'){[lines[i].group,lines[i].item]=e.value.split('|')}else lines[i][e.dataset.nf]=e.value});nsl.querySelectorAll('[data-nr]').forEach(e=>e.onclick=()=>{lines.splice(+e.dataset.nr,1);rend()})}nala.onclick=()=>{lines.push({year:smState.activeYear,coop:S_COOPS[0],season:'採り',group:S_GROUPS[0].name,item:S_GROUPS[0].items[0],qty:''});rend()};nssv.onclick=()=>{if(!ndst.value.trim()||!lines.length)return alert('出荷先と明細を入力してください。');for(const l of lines){l.qty=Number(l.qty);if(!l.qty||l.qty>smAvail(l.year,l.coop,l.season,l.group,l.item,s?.id))return alert(`${l.coop} ${l.season} ${l.group} ${l.item} の在庫が不足しています。`)}const o=s||{id:smShipId(),status:'draft',createdAt:new Date().toISOString()};Object.assign(o,{source:{name:nsrc.value,address:nsrca.value,phone:nsrcp.value},dest:{name:ndst.value,address:ndsta.value,phone:ndstp.value},shipDate:nsd.value,arrivalDate:nad.value,lines});if(!s)smState.shipments.push(o);smSave();smShipDetail(o.id)};nsfb.onclick=smShipments;rend()}
-function smShipDetail(id){const s=smState.shipments.find(x=>x.id===id);if(!s)return smShipments();app.innerHTML=`<section class="card"><div class="row"><h2>釧路産棹前昆布 出荷指示 ${s.id}</h2><span class="pill">${s.status}</span></div><p><b>出荷先：</b>${esc(s.dest?.name||'')}　<b>出荷元：</b>${esc(s.source?.name||'')}</p><p><b>出荷日：</b>${s.shipDate||''}　<b>合計：</b>${fmt((s.lines||[]).reduce((a,l)=>a+Number(l.qty||0),0))}</p><div class="toolbar"><button class="btn" id="smpdfs">帳票表示・PDF/FAX</button>${s.status==='draft'?'<button class="btn" id="smconf">確定・在庫反映</button><button class="btn secondary" id="smedit">修正</button>':''}${s.status==='confirmed'?'<button class="btn" id="smshipped">出荷済</button>':''}<button class="btn secondary" id="smback">一覧へ</button></div></section>`;const pdf=document.getElementById('smpdfs');if(pdf)pdf.onclick=()=>smOpenShipPdf(s);if(s.status==='draft'){const c=document.getElementById('smconf');if(c)c.onclick=()=>{for(const l of s.lines)if(Number(l.qty)>smAvail(l.year,l.coop,l.season,l.group,l.item,s.id))return alert('在庫不足があります。');s.status='confirmed';s.confirmedAt=new Date().toISOString();smSave();alert('出荷指示を確定し、在庫表へ反映しました。');smShipDetail(id)};const e=document.getElementById('smedit');if(e)e.onclick=()=>v114UnifiedShipmentForm('sanmae',id)}if(s.status==='confirmed'){const sh=document.getElementById('smshipped');if(sh)sh.onclick=()=>{if(!window.confirm('出荷済みにすると、明細数量を在庫から出庫します。よろしいですか？'))return;s.lines.forEach(l=>smState.records.push({id:crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random()),type:'out',year:l.year,coop:l.coop,season:l.season,group:l.group,item:l.item,qty:Number(l.qty),date:s.shipDate||today(),memo:`出荷指示 ${s.id}`}));s.status='shipped';s.shippedAt=new Date().toISOString();smSave();smShipDetail(id)}}const b=document.getElementById('smback');if(b)b.onclick=smShipments}
+function smShipDetail(id){const s=smState.shipments.find(x=>x.id===id);if(!s)return smShipments();app.innerHTML=`<section class="card"><div class="row"><h2>釧路産棹前昆布 出荷指示 ${s.id}</h2><span class="pill">${s.status}</span></div><p><b>出荷先：</b>${esc(s.dest?.name||'')}　<b>出荷元：</b>${esc(s.source?.name||'')}</p><p><b>出荷日：</b>${s.shipDate||''}　<b>合計：</b>${fmt((s.lines||[]).reduce((a,l)=>a+Number(l.qty||0),0))}</p><div class="toolbar"><button class="btn" id="smpdfs">帳票表示・PDF/FAX</button>${s.status==='draft'?'<button class="btn" id="smconf">確定・在庫反映</button><button class="btn secondary" id="smedit">修正</button>':''}${s.status==='confirmed'?'<button class="btn" id="smshipped">出荷済</button>':''}<button class="btn secondary" id="smback">一覧へ</button></div></section>`;const pdf=document.getElementById('smpdfs');if(pdf)pdf.onclick=()=>smOpenShipPdf(s);if(s.status==='draft'){const c=document.getElementById('smconf');if(c)c.onclick=()=>{for(const l of s.lines)if(Number(l.qty)>smAvail(l.year,l.coop,l.season,l.group,l.item,s.id))return alert('在庫不足があります。');s.status='confirmed';s.confirmedAt=new Date().toISOString();smSave();alert('出荷指示を確定し、在庫表へ反映しました。');smShipDetail(id)};const e=document.getElementById('smedit');if(e)e.onclick=()=>v114UnifiedShipmentForm('sanmae',id)}if(s.status==='confirmed'){
+  const sh=document.getElementById('smshipped');
+
+  if(sh)sh.onclick=()=>{
+    const inv=window.KombuRefactor?.Inventory;
+
+    for(const l of s.lines){
+      const av=inv?.getAvailableQuantity
+        ? inv.getAvailableQuantity(
+            'sanmae',
+            {
+              year:l.year,
+              coop:l.coop,
+              season:l.season,
+              group:l.group,
+              item:l.item
+            },
+            s.id
+          )
+        : smAvail(
+            l.year,
+            l.coop,
+            l.season,
+            l.group,
+            l.item,
+            s.id
+          );
+
+      if(Number(l.qty)>Math.max(0,Number(av||0))){
+        return alert(
+          `${l.coop} ${l.season} ${l.group} ${l.item} の出荷可能在庫が不足しています。`
+        );
+      }
+    }
+
+    if(!window.confirm(
+      '出荷済みにすると、明細数量を在庫から出庫します。よろしいですか？'
+    ))return;
+
+    s.lines.forEach(l=>
+      smState.records.push({
+        id:crypto.randomUUID
+          ? crypto.randomUUID()
+          : String(Date.now()+Math.random()),
+        type:'out',
+        year:l.year,
+        coop:l.coop,
+        season:l.season,
+        group:l.group,
+        item:l.item,
+        qty:Number(l.qty),
+        date:s.shipDate||today(),
+        memo:`出荷指示 ${s.id}`
+      })
+    );
+
+    s.status='shipped';
+    s.shippedAt=new Date().toISOString();
+
+    smSave();
+    smShipDetail(id);
+  };
+}const b=document.getElementById('smback');if(b)b.onclick=smShipments}
 async function smOpenShipPdf(s){const w=window.open('about:blank','_blank');if(!w)return alert('PDF画面を開けません。');try{const ys=[...new Set(s.lines.map(l=>l.year))],ims=[];for(const y of ys)ims.push({bytes:await _canvasJpegBytes(smReportCanvas(y,s)),w:1684,h:1191});const objs=[],pageIds=[],imgIds=[],contentIds=[];let id=1,catalog=id++,pages=id++;ims.forEach(()=>{pageIds.push(id++);imgIds.push(id++);contentIds.push(id++)});objs[catalog]=_ascii(`<< /Type /Catalog /Pages ${pages} 0 R >>`);objs[pages]=_ascii(`<< /Type /Pages /Count ${ims.length} /Kids [${pageIds.map(x=>x+' 0 R').join(' ')}] >>`);ims.forEach((im,i)=>{objs[pageIds[i]]=_ascii(`<< /Type /Page /Parent ${pages} 0 R /MediaBox [0 0 841.89 595.28] /Resources << /XObject << /Im0 ${imgIds[i]} 0 R >> >> /Contents ${contentIds[i]} 0 R >>`);objs[imgIds[i]]=_concatBytes([_ascii(`<< /Type /XObject /Subtype /Image /Width ${im.w} /Height ${im.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${im.bytes.length} >>\nstream\n`),im.bytes,_ascii('\nendstream')]);const st='q\n841.89 0 0 595.28 0 0 cm\n/Im0 Do\nQ\n';objs[contentIds[i]]=_ascii(`<< /Length ${st.length} >>\nstream\n${st}endstream`)});const n=id-1,parts=[_ascii('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n')],offs=Array(n+1).fill(0);let pos=parts[0].length;for(let i=1;i<=n;i++){offs[i]=pos;const a=_ascii(`${i} 0 obj\n`),bb=objs[i],cc=_ascii('\nendobj\n');parts.push(a,bb,cc);pos+=a.length+bb.length+cc.length}const xp=pos;let xr=`xref\n0 ${n+1}\n0000000000 65535 f \n`;for(let i=1;i<=n;i++)xr+=String(offs[i]).padStart(10,'0')+' 00000 n \n';xr+=`trailer\n<< /Size ${n+1} /Root ${catalog} 0 R >>\nstartxref\n${xp}\n%%EOF`;parts.push(_ascii(xr));const b=new Blob(parts,{type:'application/pdf'}),u=URL.createObjectURL(b);w.location.replace(u);setTimeout(()=>URL.revokeObjectURL(u),600000)}catch(e){try{w.close()}catch{}alert('PDF作成に失敗しました。\n'+(e.message||e))}}
 function smMore(){app.innerHTML=`<section class="card"><h2>釧路産棹前昆布 その他</h2><div class="form"><button class="btn secondary" id="nprod">← 昆布選択画面へ</button><button class="btn secondary" id="nbk">釧路産棹前昆布バックアップ保存</button><input id="nrf" type="file" accept="application/json" hidden><button class="btn secondary" id="nrs">釧路産棹前昆布バックアップ復元</button><button class="btn secondary" id="nhm">ホーム</button></div></section>`;nprod.onclick=productLanding;nbk.onclick=()=>download('釧路産棹前昆布バックアップ_'+today()+'.json',JSON.stringify(smState,null,2),'application/json');nrs.onclick=()=>nrf.click();nrf.onchange=()=>{const f=nrf.files?.[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{try{smState=JSON.parse(rd.result);smSave();alert('復元しました');smHome()}catch{alert('復元できませんでした')}};rd.readAsText(f)};nhm.onclick=smHome}
 
