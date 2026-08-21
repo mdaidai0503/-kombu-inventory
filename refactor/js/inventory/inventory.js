@@ -150,22 +150,36 @@
 
       return physical - reserved;
     },
-       getHidakaQuantity(filters = {}) {
-      const records = this.getRecords('hidaka');
+getHidakaQuantity(filters = {}) {
+  const records = this.getRecords('hidaka');
+  const shipments = this.getShipments('hidaka');
 
-      const matches = item =>
-        (!filters.year || (item.year || 'R7') === filters.year) &&
-        (!filters.location || item.location === filters.location) &&
-        (!filters.section || item.section === filters.section) &&
-        (!filters.grade || item.grade === filters.grade);
+  const matches = item =>
+    (!filters.year || (item.year || 'R7') === filters.year) &&
+    (!filters.location || item.location === filters.location) &&
+    (!filters.section || item.section === filters.section) &&
+    (!filters.grade || item.grade === filters.grade);
 
-      return records
-        .filter(matches)
-        .reduce((total, record) => {
-          const qty = Number(record.qty || 0);
-          return total + (record.type === 'out' ? -qty : qty);
-        }, 0);
-    } 
+  const physical = records
+    .filter(matches)
+    .reduce((total, record) => {
+      const qty = Number(record.qty || 0);
+      return total + (record.type === 'out' ? -qty : qty);
+    }, 0);
+
+  const reserved = shipments
+    .filter(shipment => shipment.status === 'confirmed')
+    .flatMap(shipment =>
+      Array.isArray(shipment.lines) ? shipment.lines : []
+    )
+    .filter(matches)
+    .reduce(
+      (total, line) => total + Number(line.qty || 0),
+      0
+    );
+
+  return physical - reserved;
+} 
 
   };
 
