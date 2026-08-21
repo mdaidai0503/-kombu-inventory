@@ -5113,8 +5113,8 @@ smLogs=function(){
       if(!sn.value.trim())return alert('出荷元の会社名を入力してください。');
       if(!dn.value.trim())return alert('出荷先の会社名を入力してください。');
       if(!lines.length)return alert('明細を1件以上追加してください。');
-      for(const l of lines){const d=productDefs[l.product],q=Number(l.qty);if(!q||q<=0)return alert(`明細の数量を入力してください。`);const av=d.avail(l);if(q>av)return alert(`${d.label} ${d.desc(l)} の出荷可能在庫は ${fmt(av)} です。`);l.qty=q}
-      const source={name:sn.value.trim(),address:sa.value.trim(),phone:sp.value.trim()},dest={name:dn.value.trim(),address:da.value.trim(),phone:dp.value.trim()};
+      for(const l of lines){const d=productDefs[l.product],q=Number(l.qty);if(!q||q<=0)return alert(`明細の数量を入力してください。`);l.qty=q}
+      const source={name:sn.value.trim(),addFress:sa.value.trim(),phone:sp.value.trim()},dest={name:dn.value.trim(),address:da.value.trim(),phone:dp.value.trim()};
       upsertCompany(source);upsertCompany(dest);
       const batchId='M'+Date.now().toString(36).toUpperCase();
       const common={source,dest,shipDate:byId('v114ShipDate').value,arrivalDate:byId('v114ArrivalDate').value,deliveryPack:byId('v114DeliveryPack').value||'',memo:byId('v114Memo').value||'',batchId:'M'+Date.now().toString(36).toUpperCase(),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),status:'draft'};
