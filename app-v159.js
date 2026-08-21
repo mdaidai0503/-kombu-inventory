@@ -1771,7 +1771,7 @@ smOpenShipPdf=function(s){
 
 /* ===== v71: 釧路産昆布 在庫管理トップに年産別在庫集計表を直接表示 ===== */
 function v71KushiroHomeTable(year){
-  const m=matrix();
+  const m=matrix(), inv=window.KombuRefactor?.Inventory;
   let html=`<style>
     .v71-stock{border-collapse:collapse;min-width:1120px;width:100%}
     .v71-stock th,.v71-stock td{border:.45px solid #46515e;padding:3px 4px;text-align:center;white-space:nowrap;font-size:10px;line-height:1.25}
@@ -1790,17 +1790,37 @@ function v71KushiroHomeTable(year){
     SEASONS.forEach((season,si)=>{
       html+=`<tr><td>${si===0?esc(coop):''}</td><td>${season}</td>`;
       let rt=0;
-      GROUPS.forEach(g=>g.items.forEach(i=>{const v=m[[year,coop,g.name,i,season].join('|')]||0;rt+=v;html+=`<td>${v?fmt(v):''}</td>`}));
-      html+=`<td>${rt?fmt(rt):''}</td></tr>`;
+      GROUPS.forEach(g=>g.items.forEach(i=>{
+  const v=inv?.getQuantity
+    ? inv.getQuantity('kushiro',{year,coop,season,group:g.name,item:i})
+    : (m[[year,coop,g.name,i,season].join('|')]||0);
+  rt+=v;
+  html+=`<td>${v?fmt(v):''}</td>`;
+}));
     });
     html+=`<tr class="subtotal coop-end"><td></td><td>小計</td>`;
     let ct=0;
-    GROUPS.forEach(g=>g.items.forEach(i=>{const v=SEASONS.reduce((ss,se)=>ss+(m[[year,coop,g.name,i,se].join('|')]||0),0);ct+=v;html+=`<td>${v?fmt(v):''}</td>`}));
+    GROUPS.forEach(g=>g.items.forEach(i=>{const v=SEASONS.reduce((ss,se)=>ss+(
+  inv?.getQuantity
+    ? inv.getQuantity('kushiro',{year,coop,season:se,group:g.name,item:i})
+    : (m[[year,coop,g.name,i,se].join('|')]||0)
+),0);;ct+=v;html+=`<td>${v?fmt(v):''}</td>`}));
     html+=`<td>${ct?fmt(ct):''}</td></tr>`;
   });
   html+=`<tr class="grand"><th colspan="2">合計</th>`;
-  GROUPS.forEach(g=>g.items.forEach(i=>{const v=state.coops.reduce((ss,c)=>ss+SEASONS.reduce((z,se)=>z+(m[[year,c,g.name,i,se].join('|')]||0),0),0);html+=`<th>${v?fmt(v):''}</th>`}));
-  html+=`<th>${total(year)?fmt(total(year)):''}</th></tr></table></div>`;
+  GROUPS.forEach(g=>g.items.forEach(i=>{
+  const v=state.coops.reduce((ss,c)=>ss+SEASONS.reduce((z,se)=>z+(
+    inv?.getQuantity
+      ? inv.getQuantity('kushiro',{year,coop:c,season:se,group:g.name,item:i})
+      : (m[[year,c,g.name,i,se].join('|')]||0)
+  ),0),0);
+  html+=`<th>${v?fmt(v):''}</th>`;
+}));
+ const grandTotal=inv?.getQuantity
+  ? inv.getQuantity('kushiro',{year})
+  : total(year);
+
+html+=`<th>${grandTotal?fmt(grandTotal):''}</th></tr></table></div>`;
   return html;
 }
 
