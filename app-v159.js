@@ -443,7 +443,6 @@ if(s.status==='draft'){
     editBtn.onclick=()=>v114UnifiedShipmentForm('kushiro',s.id);
   }
 }
- }
  if(s.status==='confirmed'){const shippedBtn=document.getElementById('shippedShipmentBtn');if(shippedBtn)shippedBtn.onclick=()=>{if(!window.confirm('出荷済みにしますか？ 在庫は確定時にすでに反映されています。'))return;for(const l of s.lines){state.records.push({id:crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random()),type:'out',year:l.year||DEFAULT_YEAR,coop:l.coop,season:l.season,group:l.group,item:l.item,qty:Number(l.qty),date:s.shipDate||today(),memo:`出荷指示 ${s.id} / ${shipmentDest(s).name}`})}s.status='shipped';s.shippedAt=new Date().toISOString();save();alert('出荷済みにしました。入出庫履歴へ出庫記録を作成しました。');shipmentDetail(s.id)}}
  if(s.status!=='shipped'&&s.status!=='cancelled'){const cancelBtn=document.getElementById('cancelShipmentBtn');if(cancelBtn)cancelBtn.onclick=()=>{if(window.confirm(s.status==='confirmed'?'取消すると在庫表へ数量を戻します。よろしいですか？':'この出荷指示を取消しますか？')){s.status='cancelled';s.cancelledAt=new Date().toISOString();save();alert('出荷指示を取消しました');shipmentDetail(s.id)}}}
  const backBtn=document.getElementById('backShipmentBtn');if(backBtn)backBtn.onclick=shipments;
