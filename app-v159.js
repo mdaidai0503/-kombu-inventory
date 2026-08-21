@@ -2770,15 +2770,62 @@ const _v81SmHome=smHome;smHome=function(){const r=_v81SmHome();v81ReplaceHomeSum
   }
 
   function hidakaSplit(y,home=false){
-    const m=hMatrix(),rows=H_SECTIONS.flatMap(s=>s.items.map(g=>({section:s.name,grade:g})));
-    let L='<table><colgroup><col class="v91-c1"><col class="v91-c2"></colgroup><tbody><tr><th class="v91-head">区分</th><th class="v91-head">等級</th></tr>';
-    let R='<table><thead><tr>'+H_LOCATIONS.map(l=>`<th class="v91-head">${esc(l)}</th>`).join('')+'<th class="v91-head v91-totalcol">計</th></tr></thead><tbody>';
-    let last=null;
-    for(const r of rows){const start=r.section!==last;L+=`<tr${start?' class="v91-end"':''}><th>${start?esc(r.section):''}</th><th>${esc(r.grade)}</th></tr>`;let rt=0;R+=`<tr${start?' class="v91-end"':''}>`;for(const loc of H_LOCATIONS){const q=m[[y,loc,r.section,r.grade].join('|')]||0;rt+=q;R+=`<td>${q?fmt(q):''}</td>`}R+=`<td class="v91-totalcol">${rt?fmt(rt):''}</td></tr>`;last=r.section}
-    L+='</tbody><tfoot><tr class="v91-total"><th colspan="2">合計</th></tr></tfoot></table>';
-    R+='</tbody><tfoot><tr class="v91-total">'+H_LOCATIONS.map(loc=>{const q=rows.reduce((a,r)=>a+(m[[y,loc,r.section,r.grade].join('|')]||0),0);return `<th>${q?fmt(q):''}</th>`}).join('')+`<th class="v91-totalcol">${hTotal(y)?fmt(hTotal(y)):''}</th></tr></tfoot></table>`;
-    return `<div class="v91-viewport ${home?'v91-home':''}"><div class="v91-shell"><div class="v91-left v91-hidaka">${L}</div><div class="v91-right">${R}</div></div></div>`;
+  const m=hMatrix(),
+        rows=H_SECTIONS.flatMap(s=>s.items.map(g=>({section:s.name,grade:g}))),
+        inv=window.KombuRefactor?.Inventory;
+
+  const getValue=(loc,section,grade)=>
+    inv?.getHidakaQuantity
+      ? inv.getHidakaQuantity({
+          year:y,
+          location:loc,
+          section,
+          grade
+        })
+      : (m[[y,loc,section,grade].join('|')]||0);
+
+  let L='<table><colgroup><col class="v91-c1"><col class="v91-c2"></colgroup><tbody><tr><th class="v91-head">区分</th><th class="v91-head">等級</th></tr>';
+  let R='<table><thead><tr>'+H_LOCATIONS.map(l=>`<th class="v91-head">${esc(l)}</th>`).join('')+'<th class="v91-head v91-totalcol">計</th></tr></thead><tbody>';
+
+  let last=null;
+
+  for(const r of rows){
+    const start=r.section!==last;
+
+    L+=`<tr${start?' class="v91-end"':''}><th>${start?esc(r.section):''}</th><th>${esc(r.grade)}</th></tr>`;
+
+    let rt=0;
+    R+=`<tr${start?' class="v91-end"':''}>`;
+
+    for(const loc of H_LOCATIONS){
+      const q=getValue(loc,r.section,r.grade);
+      rt+=q;
+      R+=`<td>${q?fmt(q):''}</td>`;
+    }
+
+    R+=`<td class="v91-totalcol">${rt?fmt(rt):''}</td></tr>`;
+    last=r.section;
   }
+
+  L+='</tbody><tfoot><tr class="v91-total"><th colspan="2">合計</th></tr></tfoot></table>';
+
+  R+='</tbody><tfoot><tr class="v91-total">'+
+    H_LOCATIONS.map(loc=>{
+      const q=rows.reduce(
+        (a,r)=>a+getValue(loc,r.section,r.grade),
+        0
+      );
+      return `<th>${q?fmt(q):''}</th>`;
+    }).join('');
+
+  const grandTotal=inv?.getHidakaQuantity
+    ? inv.getHidakaQuantity({year:y})
+    : hTotal(y);
+
+  R+=`<th class="v91-totalcol">${grandTotal?fmt(grandTotal):''}</th></tr></tfoot></table>`;
+
+  return `<div class="v91-viewport ${home?'v91-home':''}"><div class="v91-shell"><div class="v91-left v91-hidaka">${L}</div><div class="v91-right">${R}</div></div></div>`;
+}
 
   function kushiroSplit(y,home=false){const m=matrix(),cols=allItems();return groupSplit({year:y,coops:state.coops,seasons:SEASONS,groups:GROUPS,cols,getValue:(co,se,c)=>m[[y,co,c.group,c.item,se].join('|')]||0,totalValue:()=>total(y),home})}
   function nemuroSplit(y,home=false){
