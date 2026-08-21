@@ -631,20 +631,138 @@ function hLogs(){const a=hState.records.slice().reverse();app.innerHTML=`<sectio
 function hShipId(){return 'H'+String(hState.shipmentSeq++).padStart(5,'0')}
 function hShipments(){app.innerHTML=`<section class="card"><div class="row"><h2>日高昆布 出荷指示</h2><button class="mini" id="hnew">＋新規</button></div><div class="tablewrap"><table><tr><th>番号</th><th>出荷元</th><th>出荷先</th><th>出荷日</th><th>数量</th><th>状態</th><th></th></tr>${hState.shipments.slice().reverse().map(s=>`<tr><td>${s.id}</td><td>${esc(s.source?.name||'')}</td><td>${esc(s.dest?.name||'')}</td><td>${s.shipDate||''}</td><td>${fmt((s.lines||[]).reduce((a,l)=>a+Number(l.qty||0),0))}</td><td>${s.status}</td><td><button class="mini" data-hs="${s.id}">開く</button></td></tr>`).join('')}</table></div><button class="btn secondary" id="hsb">戻る</button></section>`;hnew.onclick=()=>hShipForm();app.querySelectorAll('[data-hs]').forEach(b=>b.onclick=()=>hShipDetail(b.dataset.hs));hsb.onclick=hHome}
 function hShipForm(id=null){const s=id?hState.shipments.find(x=>x.id===id):null;let lines=s?.lines?.map(x=>({...x}))||[];app.innerHTML=`<section class="card"><h2>日高昆布 ${s?'出荷指示修正':'新規出荷指示'}</h2><div class="form"><label>出荷元 会社名<input id="hsrc" value="${esc(s?.source?.name||'㈱浜中運輸')}"></label><label>出荷元 住所<input id="hsrca" value="${esc(s?.source?.address||'')}"></label><label>出荷元 電話<input id="hsrcp" value="${esc(s?.source?.phone||'')}"></label><label>出荷先 会社名<input id="hdst" value="${esc(s?.dest?.name||'')}"></label><label>出荷先 住所<input id="hdsta" value="${esc(s?.dest?.address||'')}"></label><label>出荷先 電話<input id="hdstp" value="${esc(s?.dest?.phone||'')}"></label><div class="subgrid"><label>出荷日<input id="hsd" type="date" value="${s?.shipDate||today()}"></label><label>希望着日<input id="had" type="date" value="${s?.arrivalDate||''}"></label></div><div id="hsl"></div><button class="btn secondary" id="hala">＋明細追加</button><button class="btn" id="hssv">保存</button><button class="btn secondary" id="hsfb">戻る</button></div></section>`;function rend(){hsl.innerHTML=lines.map((l,i)=>`<div class="card" style="background:#f8fafc"><label>年度<select data-hi="${i}" data-hf="year">${hYearOptions(l.year)}</select></label><label>産地<select data-hi="${i}" data-hf="location">${H_LOCATIONS.map(x=>`<option ${x===l.location?'selected':''}>${x}</option>`).join('')}</select></label><label>区分・等級<select data-hi="${i}" data-hf="sg">${hGradeOptions(l.section,l.grade)}</select></label><label>数量<input type="number" value="${esc(l.qty||'')}" data-hi="${i}" data-hf="qty"></label><button class="mini danger" data-hr="${i}">削除</button></div>`).join('');hsl.querySelectorAll('[data-hf]').forEach(e=>e.onchange=()=>{const i=+e.dataset.hi;if(e.dataset.hf==='sg'){[lines[i].section,lines[i].grade]=e.value.split('|')}else lines[i][e.dataset.hf]=e.value});hsl.querySelectorAll('[data-hr]').forEach(e=>e.onclick=()=>{lines.splice(+e.dataset.hr,1);rend()})}hala.onclick=()=>{lines.push({year:hState.activeYear,location:H_LOCATIONS[0],section:'走り',grade:'1等',qty:''});rend()};hssv.onclick=()=>{if(!hdst.value.trim()||!lines.length)return alert('出荷先と明細を入力してください。');for(const l of lines){l.qty=Number(l.qty);if(!l.qty||l.qty>hAvail(l.year,l.location,l.section,l.grade,s?.id))return alert(`${l.location} ${l.section} ${l.grade} の在庫が不足しています。`)}const o=s||{id:hShipId(),status:'draft',createdAt:new Date().toISOString()};Object.assign(o,{source:{name:hsrc.value,address:hsrca.value,phone:hsrcp.value},dest:{name:hdst.value,address:hdsta.value,phone:hdstp.value},shipDate:hsd.value,arrivalDate:had.value,lines});if(!s)hState.shipments.push(o);hSave();hShipDetail(o.id)};hsfb.onclick=hShipments;rend()}
-function hShipDetail(id){const s=hState.shipments.find(x=>x.id===id);if(!s)return hShipments();app.innerHTML=`<section class="card"><div class="row"><h2>日高昆布 出荷指示 ${s.id}</h2><span class="pill">${s.status}</span></div><p><b>出荷先：</b>${esc(s.dest?.name||'')}　<b>出荷元：</b>${esc(s.source?.name||'')}</p><p><b>出荷日：</b>${s.shipDate||''}　<b>合計：</b>${fmt((s.lines||[]).reduce((a,l)=>a+Number(l.qty||0),0))}</p><div class="toolbar"><button class="btn" id="hpdfs">PDF・FAX用</button>${s.status==='draft'?'<button class="btn" id="hconf">確定・在庫反映</button><button class="btn secondary" id="hedit">修正</button>':''}${s.status==='confirmed'?'<button class="btn" id="hshipped">出荷済</button>':''}<button class="btn secondary" id="hback">一覧へ</button></div></section>`;const pdf=document.getElementById('hpdfs');if(pdf)pdf.onclick=()=>hOpenShipPdf(s);if(s.status==='draft'){const c=document.getElementById('hconf');if(c)c.onclick=()=>{for(const l of s.lines)if(Number(l.qty)>hAvail(l.year,l.location,l.section,l.grade,s.id))return alert('在庫不足があります。');s.status='confirmed';s.confirmedAt=new Date().toISOString();hSave();alert('出荷指示を確定し、在庫表へ反映しました。');hShipDetail(id)};const e=document.getElementById('hedit');if(e)e.onclick=()=>v114UnifiedShipmentForm('hidaka',id)}if(s.status==='draft'){
-  const c=document.getElementById('smconf');
+function hShipDetail(id){const s=hState.shipments.find(x=>x.id===id);if(!s)return hShipments();app.innerHTML=`<section class="card"><div class="row"><h2>日高昆布 出荷指示 ${s.id}</h2><span class="pill">${s.status}</span></div><p><b>出荷先：</b>${esc(s.dest?.name||'')}　<b>出荷元：</b>${esc(s.source?.name||'')}</p><p><b>出荷日：</b>${s.shipDate||''}　<b>合計：</b>${fmt((s.lines||[]).reduce((a,l)=>a+Number(l.qty||0),0))}</p><div class="toolbar"><button class="btn" id="hpdfs">PDF・FAX用</button>${s.status==='draft'?'<button class="btn" id="hconf">確定・在庫反映</button><button class="btn secondary" id="hedit">修正</button>':''}${s.status==='confirmed'?'<button class="btn" id="hshipped">出荷済</button>':''}<button class="btn secondary" id="hback">一覧へ</button></div></section>`;const pdf=document.getElementById('hpdfs');if(pdf)pdf.onclick=()=>hOpenShipPdf(s);if(s.status==='draft'){const c=document.getElementById('hconf');if(c)c.onclick=()=>{for(const l of s.lines)if(Number(l.qty)>hAvail(l.year,l.location,l.section,l.grade,s.id))return alert('在庫不足があります。');s.status='confirmed';s.confirmedAt=new Date().toISOString();hSave();alert('出荷指示を確定し、在庫表へ反映しました。');hShipDetail(id)};const e=document.getElementById('hedit');if(e)e.onclick=()=>v114UnifiedShipmentForm('hidaka',id)}if(s.status==='confirmed'){
+  const sh=document.getElementById('hshipped');
 
-  if(c)c.onclick=()=>{
+  if(sh)sh.onclick=()=>{
+    const inv=window.KombuRefactor?.Inventory;
+
     for(const l of s.lines){
-      const av=v160AvailableForShipmentLine(
-        'sanmae',
-        l,
-        s.id
-      );
+      const av=inv?.getHidakaAvailableQuantity
+        ? inv.getHidakaAvailableQuantity(
+            {
+              year:l.year,
+              location:l.location,
+              section:l.section,
+              grade:l.grade
+            },
+            s.id
+          )
+        : hAvail(
+            l.year,
+            l.location,
+            l.section,
+            l.grade,
+            s.id
+          );
 
       if(Number(l.qty)>Math.max(0,Number(av||0))){
         return alert(
-          `${l.year||SM_DEFAULT_YEAR}年産 ${l.coop} ${l.season} ${l.group} ${l.item} の出荷可能在庫は ${fmt(av)} です。`
+          `${l.location} ${l.section} ${l.grade} の出荷可能在庫が不足しています。`
+        );
+      }
+    }
+
+    if(!window.confirm(
+      '出荷済みにすると、明細数量を在庫から出庫します。よろしいですか？'
+    ))return;
+
+    s.lines.forEach(l=>
+      hState.records.push({
+        id:crypto.randomUUID
+          ? crypto.randomUUID()
+          : String(Date.now()+Math.random()),
+        type:'out',
+        year:l.year,
+        location:l.location,
+        section:l.section,
+        grade:l.grade,
+        qty:Number(l.qty),
+        date:s.shipDate||today(),
+        memo:`出荷指示 ${s.id}`
+      })
+    );
+
+    s.status='shipped';
+    s.shippedAt=new Date().toISOString();
+
+    hSave();
+    hShipDetail(id);
+  };
+}const b=document.getElementById('hback');if(b)b.onclick=hShipments}
+async function hOpenShipPdf(s){const w=window.open('about:blank','_blank');if(!w)return alert('PDF画面を開けません。');try{const ys=[...new Set(s.lines.map(l=>l.year))],imgs=[];for(const y of ys){const tmp={...hState};const mt={};s.lines.filter(l=>l.year===y).forEach(l=>mt[hKey(l)]=(mt[hKey(l)]||0)+Number(l.qty));const old=hMatrix;/* shipment canvas uses stock-style layout; values are overlaid by temporary state */const savedRecords=hState.records,savedShip=hState.shipments;hState.records=s.lines.filter(l=>l.year===y).map(l=>({...l,type:'in'}));hState.shipments=[];imgs.push(hShipCanvas(s,y));hState.records=savedRecords;hState.shipments=savedShip}const b=imgs.length===1?await _singleCanvasPdfBlob(imgs[0]):await (async()=>{const ims=[];for(const cc of imgs)ims.push({bytes:await _canvasJpegBytes(cc),w:cc.width,h:cc.height});const objs=[],pageIds=[],imgIds=[],contentIds=[];let id=1,catalog=id++,pages=id++;ims.forEach(()=>{pageIds.push(id++);imgIds.push(id++);contentIds.push(id++)});objs[catalog]=_ascii(`<< /Type /Catalog /Pages ${pages} 0 R >>`);objs[pages]=_ascii(`<< /Type /Pages /Count ${ims.length} /Kids [${pageIds.map(x=>x+' 0 R').join(' ')}] >>`);ims.forEach((im,i)=>{objs[pageIds[i]]=_ascii(`<< /Type /Page /Parent ${pages} 0 R /MediaBox [0 0 841.89 595.28] /Resources << /XObject << /Im0 ${imgIds[i]} 0 R >> >> /Contents ${contentIds[i]} 0 R >>`);objs[imgIds[i]]=_concatBytes([_ascii(`<< /Type /XObject /Subtype /Image /Width ${im.w} /Height ${im.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${im.bytes.length} >>\nstream\n`),im.bytes,_ascii('\nendstream')]);const st='q\n841.89 0 0 595.28 0 0 cm\n/Im0 Do\nQ\n';objs[contentIds[i]]=_ascii(`<< /Length ${st.length} >>\nstream\n${st}endstream`)});const n=id-1,parts=[_ascii('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n')],offs=Array(n+1).fill(0);let pos=parts[0].length;for(let i=1;i<=n;i++){offs[i]=pos;const a=_ascii(`${i} 0 obj\n`),bb=objs[i],cc=_ascii('\nendobj\n');parts.push(a,bb,cc);pos+=a.length+bb.length+cc.length}const xp=pos;let xr=`xref\n0 ${n+1}\n0000000000 65535 f \n`;for(let i=1;i<=n;i++)xr+=String(offs[i]).padStart(10,'0')+' 00000 n \n';xr+=`trailer\n<< /Size ${n+1} /Root ${catalog} 0 R >>\nstartxref\n${xp}\n%%EOF`;parts.push(_ascii(xr));return new Blob(parts,{type:'application/pdf'})})();const u=URL.createObjectURL(b);w.location.replace(u);setTimeout(()=>URL.revokeObjectURL(u),600000)}catch(e){try{w.close()}catch{}alert('PDF作成に失敗しました。\n'+(e.message||e))}}
+function hMore(){app.innerHTML=`<section class="card"><h2>日高昆布 その他</h2><div class="form"><button class="btn secondary" id="hprod">← 昆布選択画面へ</button><button class="btn secondary" id="hbk">日高昆布バックアップ保存</button><input id="hrf" type="file" accept="application/json" hidden><button class="btn secondary" id="hrs">日高昆布バックアップ復元</button><button class="btn secondary" id="hhm">ホーム</button></div></section>`;hprod.onclick=productLanding;hbk.onclick=()=>download('日高昆布バックアップ_'+today()+'.json',JSON.stringify(hState,null,2),'application/json');hrs.onclick=()=>hrf.click();hrf.onchange=()=>{const f=hrf.files?.[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{try{hState=JSON.parse(rd.result);hSave();alert('復元しました');hHome()}catch{alert('復元できませんでした')}};rd.readAsText(f)};hhm.onclick=hHome}
+
+
+/* ===== v32: 根室産昆布 独立管理 ===== */
+const N_KEY='kombu_nemuro_local_v1';
+const N_YEARS=['R3','R4','R5','R6','R7','R8','R9','R10'];
+const N_COOPS=['歯舞漁協','落石漁協','根室漁協'];
+const N_SEASONS=['夏','秋','拾'];
+const N_GROUPS=[
+ {name:'うすば(夏)',items:['葉①','葉②','葉③','夏④']},
+ {name:'うすば(夏)',items:['元①','元②','元③']},
+ {name:'あつば(夏)',items:['①','②','③','④']},
+ {name:'薄葉',items:['8月検①','9月検①','10月検①','11月検①']},
+ {name:'貝殻棹前',items:['棹①','③','④','元①']},
+ {name:'加工用',items:['①','②']},
+ {name:'春茎',items:['①','②','③','④','加工②']},
+ {name:'ちがいそ',items:['ちがいそ']},
+ {name:'厚頭',items:['厚頭']},
+ {name:'加工用1等',items:['加工用1等']}
+];
+let nState=JSON.parse(localStorage.getItem(N_KEY)||'null')||{records:[],shipments:[],shipmentSeq:1,activeYear:'R7',pdfImports:[]};
+nState.records=Array.isArray(nState.records)?nState.records:[];nState.shipments=Array.isArray(nState.shipments)?nState.shipments:[];nState.pdfImports=Array.isArray(nState.pdfImports)?nState.pdfImports:[];nState.shipmentSeq=Number(nState.shipmentSeq||1);nState.activeYear=N_YEARS.includes(nState.activeYear)?nState.activeYear:'R7';
+function nSave(){localStorage.setItem(N_KEY,JSON.stringify(nState))}
+function nItems(){return N_GROUPS.flatMap(g=>g.items.map(item=>({group:g.name,item})))}
+function nKey(r){return [r.year,r.coop,r.season,r.group,r.item].join('|')}
+function nMatrix(){const m={};nState.records.forEach(r=>{const k=nKey(r);m[k]=(m[k]||0)+(r.type==='out'?-Number(r.qty):Number(r.qty))});nState.shipments.filter(s=>s.status==='confirmed').flatMap(s=>s.lines||[]).forEach(l=>{const k=nKey(l);m[k]=(m[k]||0)-Number(l.qty||0)});return m}
+function nTotal(y=nState.activeYear){const m=nMatrix();return Object.entries(m).filter(([k])=>k.startsWith(y+'|')).reduce((a,[,v])=>a+v,0)}
+function nAvail(y,coop,season,group,item,excludeId){const physical=nState.records.filter(r=>r.year===y&&r.coop===coop&&r.season===season&&r.group===group&&r.item===item).reduce((a,r)=>a+(r.type==='out'?-Number(r.qty):Number(r.qty)),0);const res=nState.shipments.filter(s=>s.id!==excludeId&&s.status==='confirmed').flatMap(s=>s.lines||[]).filter(l=>l.year===y&&l.coop===coop&&l.season===season&&l.group===group&&l.item===item).reduce((a,l)=>a+Number(l.qty||0),0);return Math.max(0,physical-res)}
+function nYearOptions(sel){return N_YEARS.map(y=>`<option ${y===(sel||nState.activeYear)?'selected':''}>${y}</option>`).join('')}
+function nItemOptions(group,item){return N_GROUPS.map(g=>`<optgroup label="${esc(g.name)}">${g.items.map(i=>`<option value="${esc(g.name)}|${esc(i)}" ${g.name===group&&i===item?'selected':''}>${esc(i)}</option>`).join('')}</optgroup>`).join('')}
+function nHome(){const y=nState.activeYear;app.innerHTML=`<section class="card"><div class="row"><h2>根室産昆布 在庫状況</h2><select id="ny" style="width:auto">${nYearOptions(y)}</select></div><div class="stats"><div class="stat">${y}年産 総在庫<b>${fmt(nTotal(y))}</b></div><div class="stat">漁協数<b>${N_COOPS.length}</b></div><div class="stat">分類数<b>${nItems().length}</b></div><div class="stat">登録履歴<b>${nState.records.filter(r=>r.year===y).length}件</b></div></div></section><section class="grid"><button class="action" id="ns" style="border-left:6px solid #e05a47">📦 出荷指示<small>根室産昆布専用・PDF/FAX</small></button><button class="action orange" id="nst">▦ 在庫表<small>原票形式で集計・PDF出力</small></button><button class="action purple" id="nl">≡ 入出庫履歴<small>修正・削除</small></button><button class="action green" id="ni">↓ 入庫登録<small>PDFから一括入庫も可能</small></button><button class="action blue" id="no">↑ 出庫登録<small>在庫から減算</small></button><button class="action gray" id="nm">⋯ その他<small>バックアップ・商品選択</small></button></section>`;ny.onchange=()=>{nState.activeYear=ny.value;nSave();nHome()};ns.onclick=nShipments;nst.onclick=nStock;nl.onclick=nLogs;ni.onclick=()=>nForm('in');no.onclick=()=>nForm('out');nm.onclick=nMore}
+function nForm(type,editId=null){const r=editId?nState.records.find(x=>x.id===editId):null,ft=r?.type||type||'in',g=r?.group||N_GROUPS[0].name,it=r?.item||N_GROUPS[0].items[0];app.innerHTML=`<section class="card"><h2>${r?'入出庫修正':ft==='in'?'根室産昆布 入庫登録':'根室産昆布 出庫登録'}</h2><div class="form">${!r&&ft==='in'?'<button class="btn secondary" id="nPdfBtn">📄 PDFから根室産昆布を一括入庫</button><input id="nPdfFile" type="file" accept="application/pdf,.pdf" hidden><div class="note">在庫証明書PDFから「根室産昆布」だけを抽出し、年度・漁協・夏/秋/拾・分類ごとに集計します。</div>':''}<label>区分<div class="note">${ft==='in'?'入庫':'出庫'}</div></label><label>生産年度<select id="nyr">${nYearOptions(r?.year)}</select></label><label>漁協<select id="ncoop">${N_COOPS.map(x=>`<option ${x===r?.coop?'selected':''}>${x}</option>`).join('')}</select></label><label>季節区分<select id="nseason">${N_SEASONS.map(x=>`<option ${x===(r?.season||'夏')?'selected':''}>${x}</option>`).join('')}</select></label><label>分類<select id="ngi">${nItemOptions(g,it)}</select></label><label>数量<input id="nq" type="number" min="0" step="0.01" inputmode="decimal" value="${r?esc(r.qty):''}"></label><label>日付<input id="nd" type="date" value="${r?.date||today()}"></label><label>備考<input id="nmem" value="${esc(r?.memo||'')}"></label><button class="btn" id="nsv">${r?'修正を保存':'登録する'}</button><button class="btn secondary" id="nb">戻る</button></div></section>`;if(!r&&ft==='in'){nPdfBtn.onclick=()=>nPdfFile.click();nPdfFile.onchange=()=>{const f=nPdfFile.files?.[0];if(f)nImportPdf(f)}}nsv.onclick=()=>{const q=Number(nq.value);if(!q||q<0)return alert('数量を入力してください');const [group,item]=ngi.value.split('|'),year=nyr.value,coop=ncoop.value,season=nseason.value;if(ft==='out'&&q>nAvail(year,coop,season,group,item,r?.id))return alert('出庫可能在庫が不足しています。');const obj={id:r?.id||(crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random())),type:ft,year,coop,season,group,item,qty:q,date:nd.value,memo:nmem.value};if(r)nState.records[nState.records.findIndex(x=>x.id===r.id)]=obj;else nState.records.push(obj);nState.activeYear=year;nSave();alert(r?'修正しました':ft==='in'?'入庫しました':'出庫しました');nStock()};nb.onclick=()=>r?nLogs():nHome()}
+async function nParsePdf(file){if(!PDFJS)throw Error('PDF読取ライブラリを読み込めません。');PDFJS.GlobalWorkerOptions.workerSrc='./pdf-worker-v58.js';const hash=await sha256File(file);if(nState.pdfImports.some(x=>x.hash===hash))throw Error('このPDFはすでに根室産昆布へ取り込み済みです。');const pdf=await PDFJS.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise,cols=nItems(),rows=[];let matched=[],date=today();for(let pn=1;pn<=pdf.numPages;pn++){const pg=await pdf.getPage(pn),tc=await pg.getTextContent();const its=tc.items.filter(x=>String(x.str||'').trim()).map(x=>({str:String(x.str).trim(),x:+x.transform[4],y:+x.transform[5],w:+(x.width||0)}));const txt=its.map(x=>x.str).join(''),norm=txt.replace(/\s/g,'').replace(/[Ｒｒ]/g,'R');if(!norm.includes('根室産昆布'))continue;const ym=norm.match(/R\.?\s*(10|[3-9])年度?/i),year=ym?`R${ym[1]}`:nState.activeYear;date=reiwaDateFromText(txt);const sl=its.filter(x=>x.x<110&&N_SEASONS.includes(x.str)).sort((a,b)=>b.y-a.y).slice(0,9);if(sl.length<9)continue;for(let ri=0;ri<9;ri++){const li=sl[ri],coop=N_COOPS[Math.floor(ri/3)],season=N_SEASONS[ri%3];its.forEach(v=>{if(Math.abs(v.y-li.y)>3.6||!/^-?\d[\d,.-]*$/.test(v.str))return;const cx=v.x+(v.w||0)/2,idx=Math.round((cx-115.54)/22.82);if(idx<0||idx>=cols.length||Math.abs(cx-(115.54+idx*22.82))>10.8)return;const q=Number(v.str.replace(/,/g,'').replace(/[^0-9.-]/g,''));if(!Number.isFinite(q)||q<=0)return;rows.push({year,coop,season,group:cols[idx].group,item:cols[idx].item,qty:q,page:pn})})}matched.push(pn)}if(!rows.length)throw Error('PDF内から「根室産昆布」の数量を読み取れませんでした。');const agg=new Map();rows.forEach(r=>{const k=[r.year,r.coop,r.season,r.group,r.item].join('|'),o=agg.get(k)||{...r,qty:0,pages:[]};o.qty+=r.qty;if(!o.pages.includes(r.page))o.pages.push(r.page);agg.set(k,o)});return {rows:[...agg.values()],date,matched,pageCount:pdf.numPages,years:[...new Set(rows.map(r=>r.year))],hash}}
+async function nImportPdf(file){try{app.innerHTML='<section class="card"><h2>根室産昆布 PDF読込中</h2><p>PDFから「根室産昆布」のページだけを抽出しています…</p></section>';const parsed=await nParsePdf(file),sum=parsed.rows.reduce((a,r)=>a+r.qty,0);const preview=parsed.rows.slice(0,120).map((r,i)=>`<tr><td>${i+1}</td><td>${r.year}</td><td>${r.coop}</td><td>${r.season}</td><td>${esc(r.group)}</td><td>${esc(r.item)}</td><td>${fmt(r.qty)}</td></tr>`).join('');app.innerHTML=`<section class="card"><h2>根室産昆布 PDF入庫確認</h2><div class="stats"><div class="stat">対象ページ<b>${parsed.matched.join(', ')}</b></div><div class="stat">生産年度<b>${parsed.years.join('・')}</b></div><div class="stat">明細<b>${parsed.rows.length}件</b></div><div class="stat">合計<b>${fmt(sum)}</b></div></div><div class="note">「根室産昆布」だけを取引先をまたいで集計しています。まだ在庫には反映されていません。</div><div class="tablewrap" style="margin-top:12px"><table style="min-width:850px"><tr><th>No.</th><th>年度</th><th>漁協</th><th>区分</th><th>分類</th><th>細分類</th><th>数量</th></tr>${preview}</table></div><div class="toolbar" style="margin-top:12px"><button class="btn" id="nc">この集計内容で一括入庫</button><button class="btn secondary" id="ncan">キャンセル</button></div></section>`;nc.onclick=()=>{parsed.rows.forEach(r=>nState.records.push({id:crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random()),type:'in',year:r.year,coop:r.coop,season:r.season,group:r.group,item:r.item,qty:r.qty,date:parsed.date,memo:`PDF一括入庫：${file.name}`}));nState.activeYear=parsed.years.at(-1)||'R7';nState.pdfImports.push({hash:parsed.hash,fileName:file.name,date:parsed.date,years:parsed.years,pages:parsed.matched,importedAt:new Date().toISOString()});nSave();alert(`${parsed.rows.length}件、合計${fmt(sum)}を入庫しました。`);nStock()};ncan.onclick=()=>nForm('in')}catch(e){alert('PDFを読み込めませんでした。\n'+(e.message||e));nForm('in')}}
+function nStock(){const y=nState.activeYear,m=nMatrix(),cols=nItems();let h=`<section class="card"><div class="row"><h2>根室産昆布 在庫集計表</h2><select id="nsy">${nYearOptions(y)}</select></div><div class="toolbar"><button class="btn" id="nspdf">PDF出力</button><button class="btn secondary" id="nsh">ホーム</button></div><div class="tablewrap" style="margin-top:12px"><table class="stock-report"><tr><th rowspan="2">組合名</th><th rowspan="2">区分</th>${N_GROUPS.map(g=>`<th colspan="${g.items.length}">${esc(g.name)}</th>`).join('')}<th rowspan="2">計</th></tr><tr>${N_GROUPS.flatMap(g=>g.items).map(i=>`<th>${esc(i)}</th>`).join('')}</tr>`;for(const coop of N_COOPS){for(const season of N_SEASONS){let rt=0;h+=`<tr><th>${season===N_SEASONS[0]?coop:''}</th><th>${season}</th>`;for(const c of cols){const q=m[[y,coop,season,c.group,c.item].join('|')]||0;rt+=q;h+=`<td>${q?fmt(q):''}</td>`}h+=`<td>${rt?fmt(rt):''}</td></tr>`}h+=`<tr class="stock-subtotal"><th></th><th>小計</th>`;let st=0;for(const c of cols){const q=N_SEASONS.reduce((a,se)=>a+(m[[y,coop,se,c.group,c.item].join('|')]||0),0);st+=q;h+=`<td>${q?fmt(q):''}</td>`}h+=`<td>${st?fmt(st):''}</td></tr>`}h+=`<tfoot><tr><th colspan="2">合計</th>`;let gt=0;for(const c of cols){const q=N_COOPS.reduce((a,co)=>a+N_SEASONS.reduce((b,se)=>b+(m[[y,co,se,c.group,c.item].join('|')]||0),0),0);gt+=q;h+=`<th>${q?fmt(q):''}</th>`}h+=`<th>${gt?fmt(gt):''}</th></tr></tfoot></table></div><p class="muted">0は空欄表示。確定済み出荷指示数量を差し引いた利用可能在庫です。</p></section>`;app.innerHTML=h;nsy.onchange=()=>{nState.activeYear=nsy.value;nSave();nStock()};nsh.onclick=nHome;nspdf.onclick=()=>nOpenStockPdf(y)}
+function nReportCanvas(y,ship=null){const W=1684,H=1191,margin=34,c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d'),cols=nItems(),title=ship?'出 荷 指 示 書（根室産昆布）':'根 室 産 昆 布　在 庫 集 計 表';x.fillStyle='#fff';x.fillRect(0,0,W,H);x.fillStyle='#000';x.strokeStyle='#222';const f=(z,b=false)=>`${b?'700 ':'400 '}${z}px -apple-system,BlinkMacSystemFont,"Hiragino Sans",sans-serif`,t=(v,xx,yy,z=13,a='center',b=false)=>{x.font=f(z,b);x.textAlign=a;x.textBaseline='middle';x.fillText(String(v??''),xx,yy)};t(title,margin,38,28,'left',true);t(`${y}年産`,W-margin,38,16,'right',true);if(ship){t(`指示番号：${ship.id}　出荷日：${ship.shipDate||''}`,W-margin,62,13,'right');t(`出荷先：${ship.dest?.name||''}　${ship.dest?.address||''}　TEL ${ship.dest?.phone||''}`,margin,62,12,'left')}const ty=ship?85:70,tw=W-margin*2,coopW=92,seasonW=45,totalW=58,dataW=tw-coopW-seasonW-totalW,colW=dataW/cols.length,shipmentTall=!!window.__v127NemuroShipmentTall,shipmentMerged=!!window.__v128NemuroShipmentMerged,h1=shipmentTall?44:28,h2=shipmentTall?44:28,rowH=shipmentTall?70:39,footH=shipmentTall?38:34,tableH=h1+h2+N_COOPS.length*4*rowH+footH;x.lineWidth=.55;x.strokeRect(margin,ty,tw,tableH);const xData=margin+coopW+seasonW;[margin+coopW,xData,xData+dataW].forEach(xx=>{x.beginPath();x.moveTo(xx,ty);x.lineTo(xx,ty+tableH);x.stroke()});const shHead=!!window.__v63ShipmentHeaderLarge;t('組合名',margin+coopW/2,ty+(h1+h2)/2,shHead?16:12);t('区分',margin+coopW+seasonW/2,ty+(h1+h2)/2,shHead?16:12);t('計',xData+dataW+totalW/2,ty+(h1+h2)/2,shHead?16:12);let ci=0;N_GROUPS.forEach(g=>{const gx=xData+ci*colW,gw=g.items.length*colW;x.strokeRect(gx,ty,gw,h1);const oldGroupSize=['ちがいそ','厚頭','加工用1等'].includes(g.name);t(g.name,gx+gw/2,ty+h1/2,shHead?(oldGroupSize?14:23):10,'center',true);g.items.forEach((it,j)=>{const xx=gx+j*colW;x.strokeRect(xx,ty+h1,colW,h2);const oldItemSize=['8月検①','9月検①','10月検①','11月検①','加工②','ちがいそ','厚頭','加工用1等'].includes(it);t(it,xx+colW/2,ty+h1+h2/2,shHead?(oldItemSize?12:21):8)});ci+=g.items.length});const mt=nMatrix(),lines=ship?.lines||null;const qFor=(coop,se,c)=>lines?lines.filter(l=>l.year===y&&l.coop===coop&&l.season===se&&l.group===c.group&&l.item===c.item).reduce((a,l)=>a+Number(l.qty||0),0):(mt[[y,coop,se,c.group,c.item].join('|')]||0);let yy=ty+h1+h2;for(const coop of N_COOPS){x.lineWidth=1.5;x.beginPath();x.moveTo(margin,yy);x.lineTo(margin+tw,yy);x.stroke();x.lineWidth=.55;for(let si=0;si<N_SEASONS.length;si++){const se=N_SEASONS[si];if(si===0)t(coop,margin+coopW/2,yy+(shipmentMerged?rowH*2:(shipmentTall?rowH*2:(window.__v58ShipmentCoopLower?rowH*1.7:rowH/2))),shipmentMerged?18:12,'center',true);t(se,margin+coopW+seasonW/2,yy+rowH/2,13,'center',true);let rt=0;cols.forEach((cc,j)=>{const q=qFor(coop,se,cc),xx=xData+j*colW;rt+=q;x.beginPath();x.moveTo(xx,yy);x.lineTo(xx,yy+rowH);x.stroke();if(q)t(fmt(q),xx+colW/2,yy+rowH/2,shipmentMerged?24:13)});if(rt)t(fmt(rt),xData+dataW+totalW/2,yy+rowH/2,shipmentMerged?24:13);x.beginPath();x.moveTo(shipmentMerged?margin+coopW:margin,yy+rowH);x.lineTo(margin+tw,yy+rowH);x.stroke();yy+=rowH}t('小計',margin+coopW+seasonW/2,yy+rowH/2,11);let st=0;cols.forEach((cc,j)=>{const q=N_SEASONS.reduce((a,se)=>a+qFor(coop,se,cc),0),xx=xData+j*colW;st+=q;if(q)t(fmt(q),xx+colW/2,yy+rowH/2,11)});if(st)t(fmt(st),xData+dataW+totalW/2,yy+rowH/2,11);x.beginPath();x.moveTo(margin,yy+rowH);x.lineTo(margin+tw,yy+rowH);x.stroke();yy+=rowH}x.lineWidth=1.5;x.beginPath();x.moveTo(margin,yy);x.lineTo(margin+tw,yy);x.stroke();x.lineWidth=.55;t('合計',margin+(coopW+seasonW)/2,yy+footH/2,12,'center',true);let gt=0;cols.forEach((cc,j)=>{const q=N_COOPS.reduce((a,co)=>a+N_SEASONS.reduce((b,se)=>b+qFor(co,se,cc),0),0),xx=xData+j*colW;gt+=q;if(q)t(fmt(q),xx+colW/2,yy+footH/2,shHead?18:12)});if(gt)t(fmt(gt),xData+dataW+totalW/2,yy+footH/2,shHead?18:12);return c}
+async function nOpenStockPdf(y){const w=window.open('about:blank','_blank');if(!w)return alert('PDF画面を開けません。');try{const b=await _singleCanvasPdfBlob(nReportCanvas(y)),u=URL.createObjectURL(b);w.location.replace(u);setTimeout(()=>URL.revokeObjectURL(u),600000)}catch(e){w.close();alert('PDF作成に失敗しました。')}}
+function nLogs(){const a=nState.records.slice().reverse();app.innerHTML=`<section class="card"><h2>根室産昆布 入出庫履歴</h2><div class="tablewrap"><table style="min-width:950px"><tr><th>日付</th><th>区分</th><th>年度</th><th>漁協</th><th>季節</th><th>分類</th><th>細分類</th><th>数量</th><th>操作</th></tr>${a.map(r=>`<tr><td>${r.date}</td><td>${r.type==='in'?'入庫':'出庫'}</td><td>${r.year}</td><td>${r.coop}</td><td>${r.season}</td><td>${esc(r.group)}</td><td>${esc(r.item)}</td><td>${fmt(r.qty)}</td><td><button class="mini" data-ne="${r.id}">修正</button> <button class="mini danger" data-nd="${r.id}">削除</button></td></tr>`).join('')}</table></div><button class="btn secondary" id="nlb">戻る</button></section>`;app.querySelectorAll('[data-ne]').forEach(b=>b.onclick=()=>nForm(null,b.dataset.ne));app.querySelectorAll('[data-nd]').forEach(b=>b.onclick=()=>{if(confirm('削除しますか？')){nState.records=nState.records.filter(r=>r.id!==b.dataset.nd);nSave();nLogs()}});nlb.onclick=nHome}
+function nShipId(){return 'N'+String(nState.shipmentSeq++).padStart(5,'0')}
+function nShipments(){app.innerHTML=`<section class="card"><div class="row"><h2>根室産昆布 出荷指示</h2><button class="mini" id="nnew">＋新規</button></div><div class="tablewrap"><table><tr><th>番号</th><th>出荷元</th><th>出荷先</th><th>出荷日</th><th>数量</th><th>状態</th><th></th></tr>${nState.shipments.slice().reverse().map(s=>`<tr><td>${s.id}</td><td>${esc(s.source?.name||'')}</td><td>${esc(s.dest?.name||'')}</td><td>${s.shipDate||''}</td><td>${fmt((s.lines||[]).reduce((a,l)=>a+Number(l.qty||0),0))}</td><td>${s.status}</td><td><button class="mini" data-ns="${s.id}">開く</button></td></tr>`).join('')}</table></div><button class="btn secondary" id="nsb">戻る</button></section>`;nnew.onclick=()=>nShipForm();app.querySelectorAll('[data-ns]').forEach(b=>b.onclick=()=>nShipDetail(b.dataset.ns));nsb.onclick=nHome}
+function nShipForm(id=null){const s=id?nState.shipments.find(x=>x.id===id):null;let lines=s?.lines?.map(x=>({...x}))||[];app.innerHTML=`<section class="card"><h2>根室産昆布 ${s?'出荷指示修正':'新規出荷指示'}</h2><div class="form"><label>出荷元 会社名<input id="nsrc" value="${esc(s?.source?.name||'㈱浜中運輸')}"></label><label>出荷元 住所<input id="nsrca" value="${esc(s?.source?.address||'')}"></label><label>出荷元 電話<input id="nsrcp" value="${esc(s?.source?.phone||'')}"></label><label>出荷先 会社名<input id="ndst" value="${esc(s?.dest?.name||'')}"></label><label>出荷先 住所<input id="ndsta" value="${esc(s?.dest?.address||'')}"></label><label>出荷先 電話<input id="ndstp" value="${esc(s?.dest?.phone||'')}"></label><div class="subgrid"><label>出荷日<input id="nsd" type="date" value="${s?.shipDate||today()}"></label><label>希望着日<input id="nad" type="date" value="${s?.arrivalDate||''}"></label></div><div id="nsl"></div><button class="btn secondary" id="nala">＋明細追加</button><button class="btn" id="nssv">保存</button><button class="btn secondary" id="nsfb">戻る</button></div></section>`;function rend(){nsl.innerHTML=lines.map((l,i)=>`<div class="card" style="background:#f8fafc"><label>年度<select data-ni="${i}" data-nf="year">${nYearOptions(l.year)}</select></label><label>漁協<select data-ni="${i}" data-nf="coop">${N_COOPS.map(x=>`<option ${x===l.coop?'selected':''}>${x}</option>`).join('')}</select></label><label>区分<select data-ni="${i}" data-nf="season">${N_SEASONS.map(x=>`<option ${x===l.season?'selected':''}>${x}</option>`).join('')}</select></label><label>分類<select data-ni="${i}" data-nf="gi">${nItemOptions(l.group,l.item)}</select></label><label>数量<input type="number" value="${esc(l.qty||'')}" data-ni="${i}" data-nf="qty"></label><button class="mini danger" data-nr="${i}">削除</button></div>`).join('');nsl.querySelectorAll('[data-nf]').forEach(e=>e.onchange=()=>{const i=+e.dataset.ni;if(e.dataset.nf==='gi'){[lines[i].group,lines[i].item]=e.value.split('|')}else lines[i][e.dataset.nf]=e.value});nsl.querySelectorAll('[data-nr]').forEach(e=>e.onclick=()=>{lines.splice(+e.dataset.nr,1);rend()})}nala.onclick=()=>{lines.push({year:nState.activeYear,coop:N_COOPS[0],season:'夏',group:N_GROUPS[0].name,item:N_GROUPS[0].items[0],qty:''});rend()};nssv.onclick=()=>{if(!ndst.value.trim()||!lines.length)return alert('出荷先と明細を入力してください。');for(const l of lines){l.qty=Number(l.qty);if(!l.qty||l.qty>nAvail(l.year,l.coop,l.season,l.group,l.item,s?.id))return alert(`${l.coop} ${l.season} ${l.group} ${l.item} の在庫が不足しています。`)}const o=s||{id:nShipId(),status:'draft',createdAt:new Date().toISOString()};Object.assign(o,{source:{name:nsrc.value,address:nsrca.value,phone:nsrcp.value},dest:{name:ndst.value,address:ndsta.value,phone:ndstp.value},shipDate:nsd.value,arrivalDate:nad.value,lines});if(!s)nState.shipments.push(o);nSave();nShipDetail(o.id)};nsfb.onclick=nShipments;rend()}
+function nShipDetail(id){const s=nState.shipments.find(x=>x.id===id);if(!s)return nShipments();app.innerHTML=`<section class="card"><div class="row"><h2>根室産昆布 出荷指示 ${s.id}</h2><span class="pill">${s.status}</span></div><p><b>出荷先：</b>${esc(s.dest?.name||'')}　<b>出荷元：</b>${esc(s.source?.name||'')}</p><p><b>出荷日：</b>${s.shipDate||''}　<b>合計：</b>${fmt((s.lines||[]).reduce((a,l)=>a+Number(l.qty||0),0))}</p><div class="toolbar"><button class="btn" id="npdfs">帳票表示・PDF/FAX</button>${s.status==='draft'?'<button class="btn" id="nconf">確定・在庫反映</button><button class="btn secondary" id="nedit">修正</button>':''}${s.status==='confirmed'?'<button class="btn" id="nshipped">出荷済</button>':''}<button class="btn secondary" id="nback">一覧へ</button></div></section>`;const pdf=document.getElementById('npdfs');if(pdf)pdf.onclick=()=>nOpenShipPdf(s);if(s.status==='draft'){
+  const c=document.getElementById('nconf');
+
+  if(c)c.onclick=()=>{
+    const inv=window.KombuRefactor?.Inventory;
+
+    for(const l of s.lines){
+      const av=inv?.getAvailableQuantity
+        ? inv.getAvailableQuantity(
+            'nemuro',
+            {
+              year:l.year,
+              coop:l.coop,
+              season:l.season,
+              group:l.group,
+              item:l.item
+            },
+            s.id
+          )
+        : nAvail(
+            l.year,
+            l.coop,
+            l.season,
+            l.group,
+            l.item,
+            s.id
+          );
+
+      if(Number(l.qty)>Math.max(0,Number(av||0))){
+        return alert(
+          `${l.coop} ${l.season} ${l.group} ${l.item} の出荷可能在庫が不足しています。`
         );
       }
     }
@@ -652,17 +770,14 @@ function hShipDetail(id){const s=hState.shipments.find(x=>x.id===id);if(!s)retur
     s.status='confirmed';
     s.confirmedAt=new Date().toISOString();
 
-    smSave();
+    nSave();
 
     alert('出荷指示を確定し、在庫表へ反映しました。');
-    smShipDetail(id);
+    nShipDetail(id);
   };
 
-  const e=document.getElementById('smedit');
-
-  if(e){
-    e.onclick=()=>v114UnifiedShipmentForm('sanmae',id);
-  }
+  const e=document.getElementById('nedit');
+  if(e)e.onclick=()=>v114UnifiedShipmentForm('nemuro',id);
 }
   const sh=document.getElementById('nshipped');
 
