@@ -453,7 +453,33 @@ shipmentDetail=function(id){
   const s=state.shipments.find(x=>x.id===id); if(!s||s.status!=='confirmed') return;
   const btn=document.getElementById('shipped'); if(!btn)return;
   btn.onclick=()=>{
-    for(const l of s.lines){const av=available(l.year||DEFAULT_YEAR,l.coop,l.season,l.group,l.item);const reservedOther=state.shipments.filter(x=>x.id!==s.id&&x.status==='confirmed').reduce((a,x)=>a+x.lines.filter(y=>key(y)===key(l)).reduce((b,y)=>b+Number(y.qty||0),0),0);if(Number(l.qty)>Math.max(0,av-reservedOther))return alert(`${l.coop} ${l.season} ${l.group} ${l.item} の出荷可能在庫が不足しています。`)}
+  for(const l of s.lines){
+  const inv=window.KombuRefactor?.Inventory;
+
+  const av=inv?.getAvailableQuantity
+    ? inv.getAvailableQuantity(
+        'kushiro',
+        {
+          year:l.year||DEFAULT_YEAR,
+          coop:l.coop,
+          season:l.season,
+          group:l.group,
+          item:l.item
+        },
+        s.id
+      )
+    : available(
+        l.year||DEFAULT_YEAR,
+        l.coop,
+        l.season,
+        l.group,
+        l.item
+      );
+
+  if(Number(l.qty)>Math.max(0,Number(av||0))){
+    return alert(`${l.coop} ${l.season} ${l.group} ${l.item} の出荷可能在庫が不足しています。`);
+  }
+}
     if(!confirm('出荷済みにすると、明細数量を在庫から出庫します。よろしいですか？'))return;
     for(const l of s.lines){state.records.push({id:crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random()),type:'out',year:l.year||DEFAULT_YEAR,coop:l.coop,season:l.season,group:l.group,item:l.item,qty:Number(l.qty),date:s.shipDate||today(),memo:`出荷指示 ${s.id} / ${s.dest}`})}
     s.status='shipped';s.shippedAt=new Date().toISOString();save();alert('出荷済みとして在庫から減算しました');shipmentDetail(s.id);
