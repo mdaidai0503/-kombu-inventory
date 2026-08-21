@@ -149,8 +149,23 @@
         );
 
       return physical - reserved;
-    }
-    
+    },
+       getHidakaQuantity(filters = {}) {
+      const records = this.getRecords('hidaka');
+
+      const matches = item =>
+        (!filters.year || (item.year || 'R7') === filters.year) &&
+        (!filters.location || item.location === filters.location) &&
+        (!filters.section || item.section === filters.section) &&
+        (!filters.grade || item.grade === filters.grade);
+
+      return records
+        .filter(matches)
+        .reduce((total, record) => {
+          const qty = Number(record.qty || 0);
+          return total + (record.type === 'out' ? -qty : qty);
+        }, 0);
+    } 
 
   };
 
