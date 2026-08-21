@@ -93,13 +93,35 @@ nav{position:fixed;bottom:0;left:0;right:0;background:#0b2b55;display:flex;justi
   globalThis.__KOMBU_PDFJS__ = globalThis.pdfjsLib;
   globalThis.pdfjsLib.GlobalWorkerOptions.workerSrc = './pdf-worker-v58.js';
 
-  var appScript = document.createElement('script');
-  appScript.src = './app-v159.js';
-  appScript.async = false;
-  appScript.onerror = function(){
-    document.getElementById('app').innerHTML =
-      '<section class="card"><h2>アプリ読込エラー</h2><div class="warning">app-v159.jsを読み込めませんでした。</div></section>';
+  var scripts = [
+  './refactor/js/core/refactor-core.js',
+  './refactor/js/products/products.js',
+  './refactor/js/core/storage.js',
+  './refactor/js/inventory/inventory.js',
+  './app-v159.js'
+];
+
+function loadScript(index) {
+  if (index >= scripts.length) return;
+
+  var script = document.createElement('script');
+  script.src = scripts[index];
+  script.async = false;
+
+  script.onload = function() {
+    loadScript(index + 1);
   };
-  document.body.appendChild(appScript);
+
+  script.onerror = function() {
+    document.getElementById('app').innerHTML =
+      '<section class="card"><h2>アプリ読込エラー</h2><div class="warning">' +
+      scripts[index] +
+      ' を読み込めませんでした。</div></section>';
+  };
+
+  document.body.appendChild(script);
+}
+
+loadScript(0);
 })();
 </script></body></html>
