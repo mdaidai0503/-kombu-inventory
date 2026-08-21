@@ -188,6 +188,39 @@ getAvailableQuantity(productId, filters = {}, excludeShipmentId = null) {
 
   return physical - reserved;
 },
+ getHidakaAvailableQuantity(filters = {}, excludeShipmentId = null) {
+  const records = this.getRecords('hidaka');
+  const shipments = this.getShipments('hidaka');
+
+  const matches = item =>
+    (!filters.year || (item.year || 'R7') === filters.year) &&
+    (!filters.location || item.location === filters.location) &&
+    (!filters.section || item.section === filters.section) &&
+    (!filters.grade || item.grade === filters.grade);
+
+  const physical = records
+    .filter(matches)
+    .reduce((total, record) => {
+      const qty = Number(record.qty || 0);
+      return total + (record.type === 'out' ? -qty : qty);
+    }, 0);
+
+  const reserved = shipments
+    .filter(shipment =>
+      shipment.status === 'confirmed' &&
+      shipment.id !== excludeShipmentId
+    )
+    .flatMap(shipment =>
+      Array.isArray(shipment.lines) ? shipment.lines : []
+    )
+    .filter(matches)
+    .reduce(
+      (total, line) => total + Number(line.qty || 0),
+      0
+    );
+
+  return physical - reserved;
+},   
     getHidakaQuantity(filters = {}) {
   const records = this.getRecords('hidaka');
   const shipments = this.getShipments('hidaka');
