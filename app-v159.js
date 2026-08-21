@@ -2580,7 +2580,9 @@ function v76ShipmentMenu(){
   setHeader('出荷依頼一覧');
   setNavVisible(false);
   const checks=v76LoadShipChecks();
-  const rows=globalShipmentRows().sort((a,b)=>{
+  const rows=globalShipmentRows()
+  .filter(r=>r.s.status!=='shipped'&&r.s.status!=='cancelled')
+  .sort((a,b)=>{
     const ad=a.s.shipDate||a.s.createdAt||a.s.updatedAt||'';
     const bd=b.s.shipDate||b.s.createdAt||b.s.updatedAt||'';
     const c=String(bd).localeCompare(String(ad));
