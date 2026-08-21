@@ -6095,8 +6095,47 @@ async function v130TopBackup(){
   const baseMenu=globalThis.v76ShipmentMenu;
   globalThis.v76ShipmentMenu=function(){
     const r=baseMenu.apply(this,arguments);
-    const archived=new Set(load(HIST_KEY).map(x=>x.key)),inFax=new Set(load(FAX_KEY).map(x=>x.key));
-    document.querySelectorAll('#v76ShipBody tr[data-gprod][data-gid]').forEach(tr=>{const k=key(tr.dataset.gprod,tr.dataset.gid);if(archived.has(k)||inFax.has(k))tr.remove()});
+const hist=load(HIST_KEY);
+const archived=new Set(hist.map(x=>x.key));
+const inFax=new Set(load(FAX_KEY).map(x=>x.key));
+let histChanged=false;
+
+document.querySelectorAll('#v76ShipBody tr[data-gprod][data-gid]').forEach(tr=>{
+  const p=tr.dataset.gprod;
+  const id=tr.dataset.gid;
+  const k=key(p,id);
+  const x=lookup(p,id);
+
+  if(
+    x &&
+    (x.status==='shipped'||x.status==='cancelled') &&
+    !archived.has(k)
+  ){
+    hist.push({
+      key:k,
+      product:p,
+      id,
+      addedAt:x.shippedAt||x.cancelledAt||new Date().toISOString(),
+      archivedAt:new Date().toISOString(),
+      shipDate:x.shipDate||'',
+      dest:dest(p,x),
+      source:source(p,x),
+      qty:qty(x),
+      snapshot:clone(x)
+    });
+
+    archived.add(k);
+    histChanged=true;
+  }
+
+  if(archived.has(k)||inFax.has(k)){
+    tr.remove();
+  }
+});
+
+if(histChanged){
+  save(HIST_KEY,hist);
+}
     const body=document.getElementById('v76ShipBody');
     if(body && !body.querySelector('tr[data-gid]'))body.innerHTML='<tr><td colspan="9" class="empty">出荷指示はありません</td></tr>';
     const head=document.querySelector('#v76ShipmentList .row');
