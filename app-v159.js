@@ -2,6 +2,7 @@
 const PDFJS=globalThis.__KOMBU_PDFJS__||globalThis.pdfjsLib||null;
 /* PDF「R6年度 釧路産昆布 在庫証明書」の見出しを細分類化。対象外2群を除き、大分類6群で管理します。 */
 const GROUPS=[
+ 
  {name:"特長",items:["葉①","元①","葉②","元②","葉③","元③","④","花③","花④","水③"]},
  {name:"特厚",items:["①","②","③","④","花③","花④"]},
  {name:"加工用",items:["①","②","③","尺①"]},
@@ -2780,7 +2781,35 @@ const _v81SmHome=smHome;smHome=function(){const r=_v81SmHome();v81ReplaceHomeSum
   }
 
   function kushiroSplit(y,home=false){const m=matrix(),cols=allItems();return groupSplit({year:y,coops:state.coops,seasons:SEASONS,groups:GROUPS,cols,getValue:(co,se,c)=>m[[y,co,c.group,c.item,se].join('|')]||0,totalValue:()=>total(y),home})}
-  function nemuroSplit(y,home=false){const m=nMatrix(),cols=nItems();return groupSplit({year:y,coops:N_COOPS,seasons:N_SEASONS,groups:N_GROUPS,cols,getValue:(co,se,c)=>m[[y,co,se,c.group,c.item].join('|')]||0,totalValue:()=>nTotal(y),home})}
+  function nemuroSplit(y,home=false){
+  const m=nMatrix(),cols=nItems(),inv=window.KombuRefactor?.Inventory;
+
+  return groupSplit({
+    year:y,
+    coops:N_COOPS,
+    seasons:N_SEASONS,
+    groups:N_GROUPS,
+    cols,
+
+    getValue:(co,se,c)=>
+      inv?.getQuantity
+        ? inv.getQuantity('nemuro',{
+            year:y,
+            coop:co,
+            season:se,
+            group:c.group,
+            item:c.item
+          })
+        : (m[[y,co,se,c.group,c.item].join('|')]||0),
+
+    totalValue:()=>
+      inv?.getQuantity
+        ? inv.getQuantity('nemuro',{year:y})
+        : nTotal(y),
+
+    home
+  });
+}
   function sanmaeSplit(y,home=false){const m=smMatrix(),cols=smItems();return groupSplit({year:y,coops:S_COOPS,seasons:S_SEASONS,groups:S_GROUPS,cols,getValue:(co,se,c)=>m[[y,co,se,c.group,c.item].join('|')]||0,totalValue:()=>smTotal(y),home})}
 
   // Full stock screens: all four products use the same true split layout.
