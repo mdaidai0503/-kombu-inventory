@@ -4938,7 +4938,25 @@ smLogs=function(){
       make:()=>({product:'kushiro',year:state.activeYear,coop:state.coops[0],season:'夏',group:GROUPS[0].name,item:GROUPS[0].items[0],qty:'',memo:''}),
       fields:l=>`<div class="subgrid"><label>生産年度<select data-f="year">${yearOptions(l.year||state.activeYear)}</select></label><label>漁協<select data-f="coop">${state.coops.map(c=>`<option ${c===l.coop?'selected':''}>${esc(c)}</option>`).join('')}</select><label>季節<select data-f="season">${SEASONS.map(x=>`<option ${x===(l.season||'夏')?'selected':''}>${x}</option>`).join('')}</select></div><label>大分類・細分類<select data-f="gi">${itemOptions(l.group||GROUPS[0].name,l.item||GROUPS[0].items[0])}</select></label>`,
       apply:(l,f,v)=>{if(f==='gi')[l.group,l.item]=v.split('|');else l[f]=v},
-      avail:l=>stockAvailableForShipment(l.year||DEFAULT_YEAR,l.coop,l.season,l.group,l.item,null),
+      avail:l=>{
+  const inv=window.KombuRefactor?.Inventory;
+  return inv?.getAvailableQuantity
+    ? inv.getAvailableQuantity('kushiro',{
+        year:l.year||DEFAULT_YEAR,
+        coop:l.coop,
+        season:l.season,
+        group:l.group,
+        item:l.item
+      },null)
+    : stockAvailableForShipment(
+        l.year||DEFAULT_YEAR,
+        l.coop,
+        l.season,
+        l.group,
+        l.item,
+        null
+      );
+},
       desc:l=>`${l.year||DEFAULT_YEAR}年産 ${l.coop} ${l.season} ${l.group} ${l.item}`
     },
     hidaka:{
@@ -4946,7 +4964,23 @@ smLogs=function(){
       make:()=>({product:'hidaka',year:hState.activeYear,location:H_LOCATIONS[0],section:'走り',grade:'1等',qty:'',memo:''}),
       fields:l=>`<div class="subgrid"><label>生産年度<select data-f="year">${hYearOptions(l.year||hState.activeYear)}</select></label><label>産地<select data-f="location">${H_LOCATIONS.map(x=>`<option ${x===l.location?'selected':''}>${esc(x)}</option>`).join('')}</select></div><label>区分・等級<select data-f="sg">${hGradeOptions(l.section||'走り',l.grade||'1等')}</select></label>`,
       apply:(l,f,v)=>{if(f==='sg')[l.section,l.grade]=v.split('|');else l[f]=v},
-      avail:l=>hAvail(l.year||H_DEFAULT_YEAR,l.location,l.section,l.grade,null),
+      avail:l=>{
+  const inv=window.KombuRefactor?.Inventory;
+  return inv?.getHidakaAvailableQuantity
+    ? inv.getHidakaAvailableQuantity({
+        year:l.year||H_DEFAULT_YEAR,
+        location:l.location,
+        section:l.section,
+        grade:l.grade
+      },null)
+    : hAvail(
+        l.year||H_DEFAULT_YEAR,
+        l.location,
+        l.section,
+        l.grade,
+        null
+      );
+},
       desc:l=>`${l.year||H_DEFAULT_YEAR}年産 ${l.location} ${l.section} ${l.grade}`
     },
     nemuro:{
@@ -4954,7 +4988,25 @@ smLogs=function(){
       make:()=>({product:'nemuro',year:nState.activeYear,coop:N_COOPS[0],season:'夏',group:N_GROUPS[0].name,item:N_GROUPS[0].items[0],qty:'',memo:''}),
       fields:l=>`<div class="subgrid"><label>生産年度<select data-f="year">${nYearOptions(l.year||nState.activeYear)}</select></label><label>漁協<select data-f="coop">${N_COOPS.map(x=>`<option ${x===l.coop?'selected':''}>${esc(x)}</option>`).join('')}</select><label>区分<select data-f="season">${N_SEASONS.map(x=>`<option ${x===l.season?'selected':''}>${esc(x)}</option>`).join('')}</select></div><label>分類<select data-f="gi">${nItemOptions(l.group||N_GROUPS[0].name,l.item||N_GROUPS[0].items[0])}</select></label>`,
       apply:(l,f,v)=>{if(f==='gi')[l.group,l.item]=v.split('|');else l[f]=v},
-      avail:l=>nAvail(l.year||N_DEFAULT_YEAR,l.coop,l.season,l.group,l.item,null),
+      avail:l=>{
+  const inv=window.KombuRefactor?.Inventory;
+  return inv?.getAvailableQuantity
+    ? inv.getAvailableQuantity('nemuro',{
+        year:l.year||N_DEFAULT_YEAR,
+        coop:l.coop,
+        season:l.season,
+        group:l.group,
+        item:l.item
+      },null)
+    : nAvail(
+        l.year||N_DEFAULT_YEAR,
+        l.coop,
+        l.season,
+        l.group,
+        l.item,
+        null
+      );
+},
       desc:l=>`${l.year||N_DEFAULT_YEAR}年産 ${l.coop} ${l.season} ${l.group} ${l.item}`
     },
     sanmae:{
@@ -4962,7 +5014,25 @@ smLogs=function(){
       make:()=>({product:'sanmae',year:smState.activeYear,coop:S_COOPS[0],season:'採り',group:S_GROUPS[0].name,item:S_GROUPS[0].items[0],qty:'',memo:''}),
       fields:l=>`<div class="subgrid"><label>生産年度<select data-f="year">${smYearOptions(l.year||smState.activeYear)}</select></label><label>漁協<select data-f="coop">${S_COOPS.map(x=>`<option ${x===l.coop?'selected':''}>${esc(x)}</option>`).join('')}</select><label>区分<select data-f="season">${S_SEASONS.map(x=>`<option ${x===l.season?'selected':''}>${esc(x)}</option>`).join('')}</select></div><label>分類<select data-f="gi">${smItemOptions(l.group||S_GROUPS[0].name,l.item||S_GROUPS[0].items[0])}</select></label>`,
       apply:(l,f,v)=>{if(f==='gi')[l.group,l.item]=v.split('|');else l[f]=v},
-      avail:l=>smAvail(l.year||SM_DEFAULT_YEAR,l.coop,l.season,l.group,l.item,null),
+      avail:l=>{
+  const inv=window.KombuRefactor?.Inventory;
+  return inv?.getAvailableQuantity
+    ? inv.getAvailableQuantity('sanmae',{
+        year:l.year||SM_DEFAULT_YEAR,
+        coop:l.coop,
+        season:l.season,
+        group:l.group,
+        item:l.item
+      },null)
+    : smAvail(
+        l.year||SM_DEFAULT_YEAR,
+        l.coop,
+        l.season,
+        l.group,
+        l.item,
+        null
+      );
+},
       desc:l=>`${l.year||SM_DEFAULT_YEAR}年産 ${l.coop} ${l.season} ${l.group} ${l.item}`
     }
   };
