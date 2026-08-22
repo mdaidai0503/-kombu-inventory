@@ -124,15 +124,10 @@ function loadScript(index) {
 
 loadScript(0);
 })();
- <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-<script>
-  window.KOMBU_SUPABASE_URL = 'https://crltrozzxtivkyxtjjxv.supabase.co';
-  window.KOMBU_SUPABASE_KEY = 'ここにコピーしたPublishable keyを貼り付け';
-
-  window.kombuSupabase = supabase.createClient(
-    window.KOMBU_SUPABASE_URL,
-    window.KOMBU_SUPABASE_KEY
-  );
+ <script>
+window.KOMBU_SUPABASE_CONFIG = {
+  url: 'https://crltrozzxtivkyxtjjxv.supabase.co',
+  publishableKey: 'ここにコピーしたPublishable keyを貼り付け'
+};
 </script> 
 </body></html>
