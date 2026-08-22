@@ -6022,7 +6022,7 @@ async function v130TopBackup(){
         <table class="v159-compact-table v159-history-table">
           <colgroup><col class="c1"><col class="c2"><col class="c3"><col class="c4"><col class="c5"><col class="c6"><col class="c7"></colgroup>
           <thead>
-            <tr><th>依頼日</th><th>昆布</th><th>出荷元</th><th>出荷先</th><th>個数</th><th>開く</th><th>番号</th></tr>
+            <tr><th>依頼日</th><th>昆布</th><th>出荷元</th><th>出荷先</th><th>個数</th><th>送り状</th><th>開く</th><th>指示</th></tr>
             <tr class="v159-filter-row">
               <th><select data-col="date">${makeOptions('date')}</select></th>
               <th><select data-col="product">${makeOptions('product')}</select></th>
@@ -6063,8 +6063,11 @@ async function v130TopBackup(){
         <td>${esc(it.dest?.name||'')}</td>
         <td>${fmt(it.qty||0)}</td>
         <td><button class="mini" data-hopen="1">開く</button></td>
+        <td>${fmt(it.qty||0)}</td>
+<td><span class="muted">未着</span></td>
+<td><button class="mini" data-hopen="1">開く</button></td>
         <td>${esc(it.id||'')}</td>
-      </tr>`).join('')||'<tr><td colspan="7" class="empty">該当する出荷指示履歴はありません</td></tr>';
+      </tr>`).join('')||'<tr><td colspan="8" class="empty">該当する出荷指示履歴はありません</td></tr>';
     }
 
     selects.forEach(sel=>sel.onchange=()=>{
