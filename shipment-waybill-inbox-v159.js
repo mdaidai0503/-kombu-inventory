@@ -1,6 +1,6 @@
 /* =========================================================
    昆布在庫管理
-   送り状PDF連携 v159
+   送り状PDF連携 v159.1
    shipment_waybill_inbox 専用
    ========================================================= */
 
@@ -11,6 +11,8 @@
   const BUCKET_NAME = 'shipment-waybill-inbox';
 
   let waybillCache = [];
+  let refreshTimer = null;
+  let refreshing = false;
 
   function client() {
     return window.kombuSupabase || null;
@@ -18,10 +20,7 @@
 
   async function loadWaybills() {
     const sb = client();
-    if (!sb) {
-      console.warn('Supabase client not ready');
-      return [];
-    }
+    if (!sb) return [];
 
     const result = await sb
       .from(TABLE_NAME)
@@ -40,13 +39,10 @@
   }
 
   function findWaybill(product, shipmentId) {
-    product = String(product || '');
-    shipmentId = String(shipmentId || '');
-
     return waybillCache.find(function (w) {
       return (
-        String(w.matched_product || '') === product &&
-        String(w.matched_shipment_id || '') === shipmentId
+        String(w.matched_product || '') === String(product || '') &&
+        String(w.matched_shipment_id || '') === String(shipmentId || '')
       );
     }) || null;
   }
@@ -80,10 +76,13 @@
     const waybill = findWaybill(product, shipmentId);
 
     if (!waybill) {
-      return '<span class="v159-waybill-status v159-waybill-missing">未着</span>';
+      return '<span class="muted">未着</span>';
     }
 
-    if (waybill.match_status === 'matched' && waybill.storage_path) {
+    if (
+      waybill.match_status === 'matched' &&
+      waybill.storage_path
+    ) {
       return (
         '<button class="mini v159-waybill-pdf" ' +
         'data-waybill-id="' + String(waybill.id) + '">' +
@@ -91,83 +90,78 @@
       );
     }
 
-    return '<span class="v159-waybill-status v159-waybill-review">⚠ 要確認</span>';
-  }
-
-  function attachPdfButtons() {
-    document
-      .querySelectorAll('.v159-waybill-pdf')
-      .forEach(function (button) {
-        button.onclick = function () {
-          const id = button.dataset.waybillId;
-          const waybill = waybillCache.find(function (w) {
-            return String(w.id) === String(id);
-          });
-
-          openWaybillPdf(waybill);
-        };
-      });
+    return '<span class="v159-waybill-review">⚠ 要確認</span>';
   }
 
   function patchHistoryTable() {
     const body = document.getElementById('v136HistBody');
     if (!body) return;
 
-    body.querySelectorAll('tr').forEach(function (tr) {
-      const product = tr.dataset.product || tr.dataset.gprod || '';
-      const shipmentId = tr.dataset.id || tr.dataset.gid || '';
-
+    body.querySelectorAll('tr[data-hid]').forEach(function (tr) {
+      const product = tr.dataset.hprod || '';
+      const shipmentId = tr.dataset.hid || '';
       const cells = tr.querySelectorAll('td');
-      if (cells.length < 8) return;
 
-      /* 6列目 = 送り状 */
+      if (cells.length !== 8) return;
+
       cells[5].innerHTML = makeWaybillCell(product, shipmentId);
     });
 
-    attachPdfButtons();
+    document.querySelectorAll('.v159-waybill-pdf').forEach(function (button) {
+      button.onclick = function () {
+        const waybill = waybillCache.find(function (w) {
+          return String(w.id) === String(button.dataset.waybillId);
+        });
+
+        openWaybillPdf(waybill);
+      };
+    });
   }
 
   async function refreshHistoryWaybills() {
-    await loadWaybills();
-    patchHistoryTable();
-  }
+    if (refreshing) return;
 
-  /*
-   * shipmentHistory() が既に存在する場合、
-   * 元の処理を実行した後に送り状列だけ更新する。
-   */
-  const originalShipmentHistory = window.shipmentHistory;
+    refreshing = true;
 
-  if (typeof originalShipmentHistory === 'function') {
-    window.shipmentHistory = function () {
-      const result = originalShipmentHistory.apply(this, arguments);
-
-      Promise.resolve(result).finally(function () {
-        setTimeout(refreshHistoryWaybills, 0);
-      });
-
-      return result;
-    };
-  }
-
-  /*
-   * shipmentHistory() がグローバルに公開されていない場合でも、
-   * 履歴画面描画後に追従するためMutationObserverを使う。
-   */
-  const observer = new MutationObserver(function () {
-    if (document.getElementById('v136HistBody')) {
-      refreshHistoryWaybills();
+    try {
+      await loadWaybills();
+      patchHistoryTable();
+    } finally {
+      refreshing = false;
     }
+  }
+
+  function scheduleRefresh() {
+    clearTimeout(refreshTimer);
+
+    refreshTimer = setTimeout(function () {
+      if (document.getElementById('v136HistBody')) {
+        refreshHistoryWaybills();
+      }
+    }, 150);
+  }
+
+  const observer = new MutationObserver(function (mutations) {
+    const relevant = mutations.some(function (m) {
+      return Array.from(m.addedNodes || []).some(function (node) {
+        if (!node || node.nodeType !== 1) return false;
+
+        return (
+          node.id === 'v136HistBody' ||
+          (node.querySelector && node.querySelector('#v136HistBody'))
+        );
+      });
+    });
+
+    if (relevant) scheduleRefresh();
   });
 
-  observer.observe(document.documentElement, {
+  observer.observe(document.body, {
     childList: true,
     subtree: true
   });
 
-  window.addEventListener('kombu:supabase-login', function () {
-    refreshHistoryWaybills();
-  });
+  window.addEventListener('kombu:supabase-login', scheduleRefresh);
 
   window.kombuWaybillInboxRefresh = refreshHistoryWaybills;
 
