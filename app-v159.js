@@ -6020,7 +6020,7 @@ async function v130TopBackup(){
     app.innerHTML=`<section class="card v159-history-card v159-history-title-marker" style="margin-top:14px;padding:12px">
       <div class="tablewrap" style="overflow:auto">
         <table class="v159-compact-table v159-history-table">
-          <colgroup><col class="c1"><col class="c2"><col class="c3"><col class="c4"><col class="c5"><col class="c6"><col class="c7"></colgroup>
+          <colgroup><col class="c1"><col class="c2"><col class="c3"><col class="c4"><col class="c5"><col class="c6"><col class="c7"><col class="c8"></colgroup>
           <thead>
             <tr><th>依頼日</th><th>昆布</th><th>出荷元</th><th>出荷先</th><th>個数</th><th>送り状</th><th>開く</th><th>指示</th></tr>
             <tr class="v159-filter-row">
@@ -6029,8 +6029,9 @@ async function v130TopBackup(){
               <th><select data-col="source">${makeOptions('source')}</select></th>
               <th><select data-col="dest">${makeOptions('dest')}</select></th>
               <th><select data-col="qty">${makeOptions('qty')}</select></th>
-              <th><select disabled><option>—</option></select></th>
-              <th><select data-col="id">${makeOptions('id')}</select></th>
+<th></th>
+<th><select disabled><option>--</option></select></th>
+<th><select data-col="id">${makeOptions('id')}</select></th>
             </tr>
           </thead>
           <tbody id="v136HistBody"></tbody>
