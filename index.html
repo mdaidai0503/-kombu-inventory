@@ -124,4 +124,15 @@ function loadScript(index) {
 
 loadScript(0);
 })();
-</script></body></html>
+ <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<script>
+  window.KOMBU_SUPABASE_URL = 'https://crltrozzxtivkyxtjjxv.supabase.co';
+  window.KOMBU_SUPABASE_KEY = 'ここにコピーしたPublishable keyを貼り付け';
+
+  window.kombuSupabase = supabase.createClient(
+    window.KOMBU_SUPABASE_URL,
+    window.KOMBU_SUPABASE_KEY
+  );
+</script> 
+</body></html>
