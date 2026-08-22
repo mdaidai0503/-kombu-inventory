@@ -6191,15 +6191,24 @@ if(histChanged){
  body:has(.v159-history-card) header h1:empty{display:none}
  body:has(.v159-history-card) header:has(h1:empty){min-height:18px;padding-top:0;padding-bottom:0}
  .v159-history-card{margin-bottom:calc(120px + env(safe-area-inset-bottom))}
- .v159-history-table{min-width:680px}
- .v159-history-table th,.v159-history-table td{padding:6px 3px;font-size:10.5px}
- .v159-history-table col.c1{width:76px}
- .v159-history-table col.c2{width:44px}
- .v159-history-table col.c3{width:92px}
- .v159-history-table col.c4{width:92px}
- .v159-history-table col.c5{width:40px}
- .v159-history-table col.c6{width:44px}
- .v159-history-table col.c7{width:58px}
+ .v159-history-table{
+  width:100%;
+  min-width:900px;
+  table-layout:fixed;
+}
+.v159-history-table th,
+.v159-history-table td{
+  padding:6px 5px;
+  font-size:10.5px;
+}
+.v159-history-table col.c1{width:9%}
+.v159-history-table col.c2{width:10%}
+.v159-history-table col.c3{width:16%}
+.v159-history-table col.c4{width:16%}
+.v159-history-table col.c5{width:8%}
+.v159-history-table col.c6{width:14%}
+.v159-history-table col.c7{width:9%}
+.v159-history-table col.c8{width:18%}
  .v159-filter-row th{padding:3px 2px;background:#f4f7fb}
  .v159-filter-row select{width:100%;min-width:0;height:28px;padding:1px 14px 1px 3px;font-size:9.5px;border:1px solid #cbd5e1;border-radius:5px;background:#fff;color:#17324f}
  .v159-filter-row select:disabled{opacity:.45}
