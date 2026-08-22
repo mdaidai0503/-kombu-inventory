@@ -6057,18 +6057,16 @@ async function v130TopBackup(){
           return String(av).localeCompare(String(bv),'ja',{numeric:true})*(sortDir==='desc'?-1:1);
         });
       }
-      body.innerHTML=items.map(it=>`<tr data-hprod="${it.product}" data-hid="${escAttr(it.id||'')}" data-hkey="${escAttr(it.key)}">
-        <td>${esc(it.shipDate||'')}</td>
-        <td><b>${esc(label(it.product))}</b></td>
-        <td>${esc(it.source?.name||'')}</td>
-        <td>${esc(it.dest?.name||'')}</td>
-        <td>${fmt(it.qty||0)}</td>
-        <td><button class="mini" data-hopen="1">開く</button></td>
-        <td>${fmt(it.qty||0)}</td>
-<td><span class="muted">未着</span></td>
-<td><button class="mini" data-hopen="1">開く</button></td>
-        <td>${esc(it.id||'')}</td>
-      </tr>`).join('')||'<tr><td colspan="8" class="empty">該当する出荷指示履歴はありません</td></tr>';
+body.innerHTML=items.map(it=>`<tr data-hprod="${it.product}" data-hid="${escAttr(it.id||'')}" data-hkey="${escAttr(it.key)}">
+  <td>${esc(it.shipDate||'')}</td>
+  <td><b>${esc(label(it.product))}</b></td>
+  <td>${esc(it.source?.name||'')}</td>
+  <td>${esc(it.dest?.name||'')}</td>
+  <td>${fmt(it.qty||0)}</td>
+  <td><span class="muted">未着</span></td>
+  <td><button class="mini" data-hopen="1">開く</button></td>
+  <td>${esc(it.id||'')}</td>
+</tr>`).join('')||'<tr><td colspan="8" class="empty">該当する出荷指示履歴はありません</td></tr>';
     }
 
     selects.forEach(sel=>sel.onchange=()=>{
