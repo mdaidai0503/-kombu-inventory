@@ -213,7 +213,7 @@
         });
 
         if (result.error) {
-          msg.textContent = 'メールアドレスまたはパスワードを確認してください。';
+          msg.textContent = 'ログインエラー: ' + (result.error.message || result.error.code || '不明なエラー');
           return;
         }
 
