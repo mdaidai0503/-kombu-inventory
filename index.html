@@ -131,21 +131,17 @@ loadScript(0);
 <script>
 window.KOMBU_SUPABASE_CONFIG = {
   url: 'https://crltrozzxtivkyxtjjxv.supabase.co',
-  publishableKey: '実際のPublishable key'
+  publishableKey: 'sb_publishable_znOVYKMnJiZuxrsXPaLPxA_EbUdenvN'
 };
 
-if (
-  window.supabase &&
-  window.KOMBU_SUPABASE_CONFIG.url &&
-  window.KOMBU_SUPABASE_CONFIG.publishableKey &&
-  !window.KOMBU_SUPABASE_CONFIG.publishableKey.includes('ここに')
-) {
-  window.kombuSupabase = window.supabase.createClient(
-    window.KOMBU_SUPABASE_CONFIG.url,
-    window.KOMBU_SUPABASE_CONFIG.publishableKey
-  );
-}
+window.kombuSupabase = window.supabase.createClient(
+  window.KOMBU_SUPABASE_CONFIG.url,
+  window.KOMBU_SUPABASE_CONFIG.publishableKey
+);
 </script>
+
+
+<script src="./supabase-auth-v159.js"></script>
 
 </body>
 </html>
