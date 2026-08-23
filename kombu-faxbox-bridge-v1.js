@@ -1,5 +1,5 @@
 /* =========================================================
-   昆布在庫管理 → FAXBOX専用アプリ 連携ブリッジ v1.0
+   昆布在庫管理 → FAXBOX専用アプリ 連携ブリッジ v1.1
    ---------------------------------------------------------
    移行テスト用:
    ・既存の昆布在庫管理内 FAX BOX はまだ残す
@@ -173,27 +173,112 @@
     );
   }
 
+  function normalizeRecipientName(name) {
+    return clean(name)
+      .replace(/\s+/g, '')
+      .replace(/（株）/g, '(株)')
+      .replace(/㈱/g, '(株)')
+      .replace(/株式会社/g, '(株)')
+      .replace(/（有）/g, '㈲')
+      .replace(/\(有\)/g, '㈲')
+      .toLowerCase();
+  }
+
+  async function findFaxboxRecipientByName(name) {
+    const c = sb();
+    const target = normalizeRecipientName(name);
+
+    if (!target) {
+      throw new Error(
+        '送信先名が未設定です。'
+      );
+    }
+
+    const result = await c
+      .from('faxbox_recipients')
+      .select(
+        'id,district,recipient_name,fax_number,favorite,sort_order,active'
+      )
+      .eq('active', true);
+
+    if (result.error) {
+      throw new Error(
+        'FAXBOX送信先マスター取得失敗: ' +
+        result.error.message
+      );
+    }
+
+    const rows = Array.isArray(result.data)
+      ? result.data
+      : [];
+
+    const matches = rows.filter(function (row) {
+      return normalizeRecipientName(
+        row.recipient_name
+      ) === target;
+    });
+
+    if (!matches.length) {
+      throw new Error(
+        'FAXBOX送信先マスターに「' +
+        name +
+        '」が見つかりません。'
+      );
+    }
+
+    matches.sort(function (a, b) {
+      return (
+        Number(Boolean(b.favorite)) -
+          Number(Boolean(a.favorite))
+      ) || (
+        Number(a.sort_order || 100) -
+        Number(b.sort_order || 100)
+      );
+    });
+
+    const hit = matches[0];
+
+    if (!clean(hit.fax_number)) {
+      throw new Error(
+        'FAXBOX送信先マスターの「' +
+        hit.recipient_name +
+        '」にFAX番号がありません。'
+      );
+    }
+
+    return hit;
+  }
+
   async function registerGroup(items) {
     const c = sb();
     const s = await session();
 
     const first = items[0];
     const dest = first?.dest || {};
-    const recipientName = clean(dest.name);
-    const faxNumber = clean(dest.phone);
+    const originalRecipientName =
+      clean(dest.name);
 
-    if (!recipientName) {
+    if (!originalRecipientName) {
       throw new Error(
         '送信先名が未設定です。'
       );
     }
 
-    if (!faxNumber) {
-      throw new Error(
-        recipientName +
-        ' のFAX番号が未設定です。'
+    /*
+     * v1.1:
+     * FAX番号は昆布在庫管理側を使わず、
+     * FAXBOX専用アプリの送信先マスターを正本とする。
+     */
+    const recipient =
+      await findFaxboxRecipientByName(
+        originalRecipientName
       );
-    }
+
+    const recipientName =
+      clean(recipient.recipient_name);
+
+    const faxNumber =
+      clean(recipient.fax_number);
 
     const pdfBlob =
       await captureExistingPdfBlob(items);
@@ -246,8 +331,8 @@
     const body = {
       id: jobId,
       user_id: s.user.id,
-      recipient_id: null,
-      district: null,
+      recipient_id: recipient.id,
+      district: recipient.district || null,
       recipient_name: recipientName,
       fax_number: faxNumber,
       file_path: filePath,
@@ -282,7 +367,11 @@
             (sum, x) =>
               sum + Number(x?.qty || 0),
             0
-          )
+          ),
+        original_destination_name:
+          originalRecipientName,
+        faxbox_recipient_id:
+          recipient.id
       }
     };
 
@@ -525,7 +614,7 @@
 
   window
     .kombuFaxboxBridgeVersion =
-      '1.0';
+      '1.1';
 
   setTimeout(
     injectButton,
