@@ -1,6 +1,6 @@
 /* =========================================================
    昆布在庫管理
-   送り状PDF連携 v159.6
+   送り状PDF連携 v159.7
    shipment_waybill_inbox 専用
    - 出荷履歴のPDF表示
    - 出荷指示詳細画面への浜中運輸送り状表示
@@ -14,6 +14,8 @@
   const BUCKET_NAME = 'shipment-waybill-inbox';
   const MANUAL_LINK_URL =
     'https://crltrozxztivkyxtjjxv.supabase.co/functions/v1/waybill-manual-link';
+  const ERROR_LOG_URL =
+    'https://crltrozxztivkyxtjjxv.supabase.co/functions/v1/waybill-error-log';
   const SYNC_TOKEN_KEY = 'kombu_sync_token_v1';
 
   let waybillCache = [];
@@ -804,6 +806,186 @@
   }
 
 
+
+  async function errorLogApi(action, payload) {
+    const token = readSyncToken();
+
+    if (!token) {
+      throw new Error(
+        '同期トークンが見つかりません。'
+      );
+    }
+
+    const res = await fetch(ERROR_LOG_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-kombu-sync-token': token
+      },
+      body: JSON.stringify({
+        action: action,
+        ...payload
+      })
+    });
+
+    const data = await res.json().catch(function () {
+      return {
+        ok: false,
+        error: 'HTTP ' + res.status
+      };
+    });
+
+    if (!res.ok || !data.ok) {
+      throw new Error(
+        data.error || ('HTTP ' + res.status)
+      );
+    }
+
+    return data;
+  }
+
+  function errorSourceLabel(source) {
+    return {
+      gmail: 'Gmail',
+      ingest: '取込',
+      ocr: 'AI解析/OCR',
+      match: '照合',
+      manual: '手動紐付け',
+      app: 'アプリ'
+    }[source] || source || '不明';
+  }
+
+  function formatErrorTime(v) {
+    if (!v) return '';
+    try {
+      return new Date(v).toLocaleString('ja-JP');
+    } catch (e) {
+      return String(v);
+    }
+  }
+
+  async function openErrorListModal() {
+    const old = document.getElementById('v159ErrorListModal');
+    if (old) old.remove();
+
+    // 既存の ai_error / match_error も一度同期
+    try {
+      await errorLogApi('sync-existing', {});
+    } catch (e) {
+      console.warn('既存エラー同期スキップ:', e);
+    }
+
+    const data = await errorLogApi('list', {
+      status: 'open'
+    });
+
+    const errors = Array.isArray(data.errors)
+      ? data.errors
+      : [];
+
+    const rows = errors.map(function (e) {
+      return (
+        '<tr>' +
+          '<td>' + esc(formatErrorTime(e.occurred_at)) + '</td>' +
+          '<td><b>' + esc(errorSourceLabel(e.source)) + '</b></td>' +
+          '<td>' + esc(e.original_filename || '—') + '</td>' +
+          '<td style="max-width:420px;white-space:normal">' +
+            esc(e.error_message || '') +
+          '</td>' +
+          '<td>' +
+            '<button class="mini v159-error-resolve" ' +
+            'data-error-id="' + esc(e.id) + '">' +
+            '解決済みにする' +
+            '</button>' +
+          '</td>' +
+        '</tr>'
+      );
+    }).join('');
+
+    const overlay = document.createElement('div');
+    overlay.id = 'v159ErrorListModal';
+    overlay.style.position = 'fixed';
+    overlay.style.inset = '0';
+    overlay.style.zIndex = '100001';
+    overlay.style.background = 'rgba(15,23,42,.5)';
+    overlay.style.padding = '20px';
+    overlay.style.overflow = 'auto';
+
+    overlay.innerHTML =
+      '<div style="' +
+        'max-width:1100px;' +
+        'margin:30px auto;' +
+        'background:#fff;' +
+        'border-radius:16px;' +
+        'padding:18px' +
+      '">' +
+        '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center">' +
+          '<div>' +
+            '<h2 style="margin:0">🚨 送り状エラー一覧</h2>' +
+            '<div style="font-size:12px;color:#627d98;margin-top:4px">' +
+              'Gmail・取込・AI解析・照合のエラーだけを表示します。' +
+            '</div>' +
+          '</div>' +
+          '<button class="btn secondary" id="v159ErrorListClose">閉じる</button>' +
+        '</div>' +
+
+        '<div style="margin:14px 0;font-weight:700">' +
+          '未解決：' + errors.length + '件' +
+        '</div>' +
+
+        '<div class="tablewrap">' +
+          '<table style="min-width:900px">' +
+            '<tr>' +
+              '<th>発生日時</th>' +
+              '<th>種類</th>' +
+              '<th>PDF</th>' +
+              '<th>エラー内容</th>' +
+              '<th>操作</th>' +
+            '</tr>' +
+            (
+              rows ||
+              '<tr><td colspan="5" class="empty">現在、未解決エラーはありません。</td></tr>'
+            ) +
+          '</table>' +
+        '</div>' +
+      '</div>';
+
+    document.body.appendChild(overlay);
+
+    const close = document.getElementById('v159ErrorListClose');
+    if (close) close.onclick = function () {
+      overlay.remove();
+    };
+
+    overlay.addEventListener('click', function (ev) {
+      if (ev.target === overlay) overlay.remove();
+    });
+
+    overlay.querySelectorAll('.v159-error-resolve')
+      .forEach(function (button) {
+        button.onclick = async function () {
+          if (!window.confirm(
+            'このエラーを解決済みにしますか？'
+          )) {
+            return;
+          }
+
+          try {
+            await errorLogApi('resolve', {
+              id: button.dataset.errorId
+            });
+            overlay.remove();
+            await openErrorListModal();
+          } catch (e) {
+            alert(
+              '更新に失敗しました。\n' +
+              String(e?.message || e)
+            );
+          }
+        };
+      });
+  }
+
   function patchReviewButton() {
     const headings = Array.from(document.querySelectorAll('h2'));
 
@@ -851,6 +1033,29 @@
       row.appendChild(btn);
     } else {
       target.insertAdjacentElement('afterend', btn);
+    }
+
+    if (!card.querySelector('.v159-error-list-open')) {
+      const errBtn = document.createElement('button');
+      errBtn.className = 'mini v159-error-list-open';
+      errBtn.textContent = '🚨 エラー一覧';
+      errBtn.style.marginLeft = '8px';
+      errBtn.onclick = async function () {
+        try {
+          await openErrorListModal();
+        } catch (e) {
+          alert(
+            'エラー一覧を取得できませんでした。\n' +
+            String(e?.message || e)
+          );
+        }
+      };
+
+      if (row) {
+        row.appendChild(errBtn);
+      } else {
+        btn.insertAdjacentElement('afterend', errBtn);
+      }
     }
   }
 
@@ -905,7 +1110,7 @@
   window.addEventListener('kombu:supabase-login', scheduleRefresh);
   window.addEventListener('load', scheduleRefresh);
 
-  window.KOMBU_WAYBILL_UI_VERSION = '159.6';
+  window.KOMBU_WAYBILL_UI_VERSION = '159.7';
   window.kombuWaybillInboxRefresh = refreshWaybills;
   window.kombuWaybillReviewOpen = async function () {
     await loadWaybills();
