@@ -1,6 +1,6 @@
 /* =========================================================
    昆布在庫管理
-   送り状PDF連携 v159.7
+   送り状PDF連携 v159.8
    shipment_waybill_inbox 専用
    - 出荷履歴のPDF表示
    - 出荷指示詳細画面への浜中運輸送り状表示
@@ -986,77 +986,104 @@
       });
   }
 
+  function makeErrorListButton() {
+    const errBtn = document.createElement('button');
+    errBtn.className = 'mini v159-error-list-open';
+    errBtn.textContent = '🚨 エラー一覧';
+    errBtn.style.marginLeft = '8px';
+
+    errBtn.onclick = async function () {
+      try {
+        await openErrorListModal();
+      } catch (e) {
+        alert(
+          'エラー一覧を取得できませんでした。\n' +
+          String(e?.message || e)
+        );
+      }
+    };
+
+    return errBtn;
+  }
+
   function patchReviewButton() {
     const headings = Array.from(document.querySelectorAll('h2'));
 
-    const target = headings.find(function (h) {
+    // 画面内の候補を全部対象にする。
+    const targets = headings.filter(function (h) {
       const text = String(h.textContent || '');
       return text.includes('出荷指示') || text.includes('出荷依頼');
     });
 
-    if (!target) return;
+    if (!targets.length) return;
 
-    const card = target.closest('.card');
-    if (!card) return;
+    targets.forEach(function (target) {
+      const card = target.closest('.card');
+      if (!card) return;
 
-    const existing = card.querySelector('.v159-waybill-review-open');
-    if (existing) existing.remove();
+      let btn = card.querySelector('.v159-waybill-review-open');
 
-    let exceptionCount = 0;
-    waybillCache.forEach(function (w) {
-      const key = classifyWaybill(w).key;
-      if (key === 'review' || key === 'unmatched') {
-        exceptionCount++;
+      if (!btn) {
+        let exceptionCount = 0;
+
+        waybillCache.forEach(function (w) {
+          const key = classifyWaybill(w).key;
+
+          if (key === 'review' || key === 'unmatched') {
+            exceptionCount++;
+          }
+        });
+
+        btn = document.createElement('button');
+        btn.className = 'mini v159-waybill-review-open';
+        btn.textContent =
+          exceptionCount > 0
+            ? '⚠ 送り状確認 (' + exceptionCount + ')'
+            : '📎 送り状確認';
+
+        if (exceptionCount > 0) {
+          btn.style.fontWeight = '700';
+        }
+
+        btn.style.marginLeft = '8px';
+
+        btn.onclick = async function () {
+          await loadWaybills();
+          openReviewModal();
+        };
+
+        const row = target.closest('.row');
+
+        if (row) {
+          row.appendChild(btn);
+        } else {
+          target.insertAdjacentElement('afterend', btn);
+        }
+      }
+
+      // 「送り状確認」がある場所のすぐ隣に必ずエラー一覧を置く。
+      if (!card.querySelector('.v159-error-list-open')) {
+        btn.insertAdjacentElement(
+          'afterend',
+          makeErrorListButton()
+        );
       }
     });
 
-    const btn = document.createElement('button');
-    btn.className = 'mini v159-waybill-review-open';
-    btn.textContent =
-      exceptionCount > 0
-        ? '⚠ 送り状確認 (' + exceptionCount + ')'
-        : '📎 送り状確認';
+    // 念のため、既に画面にある「送り状確認」ボタンにも補完。
+    document
+      .querySelectorAll('.v159-waybill-review-open')
+      .forEach(function (reviewBtn) {
+        const parent = reviewBtn.parentElement;
+        if (!parent) return;
 
-    if (exceptionCount > 0) {
-      btn.style.fontWeight = '700';
-    }
-
-    btn.style.marginLeft = '8px';
-
-    btn.onclick = async function () {
-      await loadWaybills();
-      openReviewModal();
-    };
-
-    const row = target.closest('.row');
-    if (row) {
-      row.appendChild(btn);
-    } else {
-      target.insertAdjacentElement('afterend', btn);
-    }
-
-    if (!card.querySelector('.v159-error-list-open')) {
-      const errBtn = document.createElement('button');
-      errBtn.className = 'mini v159-error-list-open';
-      errBtn.textContent = '🚨 エラー一覧';
-      errBtn.style.marginLeft = '8px';
-      errBtn.onclick = async function () {
-        try {
-          await openErrorListModal();
-        } catch (e) {
-          alert(
-            'エラー一覧を取得できませんでした。\n' +
-            String(e?.message || e)
+        if (!parent.querySelector('.v159-error-list-open')) {
+          reviewBtn.insertAdjacentElement(
+            'afterend',
+            makeErrorListButton()
           );
         }
-      };
-
-      if (row) {
-        row.appendChild(errBtn);
-      } else {
-        btn.insertAdjacentElement('afterend', errBtn);
-      }
-    }
+      });
   }
 
 
@@ -1110,7 +1137,7 @@
   window.addEventListener('kombu:supabase-login', scheduleRefresh);
   window.addEventListener('load', scheduleRefresh);
 
-  window.KOMBU_WAYBILL_UI_VERSION = '159.7';
+  window.KOMBU_WAYBILL_UI_VERSION = '159.8';
   window.kombuWaybillInboxRefresh = refreshWaybills;
   window.kombuWaybillReviewOpen = async function () {
     await loadWaybills();
