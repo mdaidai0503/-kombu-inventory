@@ -1,6 +1,6 @@
 /* =========================================================
    昆布在庫管理 共通出荷依頼 試作版 Step 1
-   v160.7互換 / Prototype v0.1
+   v160.7互換 / Prototype v0.2
    ---------------------------------------------------------
    目的:
    ・現行4系統の出荷処理は残したまま、新しい共通入力UIを試す
@@ -12,7 +12,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '0.1';
+  const VERSION = '0.2';
   const PROTO_KEY = 'kombu_common_shipment_proto_v1';
 
   const PRODUCTS = {
@@ -724,17 +724,10 @@
     document.getElementById('v161Edit').onclick = showPrototype;
   }
 
-  function injectPrototypeButton() {
+  function installPrototypeEntryButton() {
     const appEl = document.getElementById('app');
-    if (!appEl) return;
-
-    if (document.getElementById('v161PrototypeEntry')) return;
-
-    const text = String(appEl.textContent || '');
-    if (!text.includes('出荷依頼') && !text.includes('出荷指示')) return;
-
-    const card = appEl.querySelector('.card');
-    if (!card) return;
+    if (!appEl) return false;
+    if (document.getElementById('v161PrototypeEntry')) return true;
 
     const btn = document.createElement('button');
     btn.id = 'v161PrototypeEntry';
@@ -747,30 +740,21 @@
       showPrototype();
     };
 
+    const card = appEl.querySelector('.card');
+    if (!card) return false;
     card.appendChild(btn);
+    return true;
   }
 
-  function wrapMenu() {
-    if (typeof window.v76ShipmentMenu !== 'function') return;
-
-    if (window.v76ShipmentMenu.__v161Wrapped) return;
-
-    const old = window.v76ShipmentMenu;
-
-    const wrapped = function () {
-      const r = old.apply(this, arguments);
-      setTimeout(injectPrototypeButton, 0);
-      return r;
-    };
-
-    wrapped.__v161Wrapped = true;
-    window.v76ShipmentMenu = wrapped;
-  }
-
+  // v0.2は起動時に既存関数を書き換えない・画面監視しない。
+  // 明示的に呼ばれたときだけ試作画面を開く。
   window.v161ShipmentPrototype = function () {
     model = loadDraft() || newModel();
     showPrototype();
   };
+
+  // 現在表示中の画面へ入口ボタンだけを明示的に追加する。
+  window.v161InstallPrototypeButton = installPrototypeEntryButton;
 
   window.v161ClearShipmentPrototypeDraft = function () {
     localStorage.removeItem(PROTO_KEY);
@@ -778,10 +762,6 @@
     console.info('[COMMON SHIPMENT PROTO] 試作下書きを削除しました');
   };
 
-  setTimeout(function () {
-    wrapMenu();
-    injectPrototypeButton();
-    console.info('[COMMON SHIPMENT PROTO v' + VERSION + '] ready');
-  }, 0);
+  console.info('[COMMON SHIPMENT PROTO v0.2] standby');
 
 })();
