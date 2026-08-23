@@ -6907,3 +6907,101 @@ if(histChanged){
   document.head.appendChild(st);
 })();
 /* ===== /v159 ===== */
+/* ===== v161 Step1: 出荷依頼入口整理（安全追加版） ===== */
+(function(){
+  'use strict';
+
+  /*
+    既存機能を変更せず、入口だけ整理する。
+    ・新規出荷依頼 → v114UnifiedShipmentForm()
+    ・出荷依頼一覧 → v76ShipmentMenu()
+    ・出荷依頼履歴 → v136ShipmentHistory()
+  */
+  function v161ShipmentEntryMenu(){
+    currentProduct=null;
+    v80InventoryMode=false;
+    setHeader('出荷依頼');
+    setNavVisible(false);
+
+    app.innerHTML=`
+      <section class="card" style="margin-top:14px;padding:16px">
+        <h2 style="margin:0 0 6px;font-size:20px">📦 出荷依頼</h2>
+        <div class="muted" style="font-size:12px">
+          新規作成・現在の出荷依頼・過去の履歴をここから選択します。
+        </div>
+      </section>
+
+      <section class="card" style="margin-top:12px;padding:14px">
+        <div style="display:grid;grid-template-columns:1fr;gap:12px">
+
+          <button class="action green" id="v161NewShipment" type="button"
+            style="text-align:left;padding:18px">
+            ＋ 新規出荷依頼
+            <small>4種類の昆布を共通フォームから入力</small>
+          </button>
+
+          <button class="action blue" id="v161ShipmentList" type="button"
+            style="text-align:left;padding:18px">
+            📋 出荷依頼一覧
+            <small>現在の出荷依頼を新しい順に確認</small>
+          </button>
+
+          <button class="action purple" id="v161ShipmentHistory" type="button"
+            style="text-align:left;padding:18px">
+            🕘 出荷依頼履歴
+            <small>完了・保存済みの出荷依頼を確認</small>
+          </button>
+
+        </div>
+      </section>
+
+      <section class="card" style="margin-top:12px;padding:12px">
+        <button class="btn secondary" id="v161ShipmentHome" type="button">
+          🏠 ホームへ戻る
+        </button>
+      </section>
+    `;
+
+    document.getElementById('v161NewShipment').onclick=function(){
+      globalThis.v114UnifiedShipmentForm();
+    };
+
+    document.getElementById('v161ShipmentList').onclick=function(){
+      globalThis.v76ShipmentMenu();
+    };
+
+    document.getElementById('v161ShipmentHistory').onclick=function(){
+      if(typeof window.v136ShipmentHistory==='function'){
+        window.v136ShipmentHistory();
+      }else{
+        globalThis.v76ShipmentMenu();
+      }
+    };
+
+    document.getElementById('v161ShipmentHome').onclick=function(){
+      globalThis.productLanding();
+    };
+  }
+
+  globalThis.v161ShipmentEntryMenu=v161ShipmentEntryMenu;
+
+  /*
+    v160.7では productChoicePage('shipment') が
+    v114UnifiedShipmentForm() を直接開く。
+    最終ロード後に入口だけ v161 メニューへ差し替える。
+    inventory 等、shipment以外の処理は元関数をそのまま使用する。
+  */
+  const v161BaseProductChoicePage=globalThis.productChoicePage;
+
+  if(typeof v161BaseProductChoicePage==='function'){
+    globalThis.productChoicePage=function(mode){
+      if(mode==='shipment'){
+        return v161ShipmentEntryMenu();
+      }
+      return v161BaseProductChoicePage.apply(this,arguments);
+    };
+  }
+
+  console.info('[KOMBU v161 Step1] 出荷依頼入口整理を有効化');
+})();
+/* ===== /v161 Step1 ===== */
