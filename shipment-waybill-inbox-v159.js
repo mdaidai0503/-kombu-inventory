@@ -1,6 +1,6 @@
 /* =========================================================
    昆布在庫管理
-   送り状PDF連携 v159.3
+   送り状PDF連携 v159.4
    shipment_waybill_inbox 専用
    - 出荷履歴のPDF表示
    - 出荷指示詳細画面への浜中運輸送り状表示
@@ -221,20 +221,35 @@
     }
 
     const info = classifyWaybill(waybill);
+    const scoreText = info.score !== null ? info.score + '点' : '';
 
-    if (
-      info.key === 'matched' &&
-      waybill.storage_path
-    ) {
+    if (info.key === 'matched' && waybill.storage_path) {
       return (
-        statusBadgeHtml(info) +
-        ' <button class="mini v159-waybill-pdf" ' +
-        'data-waybill-id="' + esc(waybill.id) + '">' +
-        '📎 PDF</button>'
+        '<button class="mini v159-waybill-pdf" ' +
+        'data-waybill-id="' + esc(waybill.id) + '" ' +
+        'style="white-space:nowrap">' +
+        '✅ ' + scoreText + ' PDF' +
+        '</button>'
       );
     }
 
-    return statusBadgeHtml(info);
+    if (info.key === 'review') {
+      return (
+        '<span style="white-space:nowrap;font-weight:700;color:#8a5a00">' +
+        '⚠ ' + (scoreText || '要確認') +
+        '</span>'
+      );
+    }
+
+    if (info.key === 'unmatched') {
+      return (
+        '<span style="white-space:nowrap;font-weight:700;color:#9a1f1f">' +
+        '✕ ' + (scoreText || '不一致') +
+        '</span>'
+      );
+    }
+
+    return '<span class="muted">未判定</span>';
   }
 
   function bindWaybillButtons(root) {
@@ -298,47 +313,60 @@
     if (old) old.remove();
 
     const waybill = findWaybill('', shipmentId);
-
-    if (!waybill) {
-      return;
-    }
+    if (!waybill) return;
 
     const info = classifyWaybill(waybill);
-    const score = info.score;
-    const attached =
-      info.key === 'matched' &&
-      !!waybill.storage_path;
+    const scoreText =
+      info.score !== null ? info.score + '点' : '';
 
     const box = document.createElement('div');
     box.className = 'v159-waybill-detail';
-    box.style.marginTop = '14px';
-    box.style.padding = '12px 14px';
-    box.style.border = '1px solid #cfd8e3';
-    box.style.borderRadius = '10px';
+    box.style.marginTop = '10px';
+    box.style.padding = '9px 12px';
+    box.style.border = '1px solid #d6dee8';
+    box.style.borderRadius = '9px';
     box.style.background = '#f8fafc';
+    box.style.display = 'flex';
+    box.style.alignItems = 'center';
+    box.style.justifyContent = 'space-between';
+    box.style.gap = '10px';
+    box.style.flexWrap = 'wrap';
 
-    if (attached) {
-      box.innerHTML =
-        '<div style="font-weight:700;margin-bottom:8px">' +
-          '📎 浜中運輸送り状 PDF' +
-        '</div>' +
-        '<div style="margin-bottom:10px">' +
-          (score !== null
-            ? '照合スコア：<b>' + score + '点</b>'
-            : '自動照合済み') +
-        '</div>' +
-        '<button class="btn secondary v159-waybill-pdf" ' +
-          'data-waybill-id="' + esc(waybill.id) + '">' +
-          'PDFを開く' +
-        '</button>';
+    let stateText = '';
+    if (info.key === 'matched') {
+      stateText =
+        '<span style="font-weight:700;color:#126b34">✅ 自動照合' +
+        (scoreText ? ' ' + scoreText : '') +
+        '</span>';
+    } else if (info.key === 'review') {
+      stateText =
+        '<span style="font-weight:700;color:#8a5a00">⚠ 要確認' +
+        (scoreText ? ' ' + scoreText : '') +
+        '</span>';
+    } else if (info.key === 'unmatched') {
+      stateText =
+        '<span style="font-weight:700;color:#9a1f1f">✕ 不一致' +
+        (scoreText ? ' ' + scoreText : '') +
+        '</span>';
     } else {
-      box.innerHTML =
-        '<div style="font-weight:700">⚠ 浜中運輸送り状 要確認</div>' +
-        (score !== null
-          ? '<div style="margin-top:6px">照合スコア：<b>' +
-            score + '点</b></div>'
-          : '');
+      stateText =
+        '<span style="font-weight:700;color:#53657a">… 未判定</span>';
     }
+
+    const pdfButton = waybill.storage_path
+      ? (
+          '<button class="mini v159-waybill-pdf" ' +
+          'data-waybill-id="' + esc(waybill.id) + '">' +
+          'PDFを開く</button>'
+        )
+      : '';
+
+    box.innerHTML =
+      '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+        '<b>📎 浜中運輸送り状</b>' +
+        stateText +
+      '</div>' +
+      pdfButton;
 
     const toolbar = card.querySelector('.toolbar');
     if (toolbar) {
@@ -356,49 +384,74 @@
     if (old) old.remove();
   }
 
+  function makeReviewRow(w) {
+    const info = classifyWaybill(w);
+    const pdfButton = w.storage_path
+      ? (
+          '<button class="mini v159-waybill-pdf" ' +
+          'data-waybill-id="' + esc(w.id) + '">' +
+          'PDF</button>'
+        )
+      : '';
+
+    return (
+      '<tr>' +
+        '<td>' + statusBadgeHtml(info) + '</td>' +
+        '<td>' + esc(w.matched_shipment_id || '—') + '</td>' +
+        '<td>' + esc(w.matched_product || '—') + '</td>' +
+        '<td>' + esc(w.original_filename || '') + '</td>' +
+        '<td>' + pdfButton + '</td>' +
+      '</tr>'
+    );
+  }
+
+  function tableHtml(items, emptyText) {
+    return (
+      '<div class="tablewrap">' +
+        '<table style="min-width:760px">' +
+          '<tr>' +
+            '<th>判定</th>' +
+            '<th>出荷指示</th>' +
+            '<th>昆布</th>' +
+            '<th>FAX PDF</th>' +
+            '<th>開く</th>' +
+          '</tr>' +
+          (
+            items.length
+              ? items.map(makeReviewRow).join('')
+              : '<tr><td colspan="5" class="empty">' +
+                esc(emptyText) +
+                '</td></tr>'
+          ) +
+        '</table>' +
+      '</div>'
+    );
+  }
+
   function openReviewModal() {
     closeReviewModal();
 
-    const counts = {
-      matched: 0,
-      review: 0,
-      unmatched: 0,
-      pending: 0
-    };
-
-    waybillCache.forEach(function (w) {
-      const info = classifyWaybill(w);
-      counts[info.key] = (counts[info.key] || 0) + 1;
-    });
-
-    const rows = waybillCache
+    const sorted = waybillCache
       .slice()
       .sort(function (a, b) {
-        const ad = String(a.received_at || '');
-        const bd = String(b.received_at || '');
-        return bd.localeCompare(ad);
-      })
-      .map(function (w) {
-        const info = classifyWaybill(w);
-        const pdfButton = w.storage_path
-          ? (
-              '<button class="mini v159-waybill-pdf" ' +
-              'data-waybill-id="' + esc(w.id) + '">' +
-              'PDF</button>'
-            )
-          : '';
+        return String(b.received_at || '')
+          .localeCompare(String(a.received_at || ''));
+      });
 
-        return (
-          '<tr>' +
-            '<td>' + statusBadgeHtml(info) + '</td>' +
-            '<td>' + esc(w.matched_shipment_id || '—') + '</td>' +
-            '<td>' + esc(w.matched_product || '—') + '</td>' +
-            '<td>' + esc(w.original_filename || '') + '</td>' +
-            '<td>' + pdfButton + '</td>' +
-          '</tr>'
-        );
-      })
-      .join('');
+    const groups = {
+      matched: [],
+      review: [],
+      unmatched: [],
+      pending: []
+    };
+
+    sorted.forEach(function (w) {
+      const info = classifyWaybill(w);
+      (groups[info.key] || groups.pending).push(w);
+    });
+
+    const exceptionItems =
+      groups.review.concat(groups.unmatched);
 
     const wrap = document.createElement('div');
     wrap.id = 'v159WaybillReviewModal';
@@ -418,30 +471,63 @@
         'padding:18px;' +
         'box-shadow:0 18px 50px rgba(0,0,0,.2)' +
       '">' +
+
         '<div style="display:flex;justify-content:space-between;gap:12px;align-items:center">' +
-          '<h2 style="margin:0">📎 浜中運輸送り状 照合状況</h2>' +
+          '<div>' +
+            '<h2 style="margin:0">⚠ 送り状確認</h2>' +
+            '<div style="font-size:12px;color:#627d98;margin-top:4px">' +
+              '通常は確認が必要なFAXだけを表示します。' +
+            '</div>' +
+          '</div>' +
           '<button class="btn secondary" id="v159WaybillReviewClose">閉じる</button>' +
         '</div>' +
 
-        '<div style="display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:8px;margin:14px 0">' +
-          '<div class="card" style="padding:12px"><b>✅ 自動添付</b><div style="font-size:24px;font-weight:700">' + counts.matched + '</div><small>90点以上</small></div>' +
-          '<div class="card" style="padding:12px"><b>⚠️ 要確認</b><div style="font-size:24px;font-weight:700">' + counts.review + '</div><small>70〜89点</small></div>' +
-          '<div class="card" style="padding:12px"><b>✕ 不一致</b><div style="font-size:24px;font-weight:700">' + counts.unmatched + '</div><small>69点以下</small></div>' +
-          '<div class="card" style="padding:12px"><b>… 未判定</b><div style="font-size:24px;font-weight:700">' + counts.pending + '</div><small>解析・照合待ち</small></div>' +
+        '<div style="display:grid;grid-template-columns:repeat(2,minmax(150px,1fr));gap:10px;margin:14px 0">' +
+          '<div class="card" style="padding:14px;border:1px solid #f0c96a">' +
+            '<b>⚠ 要確認</b>' +
+            '<div style="font-size:28px;font-weight:700;color:#8a5a00">' +
+              groups.review.length +
+            '</div>' +
+            '<small>70〜89点</small>' +
+          '</div>' +
+          '<div class="card" style="padding:14px;border:1px solid #efb0b0">' +
+            '<b>✕ 不一致</b>' +
+            '<div style="font-size:28px;font-weight:700;color:#9a1f1f">' +
+              groups.unmatched.length +
+            '</div>' +
+            '<small>69点以下</small>' +
+          '</div>' +
         '</div>' +
 
-        '<div class="tablewrap">' +
-          '<table style="min-width:900px">' +
-            '<tr>' +
-              '<th>判定</th>' +
-              '<th>出荷指示</th>' +
-              '<th>昆布</th>' +
-              '<th>FAX PDF</th>' +
-              '<th>開く</th>' +
-            '</tr>' +
-            (rows || '<tr><td colspan="5" class="empty">送り状はありません</td></tr>') +
-          '</table>' +
-        '</div>' +
+        '<section style="margin-top:14px">' +
+          '<h3 style="margin:0 0 8px">確認が必要なFAX</h3>' +
+          tableHtml(
+            exceptionItems,
+            '現在、確認が必要な送り状はありません。'
+          ) +
+        '</section>' +
+
+        '<details style="margin-top:16px;border-top:1px solid #e5eaf0;padding-top:12px">' +
+          '<summary style="cursor:pointer;font-weight:700">' +
+            '✅ 自動添付済みを表示（' + groups.matched.length + '件）' +
+          '</summary>' +
+          '<div style="margin-top:10px">' +
+            tableHtml(groups.matched, '自動添付済みはありません。') +
+          '</div>' +
+        '</details>' +
+
+        '<details style="margin-top:12px;border-top:1px solid #e5eaf0;padding-top:12px">' +
+          '<summary style="cursor:pointer;font-weight:700;color:#627d98">' +
+            '… 過去の未判定を表示（' + groups.pending.length + '件）' +
+          '</summary>' +
+          '<div style="margin-top:10px">' +
+            '<div style="font-size:12px;color:#627d98;margin-bottom:8px">' +
+              '過去取込分です。通常運用では開く必要はありません。' +
+            '</div>' +
+            tableHtml(groups.pending, '未判定はありません。') +
+          '</div>' +
+        '</details>' +
+
       '</div>';
 
     document.body.appendChild(wrap);
@@ -456,6 +542,7 @@
     bindWaybillButtons(wrap);
   }
 
+
   function patchReviewButton() {
     const headings = Array.from(document.querySelectorAll('h2'));
 
@@ -469,12 +556,30 @@
     const card = target.closest('.card');
     if (!card) return;
 
-    if (card.querySelector('.v159-waybill-review-open')) return;
+    const existing = card.querySelector('.v159-waybill-review-open');
+    if (existing) existing.remove();
+
+    let exceptionCount = 0;
+    waybillCache.forEach(function (w) {
+      const key = classifyWaybill(w).key;
+      if (key === 'review' || key === 'unmatched') {
+        exceptionCount++;
+      }
+    });
 
     const btn = document.createElement('button');
     btn.className = 'mini v159-waybill-review-open';
-    btn.textContent = '📎 送り状照合';
+    btn.textContent =
+      exceptionCount > 0
+        ? '⚠ 送り状確認 (' + exceptionCount + ')'
+        : '📎 送り状確認';
+
+    if (exceptionCount > 0) {
+      btn.style.fontWeight = '700';
+    }
+
     btn.style.marginLeft = '8px';
+
     btn.onclick = async function () {
       await loadWaybills();
       openReviewModal();
@@ -487,6 +592,7 @@
       target.insertAdjacentElement('afterend', btn);
     }
   }
+
 
   async function refreshWaybills() {
     if (refreshing) return;
