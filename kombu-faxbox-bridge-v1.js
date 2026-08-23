@@ -1,5 +1,5 @@
 /* =========================================================
-   昆布在庫管理 → FAXBOX専用アプリ 連携ブリッジ v1.1
+   昆布在庫管理 → FAXBOX専用アプリ 連携ブリッジ v1.2
    ---------------------------------------------------------
    移行テスト用:
    ・既存の昆布在庫管理内 FAX BOX はまだ残す
@@ -20,6 +20,45 @@
   const STORAGE_BUCKET = 'faxbox-documents';
 
   let sending = false;
+
+  function stageError(stage, error) {
+    const detail = String(
+      error?.message ||
+      error?.error_description ||
+      error ||
+      '不明なエラー'
+    );
+
+    console.error(
+      '[FAXBOX BRIDGE v1.2][' + stage + ']',
+      error
+    );
+
+    const e = new Error(
+      '【' + stage + '】' + detail
+    );
+    e.stage = stage;
+    e.original = error;
+    return e;
+  }
+
+  async function runStage(stage, fn) {
+    console.info(
+      '[FAXBOX BRIDGE v1.2][' + stage + '] 開始'
+    );
+
+    try {
+      const result = await fn();
+
+      console.info(
+        '[FAXBOX BRIDGE v1.2][' + stage + '] 成功'
+      );
+
+      return result;
+    } catch (error) {
+      throw stageError(stage, error);
+    }
+  }
 
   function sb() {
     return window.kombuSupabase || null;
@@ -251,7 +290,13 @@
 
   async function registerGroup(items) {
     const c = sb();
-    const s = await session();
+
+    const s = await runStage(
+      '1 Supabaseログイン確認',
+      async function () {
+        return await session();
+      }
+    );
 
     const first = items[0];
     const dest = first?.dest || {};
@@ -259,19 +304,20 @@
       clean(dest.name);
 
     if (!originalRecipientName) {
-      throw new Error(
-        '送信先名が未設定です。'
+      throw stageError(
+        '2 送信先名確認',
+        new Error('送信先名が未設定です。')
       );
     }
 
-    /*
-     * v1.1:
-     * FAX番号は昆布在庫管理側を使わず、
-     * FAXBOX専用アプリの送信先マスターを正本とする。
-     */
     const recipient =
-      await findFaxboxRecipientByName(
-        originalRecipientName
+      await runStage(
+        '2 FAXBOX送信先マスター検索',
+        async function () {
+          return await findFaxboxRecipientByName(
+            originalRecipientName
+          );
+        }
       );
 
     const recipientName =
@@ -281,7 +327,14 @@
       clean(recipient.fax_number);
 
     const pdfBlob =
-      await captureExistingPdfBlob(items);
+      await runStage(
+        '3 出荷指示PDF生成',
+        async function () {
+          return await captureExistingPdfBlob(
+            items
+          );
+        }
+      );
 
     const jobId =
       crypto.randomUUID
@@ -298,23 +351,30 @@
       jobId +
       '/document.pdf';
 
-    const upload = await c.storage
-      .from(STORAGE_BUCKET)
-      .upload(
-        filePath,
-        pdfBlob,
-        {
-          contentType: 'application/pdf',
-          upsert: false
-        }
-      );
+    await runStage(
+      '4 faxbox-documentsへPDF保存',
+      async function () {
+        const upload = await c.storage
+          .from(STORAGE_BUCKET)
+          .upload(
+            filePath,
+            pdfBlob,
+            {
+              contentType: 'application/pdf',
+              upsert: false
+            }
+          );
 
-    if (upload.error) {
-      throw new Error(
-        'FAXBOX PDF保存失敗: ' +
-        upload.error.message
-      );
-    }
+        if (upload.error) {
+          throw new Error(
+            'FAXBOX PDF保存失敗: ' +
+            upload.error.message
+          );
+        }
+
+        return upload;
+      }
+    );
 
     const sourceIds = items
       .map(x => clean(x.id))
@@ -375,24 +435,33 @@
       }
     };
 
-    const insert = await c
-      .from('faxbox_jobs')
-      .insert(body)
-      .select('id,status')
-      .single();
+    const insert = await runStage(
+      '5 faxbox_jobsへ登録',
+      async function () {
+        const r = await c
+          .from('faxbox_jobs')
+          .insert(body)
+          .select('id,status')
+          .single();
 
-    if (insert.error) {
+        if (r.error) {
+          throw new Error(
+            'FAXBOX登録失敗: ' +
+            r.error.message
+          );
+        }
+
+        return r;
+      }
+    ).catch(async function (error) {
       try {
         await c.storage
           .from(STORAGE_BUCKET)
           .remove([filePath]);
       } catch (_) {}
 
-      throw new Error(
-        'FAXBOX登録失敗: ' +
-        insert.error.message
-      );
-    }
+      throw error;
+    });
 
     return {
       jobId: jobId,
@@ -477,7 +546,9 @@
               clean(group[0]?.dest?.name) ||
               '送信先未設定',
             error:
-              String(e?.message || e)
+              String(e?.message || e),
+            stage:
+              e?.stage || '不明'
           });
         }
       }
@@ -497,10 +568,15 @@
             .map(
               x =>
                 x.destination +
-                ': ' +
+                '\n' +
+                '段階: ' +
+                x.stage +
+                '\n' +
+                '内容: ' +
                 x.error
             )
-            .join('\n');
+            .join('\n\n') +
+          '\n\nF12 → Consoleにも詳細ログを出しています。';
       } else {
         msg +=
           '\n\nFAXBOX専用アプリの「送信待ち一覧」を確認してください。';
@@ -614,7 +690,7 @@
 
   window
     .kombuFaxboxBridgeVersion =
-      '1.1';
+      '1.2';
 
   setTimeout(
     injectButton,
