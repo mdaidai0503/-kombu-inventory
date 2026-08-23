@@ -1,3 +1,158 @@
+貼り付けられたテキスト（1 点）.txt
+ドキュメント
+
+では、現在の画面を基準に 新しい「新規出荷依頼」完成レイアウト案を固めます。今回はまだコード変更せず、見た目と操作順だけ決めます。
+
+新しい新規出荷依頼画面
+┌─────────────────────────────────────────────┐
+│ 📦 新規出荷依頼                    📝 下書き │
+│ 依頼No. S000123                            │
+├─────────────────────────────────────────────┤
+│ ① 基本情報                                 │
+│                                             │
+│ 依頼日              着希望日               │
+│ [2026/08/24]        [2026/08/25]           │
+│                                             │
+│ 配送・袋入等         備考                   │
+│ [▼ 選択       ]     [自由入力          ]   │
+├─────────────────────────────────────────────┤
+│ ② 出荷元                                   │
+│                                             │
+│ 出荷元を選択                               │
+│ [▼ 登録済み出荷元                    ]     │
+│                                             │
+│ 会社名  ㈱浜中運輸                         │
+│ 住所    ○○○○○                              │
+│ 電話    000-0000-0000                      │
+│                                             │
+│ [マスター編集]                              │
+├─────────────────────────────────────────────┤
+│ ③ 出荷先                                   │
+│                                             │
+│ 出荷先を選択                               │
+│ [▼ 登録済み出荷先                    ]     │
+│                                             │
+│ 会社名  ○○商店                             │
+│ 住所    ○○○○○                              │
+│ 電話    000-0000-0000                      │
+│                                             │
+│ [マスター編集]                              │
+├─────────────────────────────────────────────┤
+│ ④ 出荷明細                                 │
+│                                             │
+│ 明細1                                      │
+│ ┌─────────────────────────────────────┐   │
+│ │ 昆布種類 [▼ 釧路産昆布          ] │   │
+│ │ 年産     [▼ R7                  ] │   │
+│ │ 漁協     [▼ 浜中                ] │   │
+│ │ 区分     [▼ 夏                  ] │   │
+│ │ 等級     [▼ ①                  ] │   │
+│ │                                     │   │
+│ │ 出荷可能在庫  120                   │   │
+│ │ 数量          [ 10 ]                │   │
+│ │                            🗑 削除   │   │
+│ └─────────────────────────────────────┘   │
+│                                             │
+│ [ ＋ 明細追加 ]                             │
+│                                             │
+│ 合計数量  10                               │
+├─────────────────────────────────────────────┤
+│ ⑤ 操作                                     │
+│                                             │
+│ [ 💾 下書き保存 ]                          │
+│ [ 👁 内容確認へ ]                          │
+└─────────────────────────────────────────────┘
+現在画面から変えるポイント
+
+一番大きいのは、出荷元・出荷先の入力方法です。今は会社名・住所・電話を直接入力できますが、新画面ではまず登録済みマスターから選び、住所・電話は自動表示を基本にします。
+
+ただし、完全固定にはしません。必要なら「マスター編集」から会社情報を直せるようにして、保存時にはその時点の会社名・住所・電話を出荷依頼側にもコピーして残します。
+
+明細は今の共通フォームを活かします
+
+現在の v114UnifiedShipmentForm() は、明細ごとに昆布種類を選べて、釧路・日高・根室・釧棹を混在できます。ここはそのまま活かします。現在庫も既に計算して表示できるので、見た目だけ整理すればかなり使いやすくなります。
+
+PCとiPhoneの違い
+
+PCでは「基本情報」「出荷元・出荷先」を2列で表示してもよいですが、iPhoneでは必ず1列に落とします。
+
+つまり、
+
+PC
+出荷元 ｜ 出荷先
+
+iPhone
+出荷元
+↓
+出荷先
+
+にします。
+
+次の改修内容
+
+次のStepでは、現在正常に動いている共通フォームの保存ロジックはそのまま残して、HTMLレイアウトだけをこの完成案に寄せます。
+
+まずは、
+基本情報 → 出荷元 → 出荷先 → 明細 → 下書き保存
+の順に並び替え、出荷元・出荷先を「マスター選択中心」に変更します。
+
+この段階ではまだ「内容確認画面」は追加せず、まず入力画面だけ完成させるのが安全です。
+
+お願いします
+
+Step 2の完成版を作成しました。今回は、現在正常に動いているStep 1完成版を基準にして、新規出荷依頼画面だけを整理しています。
+
+app-v159-v161-step2-complete.txt
+
+主な変更は、基本情報→出荷元→出荷先→出荷明細の順に整理し、出荷元・出荷先は会社マスターから選択して住所・電話を自動表示する方式にしたことです。既存の共通フォームはすでに4種類の昆布を扱い、出荷可能在庫を計算できる構造なので、その保存方式を維持したまま画面を整理しています。
+
+GitHubでは app-v159.js を開いて、全文を削除 → このTXT全文を貼り付け → Commitしてください。index.html は変更しません。
+
+更新後はPCで Ctrl + F5 を押し、まずトップ画面が正常に出ることを確認してください。その後、
+
+📦 出荷依頼 → ＋ 新規出荷依頼
+
+を開きます。
+
+今回のStep 2では、「内容確認へ」はまだ追加していません。下書き保存・既存の在庫チェック・4種類への保存処理は従来の仕組みを維持しています。
+
+画面が表示されたら、スクリーンショットを送ってください。次にPC/iPhone表示を確認して調整します。 
+
+app-v159-v161-step2-complete.txt
+ドキュメント
+フリーズします
+
+原因が分かりました。Step 2完成版にJavaScriptの構文エラーが入っていました。 こちらでチェックしたところ、missing ) after argument list が出ています。これがフリーズ原因です。
+
+まず、正常だった Step 1完成版へ戻してください。
+
+正常だった Step 1 完成版
+
+GitHubの app-v159.js を、
+
+全文削除 → Step 1 TXT全文を貼り付け → Commit → Ctrl + F5
+
+してください。
+
+Step 1に戻せば、先ほど確認できた正常状態、
+
+📦 出荷依頼
+＋ 新規出荷依頼
+📋 出荷依頼一覧
+🕘 出荷依頼履歴
+
+へ戻ります。
+
+今回は私の作成したStep 2側のコードエラーです。次は、修正版をお渡しする前にこちらで必ず JavaScript構文チェックを通して「Syntax OK」になったものだけをお渡します。
+
+まずStep 1へ戻して、正常になったらそのまま教えてください。
+
+app-v159-v161-step1-complete.txt
+ドキュメント
+
+ライブラリ
+/
+app-v159-v161-step1-complete.txt
 "use strict";
 const PDFJS=globalThis.__KOMBU_PDFJS__||globalThis.pdfjsLib||null;
 /* PDF「R6年度 釧路産昆布 在庫証明書」の見出しを細分類化。対象外2群を除き、大分類6群で管理します。 */
@@ -5184,10 +5339,8 @@ smLogs=function(){
   };
   const productOptions=p=>Object.entries(productDefs).map(([k,d])=>`<option value="${k}" ${k===p?'selected':''}>${d.label}</option>`).join('');
 
-/* ===== v161 Step2: 新規出荷依頼レイアウト整理 + 会社マスター選択 ===== */
   function v114UnifiedShipmentForm(editProduct=null,editId=null,preset=null){
     currentProduct=null;v80InventoryMode=false;setHeader('出荷依頼');setNavVisible(true);bindNav();
-
     const editStores={
       kushiro:{find:id=>state.shipments.find(x=>x.id===id),save:()=>save()},
       hidaka:{find:id=>hState.shipments.find(x=>x.id===id),save:()=>hSave()},
@@ -5199,170 +5352,40 @@ smLogs=function(){
     let lines=existing?.lines?.length?existing.lines.map(x=>({product:editProduct,...x})):[];
     const existingSrc=existing?(existing.source&&typeof existing.source==='object'?existing.source:shipmentSource(existing)):null;
     const existingDst=existing?(existing.destInfo&&typeof existing.destInfo==='object'?existing.destInfo:(existing.dest&&typeof existing.dest==='object'?existing.dest:shipmentDest(existing))):null;
-    const source0=existingSrc||companyByName('㈱浜中運輸')||{name:'㈱浜中運輸',address:'',phone:''};
-    const dest0=existingDst||{name:'',address:'',phone:''};
-
-    const companies=Array.isArray(state.companies)?state.companies.filter(c=>c&&String(c.name||'').trim()):[];
-    const companyOptions=(selected,allowBlank=false)=>{
-      const selectedName=String(selected||'').trim();
-      const names=[...companies.map(c=>String(c.name||'').trim()).filter(Boolean)];
-      if(selectedName&&!names.includes(selectedName))names.unshift(selectedName);
-      return (allowBlank?'<option value="">出荷先を選択</option>':'')+
-        names.map(n=>`<option value="${esc(n)}" ${n===selectedName?'selected':''}>${esc(n)}</option>`).join('');
-    };
-
-    app.innerHTML=`
-      <style>
-        .v161-ship-page{max-width:1180px;margin:0 auto}
-        .v161-section{margin-top:12px}
-        .v161-section-title{margin:0 0 12px;font-size:18px;font-weight:900;color:#102a43}
-        .v161-basic{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-        .v161-basic-card,.v161-party-card{background:#173f73;border-radius:16px;padding:14px;color:#fff}
-        .v161-basic-card label,.v161-party-card label{font-weight:800}
-        .v161-basic-card input,.v161-basic-card select,.v161-party-card select{
-          width:100%;margin-top:6px;padding:12px;border:1px solid #d5dde8;border-radius:10px;background:#fff;color:#102a43;font-size:16px
-        }
-        .v161-party-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-        .v161-party-details{margin-top:12px;background:#fff;color:#102a43;border-radius:12px;padding:12px}
-        .v161-party-row{display:grid;grid-template-columns:82px 1fr;gap:8px;padding:6px 0;border-bottom:1px solid #e6edf5}
-        .v161-party-row:last-child{border-bottom:0}
-        .v161-party-key{font-weight:800;color:#52667a}
-        .v161-party-value{min-width:0;overflow-wrap:anywhere}
-        .v161-master-note{font-size:12px;opacity:.9;margin-top:9px}
-        .v161-lines-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}
-        .v161-total-box{font-size:16px;font-weight:900;background:#eef4fb;border-radius:999px;padding:7px 12px;white-space:nowrap}
-        .v161-actions{display:grid;grid-template-columns:1fr;gap:10px;margin-top:14px}
-        @media(max-width:700px){
-          .v161-basic,.v161-party-grid{grid-template-columns:1fr}
-          .v161-party-row{grid-template-columns:70px 1fr}
-        }
-      </style>
-
-      <div class="v161-ship-page">
-        <section class="card">
-          <div class="row">
-            <div>
-              <h2 class="v159-form-title" style="margin:0">📦 ${editing?'出荷依頼修正':'新規出荷依頼'}</h2>
-              <div class="muted" style="margin-top:5px">①基本情報 → ②出荷元 → ③出荷先 → ④出荷明細 の順に入力します。</div>
-            </div>
-            <span class="pill">${editing?'修正':'下書き'}</span>
-          </div>
-        </section>
-
-        <section class="card v161-section">
-          <h3 class="v161-section-title">① 基本情報</h3>
-          <div class="v161-basic">
-            <div class="v161-basic-card">
-              <label>依頼日
-                <input id="v114ShipDate" type="date" value="${existing?.shipDate||today()}">
-              </label>
-            </div>
-            <div class="v161-basic-card">
-              <label>着希望日
-                <input id="v114ArrivalDate" type="date" value="${existing?.arrivalDate||''}">
-              </label>
-            </div>
-            <div class="v161-basic-card">
-              <label>配送・袋入等
-                <select id="v114DeliveryPack">
-                  <option value="" ${!existing?.deliveryPack?'selected':''}>　</option>
-                  <option value="ビニール袋入り" ${existing?.deliveryPack==='ビニール袋入り'?'selected':''}>ビニール袋入り</option>
-                  <option value="コンテナ対応" ${existing?.deliveryPack==='コンテナ対応'?'selected':''}>コンテナ対応</option>
-                </select>
-              </label>
-            </div>
-            <div class="v161-basic-card">
-              <label>備考
-                <input id="v114Memo" type="text" placeholder="自由入力" value="${esc(existing?.memo||'')}">
-              </label>
-            </div>
-          </div>
-        </section>
-
-        <section class="card v161-section">
-          <h3 class="v161-section-title">② 出荷元</h3>
-          <div class="v161-party-grid">
-            <div class="v161-party-card">
-              <label>登録済み出荷元を選択
-                <select id="v161SourceSelect">${companyOptions(source0.name,false)}</select>
-              </label>
-              <div class="v161-master-note">会社マスターの登録内容から選択します。</div>
-            </div>
-            <div class="v161-party-details">
-              <div class="v161-party-row"><div class="v161-party-key">会社名</div><div class="v161-party-value" id="v161SourceNameView"></div></div>
-              <div class="v161-party-row"><div class="v161-party-key">住所</div><div class="v161-party-value" id="v161SourceAddressView"></div></div>
-              <div class="v161-party-row"><div class="v161-party-key">電話</div><div class="v161-party-value" id="v161SourcePhoneView"></div></div>
-            </div>
-          </div>
-          <input id="v114SourceName" type="hidden" value="${esc(source0.name)}">
-          <input id="v114SourceAddress" type="hidden" value="${esc(source0.address||'')}">
-          <input id="v114SourcePhone" type="hidden" value="${esc(source0.phone||'')}">
-        </section>
-
-        <section class="card v161-section">
-          <h3 class="v161-section-title">③ 出荷先</h3>
-          <div class="v161-party-grid">
-            <div class="v161-party-card">
-              <label>登録済み出荷先を選択
-                <select id="v161DestSelect">${companyOptions(dest0.name,true)}</select>
-              </label>
-              <div class="v161-master-note">未登録の出荷先は会社マスターへ登録してから選択します。</div>
-            </div>
-            <div class="v161-party-details">
-              <div class="v161-party-row"><div class="v161-party-key">会社名</div><div class="v161-party-value" id="v161DestNameView"></div></div>
-              <div class="v161-party-row"><div class="v161-party-key">住所</div><div class="v161-party-value" id="v161DestAddressView"></div></div>
-              <div class="v161-party-row"><div class="v161-party-key">電話</div><div class="v161-party-value" id="v161DestPhoneView"></div></div>
-            </div>
-          </div>
-          <input id="v114DestName" type="hidden" value="${esc(dest0.name)}">
-          <input id="v114DestAddress" type="hidden" value="${esc(dest0.address||'')}">
-          <input id="v114DestPhone" type="hidden" value="${esc(dest0.phone||'')}">
-        </section>
-
-        <section class="card v161-section">
-          <div class="v161-lines-head">
-            <h3 class="v161-section-title" style="margin:0">④ 出荷明細</h3>
-            <div class="v161-total-box">合計数量：<span id="v161ShipmentTotal">0</span></div>
-          </div>
-          <div class="v113-lines-wrap" style="margin-top:0">
-            <div id="v114Lines"></div>
-            <button class="btn secondary" id="v114AddLine">➕ 明細追加</button>
-          </div>
-        </section>
-
-        <section class="card v161-section">
-          <div class="v161-actions">
-            <button class="btn v159-draft-save" id="v114Save">💾 ${editing?'修正保存':'下書き保存'}</button>
-          </div>
-          <div class="note" style="margin-top:10px">このStepでは保存・在庫処理の仕組みは従来のままです。内容確認画面は次のStepで追加します。</div>
-        </section>
+    const source0=existingSrc||{name:'㈱浜中運輸',address:'',phone:''};
+    app.innerHTML=`<section class="card v113-ship-form"><h2 class="v159-form-title">📦 ${editing?'出荷依頼修正':'新規出荷依頼'}</h2><div class="form"><datalist id="companyNames">${companyDatalist()}</datalist>
+      <div class="v159-top-columns">
+        <div class="v159-top-stack">
+          <label class="v159-top-box v159-date-box">依頼日
+            <input id="v114ShipDate" type="date" value="${existing?.shipDate||today()}">
+          </label>
+          <label class="v159-top-box">配送・袋入等
+            <select id="v114DeliveryPack">
+              <option value="" ${!existing?.deliveryPack?'selected':''}>　</option>
+              <option value="ビニール袋入り" ${existing?.deliveryPack==='ビニール袋入り'?'selected':''}>ビニール袋入り</option>
+              <option value="コンテナ対応" ${existing?.deliveryPack==='コンテナ対応'?'selected':''}>コンテナ対応</option>
+            </select>
+          </label>
+        </div>
+        <div class="v159-top-stack">
+          <label class="v159-top-box v159-date-box">着希望日
+            <input id="v114ArrivalDate" type="date" value="${existing?.arrivalDate||''}">
+          </label>
+          <label class="v159-top-box">備考
+            <input id="v114Memo" type="text" placeholder="自由入力" value="${esc(existing?.memo||'')}">
+          </label>
+        </div>
       </div>
-    `;
-
+      <div class="v113-party-row"><div class="v113-darkbox"><h3>出荷元</h3><label>会社名<input id="v114SourceName" list="companyNames" value="${esc(source0.name)}"></label><label>住所<input id="v114SourceAddress" value="${esc(existingSrc?.address||'')}"></label><label>電話<input id="v114SourcePhone" value="${esc(existingSrc?.phone||'')}"></label></div><div class="v113-darkbox"><h3>出荷先</h3><label>会社名<input id="v114DestName" list="companyNames" value="${esc(existingDst?.name||'')}"></label><label>住所<input id="v114DestAddress" value="${esc(existingDst?.address||'')}"></label><label>電話<input id="v114DestPhone" value="${esc(existingDst?.phone||'')}"></label></div></div>
+      <div class="v113-lines-wrap"><div class="v113-lines-title">明細</div><div id="v114Lines"></div>
+        <button class="btn secondary" id="v114AddLine">➕ 明細追加</button>
+        <button class="btn v159-draft-save" id="v114Save">💾 ${editing?'修正保存':'下書き保存'}</button>
+      </div>
+    </div></section>`;
     const byId=id=>document.getElementById(id);
-    const sn=byId('v114SourceName'),sa=byId('v114SourceAddress'),sp=byId('v114SourcePhone');
-    const dn=byId('v114DestName'),da=byId('v114DestAddress'),dp=byId('v114DestPhone');
-    const srcSel=byId('v161SourceSelect'),dstSel=byId('v161DestSelect');
-
-    const applyCompany=(name,nameEl,addressEl,phoneEl,nameView,addressView,phoneView)=>{
-      const c=companyByName(name)||{
-        name:String(name||'').trim(),
-        address:(nameEl===sn?source0.address:dest0.address)||'',
-        phone:(nameEl===sn?source0.phone:dest0.phone)||''
-      };
-      nameEl.value=c.name||'';
-      addressEl.value=c.address||'';
-      phoneEl.value=c.phone||'';
-      byId(nameView).textContent=c.name||'未選択';
-      byId(addressView).textContent=c.address||'未登録';
-      byId(phoneView).textContent=c.phone||'未登録';
-    };
-
-    applyCompany(srcSel.value,sn,sa,sp,'v161SourceNameView','v161SourceAddressView','v161SourcePhoneView');
-    applyCompany(dstSel.value,dn,da,dp,'v161DestNameView','v161DestAddressView','v161DestPhoneView');
-
-    srcSel.onchange=()=>applyCompany(srcSel.value,sn,sa,sp,'v161SourceNameView','v161SourceAddressView','v161SourcePhoneView');
-    dstSel.onchange=()=>applyCompany(dstSel.value,dn,da,dp,'v161DestNameView','v161DestAddressView','v161DestPhoneView');
+    const sn=byId('v114SourceName'),sa=byId('v114SourceAddress'),sp=byId('v114SourcePhone'),dn=byId('v114DestName'),da=byId('v114DestAddress'),dp=byId('v114DestPhone');
+    const fill=(n,a,p)=>{const c=companyByName(n.value);if(c){a.value=c.address||'';p.value=c.phone||''}};
+    sn.onchange=()=>fill(sn,sa,sp);dn.onchange=()=>fill(dn,da,dp);
 
     function rowFields(l){
       const p=l.product||'kushiro';
@@ -5380,122 +5403,25 @@ smLogs=function(){
       if(p==='sanmae')return {year:smYearOptions(l.year||smState.activeYear),coop:S_COOPS.map(x=>`<option ${x===l.coop?'selected':''}>${esc(x)}</option>`).join(''),coopF:'coop',section:S_SEASONS.map(x=>`<option ${x===l.season?'selected':''}>${esc(x)}</option>`).join(''),sectionF:'season',grade:smItemOptions(l.group||S_GROUPS[0].name,l.item||S_GROUPS[0].items[0]),gradeF:'gi'};
       return {year:yearOptions(l.year||state.activeYear),coop:state.coops.map(x=>`<option ${x===l.coop?'selected':''}>${esc(x)}</option>`).join(''),coopF:'coop',section:SEASONS.map(x=>`<option ${x===(l.season||'夏')?'selected':''}>${esc(x)}</option>`).join(''),sectionF:'season',grade:itemOptions(l.group||GROUPS[0].name,l.item||GROUPS[0].items[0]),gradeF:'gi'};
     }
-
-    function updateTotal(){
-      const total=lines.reduce((a,l)=>a+Number(l.qty||0),0);
-      const el=byId('v161ShipmentTotal');
-      if(el)el.textContent=fmt(total);
-    }
-
     function render(){
-      byId('v114Lines').innerHTML=lines.map((l,i)=>{
-        const d=productDefs[l.product]||productDefs.kushiro,f=rowFields(l);
-        let av=0;try{av=d.avail(l)}catch(e){}
-        const q=Number(l.qty||0),over=q>Number(av||0);
-        return `<div class="v113-line" data-v114-line="${i}">
-          <div class="v118-row v118-row1">
-            <div class="v118-line-no">明細 ${i+1}</div>
-            <label>生産年度<select data-f="year">${f.year}</select></label>
-            <label>昆布の種類<select class="v114-product-select" data-v114-product="${i}" ${editing?'disabled':''}>${productOptions(l.product)}</select></label>
-          </div>
-          <div class="v118-row v118-row2">
-            <label>漁協<select data-f="${f.coopF}">${f.coop}</select></label>
-            <label>区分<select data-f="${f.sectionF}">${f.section}</select></label>
-            <label>等級<select data-f="${f.gradeF}">${f.grade}</select></label>
-          </div>
-          <div class="v118-row v118-row3">
-            <label class="v159-qty-label">数量
-              <input type="number" min="0.01" step="0.01" data-f="qty" value="${esc(l.qty||'')}">
-              <span class="v114-avail v159-avail" style="${over?'color:#b42318;font-weight:900':''}">
-                出荷可能在庫：${fmt(av)}${over?'　⚠ 在庫不足':''}
-              </span>
-            </label>
-            <div></div>
-            <div class="v118-delete-wrap"><button class="mini danger v159-delete" data-v114-del="${i}">削除</button></div>
-          </div>
-        </div>`;
-      }).join('')||'<div class="v113-empty">明細はまだありません。</div>';
-
-      byId('v114Lines').querySelectorAll('[data-v114-product]').forEach(sel=>sel.onchange=()=>{
-        const i=+sel.dataset.v114Product;
-        lines[i]=productDefs[sel.value].make();
-        render();
-      });
-
-      byId('v114Lines').querySelectorAll('[data-v114-del]').forEach(b=>b.onclick=()=>{
-        if(!window.confirm('本当に削除しますか？'))return;
-        lines.splice(+b.dataset.v114Del,1);
-        render();
-      });
-
-      byId('v114Lines').querySelectorAll('[data-v114-line]').forEach(box=>{
-        const i=+box.dataset.v114Line;
-        box.querySelectorAll('[data-f]').forEach(el=>{
-          const handler=()=>{
-            const d=productDefs[lines[i].product],f=el.dataset.f;
-            d.apply(lines[i],f,el.value);
-            if(lines[i].product==='hidaka'&&f==='section'){
-              const sec=H_SECTIONS.find(x=>x.name===el.value)||H_SECTIONS[0];
-              lines[i].grade=sec.items[0];
-            }
-            if(f==='qty'){
-              updateTotal();
-              const av=d.avail(lines[i]);
-              const span=box.querySelector('.v114-avail');
-              const q=Number(lines[i].qty||0),over=q>Number(av||0);
-              if(span){
-                span.textContent=`出荷可能在庫：${fmt(av)}${over?'　⚠ 在庫不足':''}`;
-                span.style.color=over?'#b42318':'';
-                span.style.fontWeight=over?'900':'';
-              }
-            }else{
-              render();
-            }
-          };
-          el.onchange=handler;
-          if(el.dataset.f==='qty')el.oninput=handler;
-        });
-      });
-
-      updateTotal();
+      byId('v114Lines').innerHTML=lines.map((l,i)=>{const d=productDefs[l.product]||productDefs.kushiro,f=rowFields(l);let av=0;try{av=d.avail(l)}catch(e){}return `<div class="v113-line" data-v114-line="${i}"><div class="v118-row v118-row1"><div class="v118-line-no">明細 ${i+1}</div><label>生産年度<select data-f="year">${f.year}</select></label><label>昆布の種類<select class="v114-product-select" data-v114-product="${i}" ${editing?'disabled':''}>${productOptions(l.product)}</select></label></div><div class="v118-row v118-row2"><label>漁協<select data-f="${f.coopF}">${f.coop}</select></label><label>区分<select data-f="${f.sectionF}">${f.section}</select></label><label>等級<select data-f="${f.gradeF}">${f.grade}</select></label></div><div class="v118-row v118-row3"><label class="v159-qty-label">数量<input type="number" min="0.01" step="0.01" data-f="qty" value="${esc(l.qty||'')}"><span class="v114-avail v159-avail">出荷可能在庫：${fmt(av)}</span></label><div></div><div class="v118-delete-wrap"><button class="mini danger v159-delete" data-v114-del="${i}">削除</button></div></div></div>`}).join('')||'<div class="v113-empty">明細はまだありません。</div>';
+      byId('v114Lines').querySelectorAll('[data-v114-product]').forEach(sel=>sel.onchange=()=>{const i=+sel.dataset.v114Product;lines[i]=productDefs[sel.value].make();render()});
+      byId('v114Lines').querySelectorAll('[data-v114-del]').forEach(b=>b.onclick=()=>{if(!window.confirm('本当に削除しますか？'))return;lines.splice(+b.dataset.v114Del,1);render()});
+      byId('v114Lines').querySelectorAll('[data-v114-line]').forEach(box=>{const i=+box.dataset.v114Line;box.querySelectorAll('[data-f]').forEach(el=>el.onchange=()=>{const d=productDefs[lines[i].product],f=el.dataset.f;d.apply(lines[i],f,el.value);if(lines[i].product==='hidaka'&&f==='section'){const sec=H_SECTIONS.find(x=>x.name===el.value)||H_SECTIONS[0];lines[i].grade=sec.items[0]}if(f!=='qty')render()})});
     }
-
-    byId('v114AddLine').onclick=()=>{
-      lines.push(productDefs.kushiro.make());
-      render();
-    };
-
+    byId('v114AddLine').onclick=()=>{lines.push(productDefs.kushiro.make());render()};
     byId('v114Save').onclick=()=>{
-      if(!sn.value.trim())return alert('出荷元を選択してください。');
-      if(!dn.value.trim())return alert('出荷先を選択してください。');
+      if(!sn.value.trim())return alert('出荷元の会社名を入力してください。');
+      if(!dn.value.trim())return alert('出荷先の会社名を入力してください。');
       if(!lines.length)return alert('明細を1件以上追加してください。');
-
-      for(const l of lines){
-        const d=productDefs[l.product],q=Number(l.qty);
-        if(!q||q<=0)return alert('明細の数量を入力してください。');
-        const av=d.avail(l);
-        if(q>Number(av||0))return alert(`${d.desc(l)} の出荷可能在庫は ${fmt(av)} です。`);
-        l.qty=q;
-      }
-
-      const source={name:sn.value.trim(),address:sa.value.trim(),phone:sp.value.trim()};
-      const dest={name:dn.value.trim(),address:da.value.trim(),phone:dp.value.trim()};
-
-      const common={
-        source,dest,
-        shipDate:byId('v114ShipDate').value,
-        arrivalDate:byId('v114ArrivalDate').value,
-        deliveryPack:byId('v114DeliveryPack').value||'',
-        memo:byId('v114Memo').value||'',
-        batchId:'M'+Date.now().toString(36).toUpperCase(),
-        createdAt:new Date().toISOString(),
-        updatedAt:new Date().toISOString(),
-        status:'draft'
-      };
-
+      for(const l of lines){const d=productDefs[l.product],q=Number(l.qty);if(!q||q<=0)return alert(`明細の数量を入力してください。`);l.qty=q}
+      const source={name:sn.value.trim(),address:sa.value.trim(),phone:sp.value.trim()},dest={name:dn.value.trim(),address:da.value.trim(),phone:dp.value.trim()};
+      upsertCompany(source);upsertCompany(dest);
+      const batchId='M'+Date.now().toString(36).toUpperCase();
+      const common={source,dest,shipDate:byId('v114ShipDate').value,arrivalDate:byId('v114ArrivalDate').value,deliveryPack:byId('v114DeliveryPack').value||'',memo:byId('v114Memo').value||'',batchId:'M'+Date.now().toString(36).toUpperCase(),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),status:'draft'};
       if(editing){
         if(lines.some(l=>l.product!==editProduct))return alert('修正画面では昆布の種類は変更できません。');
-        const cleanLines=lines.map(({product,...x})=>x;
+        const cleanLines=lines.map(({product,...x})=>x);
         if(editProduct==='kushiro'){
           Object.assign(existing,{source,destInfo:dest,dest:dest.name,shipDate:common.shipDate,arrivalDate:common.arrivalDate,deliveryPack:common.deliveryPack,memo:common.memo,updatedAt:common.updatedAt,lines:cleanLines});
         }else{
@@ -5506,37 +5432,15 @@ smLogs=function(){
         openGlobalShipment(editProduct,editId);
         return;
       }
-
-      const groups={};
-      for(const l of lines)(groups[l.product]||(groups[l.product]=[])).push({...l});
+      const groups={};for(const l of lines)(groups[l.product]||(groups[l.product]=[])).push({...l});
       const created=[];
-
-      if(groups.kushiro){
-        const ls=groups.kushiro.map(({product,...x})=>x);
-        const o={id:shipmentId(),status:'draft',source,destInfo:dest,dest:dest.name,baseYear:ls[0]?.year||state.activeYear,shipDate:common.shipDate,arrivalDate:common.arrivalDate,deliveryPack:common.deliveryPack,memo:common.memo,batchId:common.batchId,createdAt:common.createdAt,updatedAt:common.updatedAt,lines:ls};
-        state.shipments.push(o);save();created.push(['kushiro',o.id]);
-      }
-      if(groups.hidaka){
-        const ls=groups.hidaka.map(({product,memo,...x})=>x);
-        const o={id:hShipId(),status:'draft',source,dest,shipDate:common.shipDate,arrivalDate:common.arrivalDate,deliveryPack:common.deliveryPack,memo:common.memo,batchId:common.batchId,createdAt:common.createdAt,updatedAt:common.updatedAt,lines:ls};
-        hState.shipments.push(o);hSave();created.push(['hidaka',o.id]);
-      }
-      if(groups.nemuro){
-        const ls=groups.nemuro.map(({product,memo,...x})=>x);
-        const o={id:nShipId(),status:'draft',source,dest,shipDate:common.shipDate,arrivalDate:common.arrivalDate,deliveryPack:common.deliveryPack,memo:common.memo,batchId:common.batchId,createdAt:common.createdAt,updatedAt:common.updatedAt,lines:ls};
-        nState.shipments.push(o);nSave();created.push(['nemuro',o.id]);
-      }
-      if(groups.sanmae){
-        const ls=groups.sanmae.map(({product,memo,...x})=>x);
-        const o={id:smShipId(),status:'draft',source,dest,shipDate:common.shipDate,arrivalDate:common.arrivalDate,deliveryPack:common.deliveryPack,memo:common.memo,batchId:common.batchId,createdAt:common.createdAt,updatedAt:common.updatedAt,lines:ls};
-        smState.shipments.push(o);smSave();created.push(['sanmae',o.id]);
-      }
-
+      if(groups.kushiro){const ls=groups.kushiro.map(({product,...x})=>x),o={id:shipmentId(),status:'draft',source,destInfo:dest,dest:dest.name,baseYear:ls[0]?.year||state.activeYear,shipDate:common.shipDate,arrivalDate:common.arrivalDate,deliveryPack:common.deliveryPack,memo:common.memo,batchId:common.batchId,createdAt:common.createdAt,updatedAt:common.updatedAt,lines:ls};state.shipments.push(o);save();created.push(['kushiro',o.id])}
+      if(groups.hidaka){const ls=groups.hidaka.map(({product,memo,...x})=>x),o={id:hShipId(),status:'draft',source,dest,shipDate:common.shipDate,arrivalDate:common.arrivalDate,deliveryPack:common.deliveryPack,memo:common.memo,batchId:common.batchId,createdAt:common.createdAt,updatedAt:common.updatedAt,lines:ls};hState.shipments.push(o);hSave();created.push(['hidaka',o.id])}
+      if(groups.nemuro){const ls=groups.nemuro.map(({product,memo,...x})=>x),o={id:nShipId(),status:'draft',source,dest,shipDate:common.shipDate,arrivalDate:common.arrivalDate,deliveryPack:common.deliveryPack,memo:common.memo,batchId:common.batchId,createdAt:common.createdAt,updatedAt:common.updatedAt,lines:ls};nState.shipments.push(o);nSave();created.push(['nemuro',o.id])}
+      if(groups.sanmae){const ls=groups.sanmae.map(({product,memo,...x})=>x),o={id:smShipId(),status:'draft',source,dest,shipDate:common.shipDate,arrivalDate:common.arrivalDate,deliveryPack:common.deliveryPack,memo:common.memo,batchId:common.batchId,createdAt:common.createdAt,updatedAt:common.updatedAt,lines:ls};smState.shipments.push(o);smSave();created.push(['sanmae',o.id])}
       alert(`出荷依頼を保存しました。${created.length>1?'\n昆布種類ごとに '+created.length+'件の出荷依頼として作成しています。':''}`);
-      if(created.length===1)openGlobalShipment(created[0][0],created[0][1]);
-      else v76ShipmentMenu();
+      if(created.length===1){openGlobalShipment(created[0][0],created[0][1])}else v76ShipmentMenu();
     };
-
     if(!lines.length){
       const pp=preset&&productDefs[preset.product]?preset.product:'kushiro';
       const first=productDefs[pp].make();
@@ -5544,7 +5448,6 @@ smLogs=function(){
       if(preset&&preset.year)first.year=preset.year;
       lines.push(first);
     }
-
     render();
   }
   globalThis.v114UnifiedShipmentForm=v114UnifiedShipmentForm;
