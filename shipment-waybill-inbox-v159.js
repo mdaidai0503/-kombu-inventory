@@ -1,6 +1,6 @@
 /* =========================================================
    昆布在庫管理
-   送り状PDF連携 v159.4
+   送り状PDF連携 v159.5
    shipment_waybill_inbox 専用
    - 出荷履歴のPDF表示
    - 出荷指示詳細画面への浜中運輸送り状表示
@@ -12,6 +12,9 @@
 
   const TABLE_NAME = 'shipment_waybill_inbox';
   const BUCKET_NAME = 'shipment-waybill-inbox';
+  const MANUAL_LINK_URL =
+    'https://crltrozxztivkyxtjjxv.supabase.co/functions/v1/waybill-manual-link';
+  const SYNC_TOKEN_KEY = 'kombu_sync_token_v1';
 
   let waybillCache = [];
   let refreshTimer = null;
@@ -384,8 +387,217 @@
     if (old) old.remove();
   }
 
+
+  function readSyncToken() {
+    return String(
+      localStorage.getItem(SYNC_TOKEN_KEY) || ''
+    ).trim();
+  }
+
+  async function manualLinkApi(action, payload) {
+    const token = readSyncToken();
+
+    if (!token) {
+      throw new Error(
+        '同期トークンが見つかりません。先に昆布在庫管理アプリで同期トークンを設定してください。'
+      );
+    }
+
+    const res = await fetch(MANUAL_LINK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-kombu-sync-token': token
+      },
+      body: JSON.stringify({
+        action: action,
+        ...payload
+      })
+    });
+
+    const data = await res.json().catch(function () {
+      return {
+        ok: false,
+        error: 'HTTP ' + res.status
+      };
+    });
+
+    if (!res.ok || !data.ok) {
+      throw new Error(
+        data.error || ('HTTP ' + res.status)
+      );
+    }
+
+    return data;
+  }
+
+  async function loadManualCandidates() {
+    const data = await manualLinkApi(
+      'candidates',
+      {}
+    );
+
+    return Array.isArray(data.shipments)
+      ? data.shipments
+      : [];
+  }
+
+  function shipmentOptionLabel(s) {
+    return [
+      s.app_shipment_id,
+      s.kombu_type,
+      s.ship_date || '',
+      (s.source_name || '') + ' → ' + (s.dest_name || ''),
+      '数量 ' + Number(s.total_qty || 0)
+    ].filter(Boolean).join('｜');
+  }
+
+  async function openManualLinkDialog(waybillId) {
+    const waybill = waybillCache.find(function (w) {
+      return String(w.id) === String(waybillId);
+    });
+
+    if (!waybill) return;
+
+    const candidates = await loadManualCandidates();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'v159ManualLinkDialog';
+    overlay.style.position = 'fixed';
+    overlay.style.inset = '0';
+    overlay.style.zIndex = '100000';
+    overlay.style.background = 'rgba(15,23,42,.5)';
+    overlay.style.padding = '20px';
+    overlay.style.overflow = 'auto';
+
+    const options = candidates.map(function (s) {
+      return (
+        '<option value="' +
+        esc(s.app_shipment_id) + '||' +
+        esc(s.kombu_type) + '">' +
+        esc(shipmentOptionLabel(s)) +
+        '</option>'
+      );
+    }).join('');
+
+    overlay.innerHTML =
+      '<div style="' +
+        'max-width:720px;' +
+        'margin:60px auto;' +
+        'background:#fff;' +
+        'border-radius:16px;' +
+        'padding:18px' +
+      '">' +
+        '<h2 style="margin-top:0">手動で出荷指示へ紐付け</h2>' +
+        '<div style="font-size:13px;color:#627d98;margin-bottom:10px">' +
+          esc(waybill.original_filename || '') +
+        '</div>' +
+        '<label style="display:block;font-weight:700;margin-bottom:6px">' +
+          '出荷指示を選択' +
+        '</label>' +
+        '<select id="v159ManualShipmentSelect" style="' +
+          'width:100%;padding:10px;border:1px solid #ccd6e2;border-radius:8px' +
+        '">' +
+          options +
+        '</select>' +
+        '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">' +
+          '<button class="btn" id="v159ManualLinkSave">この出荷指示に添付</button>' +
+          '<button class="btn secondary" id="v159ManualLinkCancel">キャンセル</button>' +
+        '</div>' +
+      '</div>';
+
+    document.body.appendChild(overlay);
+
+    const cancel = document.getElementById('v159ManualLinkCancel');
+    if (cancel) cancel.onclick = function () {
+      overlay.remove();
+    };
+
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) overlay.remove();
+    });
+
+    const save = document.getElementById('v159ManualLinkSave');
+    if (save) save.onclick = async function () {
+      const select = document.getElementById('v159ManualShipmentSelect');
+      const value = String(select?.value || '');
+      const parts = value.split('||');
+      const shipmentId = parts[0] || '';
+      const kombuType = parts.slice(1).join('||') || '';
+
+      if (!shipmentId) {
+        alert('出荷指示を選択してください。');
+        return;
+      }
+
+      if (!window.confirm(
+        shipmentId + ' にこの送り状PDFを紐付けます。よろしいですか？'
+      )) {
+        return;
+      }
+
+      save.disabled = true;
+      save.textContent = '保存中…';
+
+      try {
+        await manualLinkApi('link', {
+          waybill_inbox_id: waybill.id,
+          app_shipment_id: shipmentId,
+          kombu_type: kombuType
+        });
+
+        overlay.remove();
+        await refreshWaybills();
+        closeReviewModal();
+        openReviewModal();
+
+        alert('手動紐付けしました。');
+      } catch (e) {
+        alert(
+          '手動紐付けに失敗しました。\n' +
+          String(e?.message || e)
+        );
+      } finally {
+        save.disabled = false;
+        save.textContent = 'この出荷指示に添付';
+      }
+    };
+  }
+
+  async function unlinkWaybill(waybillId) {
+    const waybill = waybillCache.find(function (w) {
+      return String(w.id) === String(waybillId);
+    });
+
+    if (!waybill) return;
+
+    if (!window.confirm(
+      'この送り状と出荷指示の紐付けを解除します。よろしいですか？'
+    )) {
+      return;
+    }
+
+    try {
+      await manualLinkApi('unlink', {
+        waybill_inbox_id: waybill.id
+      });
+
+      await refreshWaybills();
+      closeReviewModal();
+      openReviewModal();
+
+      alert('紐付けを解除しました。');
+    } catch (e) {
+      alert(
+        '紐付け解除に失敗しました。\n' +
+        String(e?.message || e)
+      );
+    }
+  }
+
   function makeReviewRow(w) {
     const info = classifyWaybill(w);
+
     const pdfButton = w.storage_path
       ? (
           '<button class="mini v159-waybill-pdf" ' +
@@ -394,13 +606,35 @@
         )
       : '';
 
+    let actionButton = '';
+
+    if (
+      info.key === 'review' ||
+      info.key === 'unmatched' ||
+      info.key === 'pending'
+    ) {
+      actionButton =
+        '<button class="mini v159-waybill-manual-link" ' +
+        'data-waybill-id="' + esc(w.id) + '">' +
+        '手動紐付け</button>';
+    } else if (info.key === 'matched') {
+      actionButton =
+        '<button class="mini secondary v159-waybill-unlink" ' +
+        'data-waybill-id="' + esc(w.id) + '">' +
+        '解除</button>';
+    }
+
     return (
       '<tr>' +
         '<td>' + statusBadgeHtml(info) + '</td>' +
         '<td>' + esc(w.matched_shipment_id || '—') + '</td>' +
         '<td>' + esc(w.matched_product || '—') + '</td>' +
         '<td>' + esc(w.original_filename || '') + '</td>' +
-        '<td>' + pdfButton + '</td>' +
+        '<td style="white-space:nowrap">' +
+          pdfButton +
+          (pdfButton && actionButton ? ' ' : '') +
+          actionButton +
+        '</td>' +
       '</tr>'
     );
   }
@@ -414,7 +648,7 @@
             '<th>出荷指示</th>' +
             '<th>昆布</th>' +
             '<th>FAX PDF</th>' +
-            '<th>開く</th>' +
+            '<th>操作</th>' +
           '</tr>' +
           (
             items.length
