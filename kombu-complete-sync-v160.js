@@ -1,5 +1,5 @@
 /* =========================================================
-   昆布在庫管理 完全同期 v160.5
+   昆布在庫管理 完全同期 v160.7
    Supabase = 正本 / localStorage = 互換キャッシュ
    ---------------------------------------------------------
    ・アプリ本体を起動する前にSupabaseの最新状態を取得
@@ -13,7 +13,7 @@
   'use strict';
 
   const TABLE = 'kombu_app_state';
-  const MIGRATION_KEY = 'kombu_v1605_complete_sync_ready';
+  const MIGRATION_KEY = 'kombu_v1607_complete_sync_ready';
 
   const DO_NOT_SYNC = new Set([
     'kombu_sync_token_v1',
@@ -22,6 +22,11 @@
     'kombu_v1602_complete_sync_ready',
     'kombu_v1603_complete_sync_ready',
     'kombu_v1604_complete_sync_ready',
+    'kombu_v1605_complete_sync_ready',
+    'faxbox_sb_url',
+    'faxbox_sb_key',
+    'faxbox_session',
+    'faxbox_auto_backup_day',
     MIGRATION_KEY
   ]);
 
@@ -45,13 +50,16 @@
   function shouldSyncKey(key) {
     if (!key || DO_NOT_SYNC.has(key)) return false;
 
+    // FAXBOX専用アプリは同じ github.io origin のlocalStorageを使用する。
+    // faxbox_* は昆布在庫管理の同期対象外とし、削除・上書きを絶対にしない。
+    if (String(key).toLowerCase().startsWith('faxbox_')) return false;
+
     const k = String(key).toLowerCase();
 
     return (
       k.startsWith('kombu_') ||
       k.startsWith('inventory') ||
       k.startsWith('shipment') ||
-      k.startsWith('faxbox') ||
       k.startsWith('order') ||
       k.startsWith('backup') ||
       k.startsWith('company') ||
@@ -157,13 +165,13 @@
         await pushOne(key, rawValue);
 
         console.info(
-          '[KOMBU v160.5] Supabase保存:',
+          '[KOMBU v160.7] Supabase保存:',
           key
         );
 
       } catch (error) {
         console.error(
-          '[KOMBU v160.5] Supabase保存失敗:',
+          '[KOMBU v160.7] Supabase保存失敗:',
           key,
           error
         );
@@ -271,7 +279,7 @@
 
     if (!c) {
       console.warn(
-        '[KOMBU v160.5] Supabase client待機中'
+        '[KOMBU v160.7] Supabase client待機中'
       );
       return false;
     }
@@ -291,7 +299,7 @@
 
     if (result.error) {
       console.error(
-        '[KOMBU v160.5] Supabase読込失敗',
+        '[KOMBU v160.7] Supabase読込失敗',
         result.error
       );
       return false;
@@ -354,7 +362,7 @@
     }
 
     console.info(
-      '[KOMBU v160.5] 起動前同期完了:',
+      '[KOMBU v160.7] 起動前同期完了:',
       rows.length + ' keys'
     );
 
@@ -454,7 +462,7 @@
           );
 
           console.info(
-            '[KOMBU v160.5] 最新データ反映完了。現在画面を維持します。'
+            '[KOMBU v160.7] 最新データ反映完了。現在画面を維持します。'
           );
 
           button.disabled = false;
@@ -470,7 +478,7 @@
 
         } catch (error) {
           console.error(
-            '[KOMBU v160.5] 手動反映失敗',
+            '[KOMBU v160.7] 手動反映失敗',
             error
           );
 
@@ -493,7 +501,7 @@
     banner.style.display = 'flex';
 
     console.info(
-      '[KOMBU v160.5] 別端末変更を受信'
+      '[KOMBU v160.7] 別端末変更を受信'
     );
   }
 
@@ -516,7 +524,7 @@
 
     channel = c
       .channel(
-        'kombu-v1605-app-state'
+        'kombu-v1607-app-state'
       )
 
       .on(
@@ -542,7 +550,7 @@
             )
           ) {
             console.info(
-              '[KOMBU v160.5] 自端末Realtime反映:',
+              '[KOMBU v160.7] 自端末Realtime反映:',
               key
             );
             return;
@@ -575,7 +583,7 @@
             )
           ) {
             console.info(
-              '[KOMBU v160.5] 自端末Realtime反映:',
+              '[KOMBU v160.7] 自端末Realtime反映:',
               key
             );
             return;
@@ -606,7 +614,7 @@
             )
           ) {
             console.info(
-              '[KOMBU v160.5] 自端末Realtime削除:',
+              '[KOMBU v160.7] 自端末Realtime削除:',
               key
             );
             return;
@@ -618,7 +626,7 @@
 
       .subscribe(function (status) {
         console.info(
-          '[KOMBU v160.5] Realtime:',
+          '[KOMBU v160.7] Realtime:',
           status
         );
       });
@@ -636,14 +644,14 @@
         'kombu:v160-ready',
         {
           detail: {
-            version: '160.5'
+            version: '160.7'
           }
         }
       )
     );
 
     console.info(
-      '[KOMBU v160.5] アプリ起動許可'
+      '[KOMBU v160.7] アプリ起動許可'
     );
   }
 
@@ -703,7 +711,7 @@
 
       } catch (error) {
         console.error(
-          '[KOMBU v160.5] 完全同期開始失敗',
+          '[KOMBU v160.7] 完全同期開始失敗',
           error
         );
 
