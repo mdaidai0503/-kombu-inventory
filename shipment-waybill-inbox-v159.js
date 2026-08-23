@@ -1,6 +1,6 @@
 /* =========================================================
    昆布在庫管理
-   送り状PDF連携 v159.5
+   送り状PDF連携 v159.6
    shipment_waybill_inbox 専用
    - 出荷履歴のPDF表示
    - 出荷指示詳細画面への浜中運輸送り状表示
@@ -774,6 +774,33 @@
     });
 
     bindWaybillButtons(wrap);
+
+    // 手動紐付けボタン
+    wrap.querySelectorAll('.v159-waybill-manual-link')
+      .forEach(function (button) {
+        button.onclick = async function () {
+          try {
+            await openManualLinkDialog(
+              button.dataset.waybillId
+            );
+          } catch (e) {
+            alert(
+              '候補の取得に失敗しました。\n' +
+              String(e?.message || e)
+            );
+          }
+        };
+      });
+
+    // 紐付け解除ボタン
+    wrap.querySelectorAll('.v159-waybill-unlink')
+      .forEach(function (button) {
+        button.onclick = function () {
+          unlinkWaybill(
+            button.dataset.waybillId
+          );
+        };
+      });
   }
 
 
@@ -878,6 +905,7 @@
   window.addEventListener('kombu:supabase-login', scheduleRefresh);
   window.addEventListener('load', scheduleRefresh);
 
+  window.KOMBU_WAYBILL_UI_VERSION = '159.6';
   window.kombuWaybillInboxRefresh = refreshWaybills;
   window.kombuWaybillReviewOpen = async function () {
     await loadWaybills();
