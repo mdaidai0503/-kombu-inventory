@@ -1,5 +1,5 @@
 /* =========================================================
-   昆布在庫管理 完全同期 v160.1
+   昆布在庫管理 完全同期 v160.2
    Supabase = 正本 / localStorage = 互換キャッシュ
    ---------------------------------------------------------
    ・既存v159のlocalStorage保存を自動捕捉してSupabaseへ保存
@@ -13,7 +13,7 @@
   'use strict';
 
   const TABLE = 'kombu_app_state';
-  const MIGRATION_KEY = 'kombu_v1601_complete_sync_ready';
+  const MIGRATION_KEY = 'kombu_v1602_complete_sync_ready';
 
   const DO_NOT_SYNC = new Set([
     'kombu_sync_token_v1',
@@ -29,6 +29,7 @@
   let channel = null;
   let pending = new Map();
   let flushTimer = null;
+  const recentLocalWrites = new Map();
 
   function client() {
     return window.kombuSupabase || null;
@@ -83,6 +84,12 @@
         .eq('storage_key', key);
 
       if (result.error) throw result.error;
+
+      recentLocalWrites.set(key, {
+        rawValue: null,
+        at: Date.now()
+      });
+
       return;
     }
 
@@ -98,6 +105,31 @@
       });
 
     if (result.error) throw result.error;
+
+    recentLocalWrites.set(key, {
+      rawValue: rawValue,
+      at: Date.now()
+    });
+  }
+
+  function isOwnRecentRealtime(key, rawValue) {
+    const hit = recentLocalWrites.get(key);
+    if (!hit) return false;
+
+    const fresh = (Date.now() - hit.at) < 8000;
+    const same = hit.rawValue === rawValue;
+
+    if (!fresh) {
+      recentLocalWrites.delete(key);
+      return false;
+    }
+
+    if (same) {
+      recentLocalWrites.delete(key);
+      return true;
+    }
+
+    return false;
   }
 
   async function flushPending() {
@@ -110,12 +142,12 @@
       try {
         await pushOne(key, rawValue);
         console.info(
-          '[KOMBU v160.1] Supabase保存:',
+          '[KOMBU v160.2] Supabase保存:',
           key
         );
       } catch (error) {
         console.error(
-          '[KOMBU v160.1] Supabase保存失敗:',
+          '[KOMBU v160.2] Supabase保存失敗:',
           key,
           error
         );
@@ -207,7 +239,7 @@
 
     if (result.error) {
       console.error(
-        '[KOMBU v160.1] Supabase読込失敗',
+        '[KOMBU v160.2] Supabase読込失敗',
         result.error
       );
       return false;
@@ -254,7 +286,7 @@
     }
 
     console.info(
-      '[KOMBU v160.1] Supabase正本 → 端末同期完了',
+      '[KOMBU v160.2] Supabase正本 → 端末同期完了',
       (result.data || []).length + ' keys'
     );
 
@@ -292,7 +324,7 @@
     if (!c || channel) return;
 
     channel = c
-      .channel('kombu-v1601-app-state')
+      .channel('kombu-v1602-app-state')
       .on(
         'postgres_changes',
         {
@@ -301,7 +333,19 @@
           table: TABLE
         },
         function (payload) {
+          const key = payload.new?.storage_key;
+          const raw = payload.new?.raw_value;
+
           applyRow(payload.new);
+
+          if (isOwnRecentRealtime(key, raw)) {
+            console.info(
+              '[KOMBU v160.2] 自端末Realtime反映のため再読込スキップ:',
+              key
+            );
+            return;
+          }
+
           reloadVisibleAppSoon();
         }
       )
@@ -313,7 +357,19 @@
           table: TABLE
         },
         function (payload) {
+          const key = payload.new?.storage_key;
+          const raw = payload.new?.raw_value;
+
           applyRow(payload.new);
+
+          if (isOwnRecentRealtime(key, raw)) {
+            console.info(
+              '[KOMBU v160.2] 自端末Realtime反映のため再読込スキップ:',
+              key
+            );
+            return;
+          }
+
           reloadVisibleAppSoon();
         }
       )
@@ -325,13 +381,24 @@
           table: TABLE
         },
         function (payload) {
-          removeRemoteKey(payload.old?.storage_key);
+          const key = payload.old?.storage_key;
+
+          removeRemoteKey(key);
+
+          if (isOwnRecentRealtime(key, null)) {
+            console.info(
+              '[KOMBU v160.2] 自端末Realtime削除のため再読込スキップ:',
+              key
+            );
+            return;
+          }
+
           reloadVisibleAppSoon();
         }
       )
       .subscribe(function (status) {
         console.info(
-          '[KOMBU v160.1] Realtime:',
+          '[KOMBU v160.2] Realtime:',
           status
         );
       });
@@ -390,7 +457,7 @@
     if (result.error) throw result.error;
 
     console.info(
-      '[KOMBU v160.1] 初回Supabase登録:',
+      '[KOMBU v160.2] 初回Supabase登録:',
       seeds.length + ' keys'
     );
   }
@@ -419,7 +486,7 @@
 
     } catch (error) {
       console.error(
-        '[KOMBU v160.1] 完全同期開始失敗',
+        '[KOMBU v160.2] 完全同期開始失敗',
         error
       );
       started = false;
