@@ -1,3 +1,69 @@
+貼り付けられたテキスト（1 点）.txt
+ドキュメント
+
+できました。これで v161 Step 2の新規出荷依頼画面が正常起動するところまで進みました。
+
+次はすぐStep 3へ進まず、Step 2の入力動作を確認するのが安全です。
+
+「＋ 新規出荷依頼」で、出荷元を選択 → 出荷先を選択 → 明細の昆布種類・年産・漁協・区分・等級・数量を入力 → 「💾 下書き保存」まで、テストデータで1件試してください。
+
+特に確認したいのは、出荷元/出荷先を選ぶと住所・電話が自動表示されるか、出荷可能在庫が正しく表示されるか、下書き保存後に出荷依頼一覧へ正常に反映されるかです。
+
+ここが全部正常なら、次の Step 3で「👁 内容確認へ」画面を追加して、「入力 → 内容確認 → 確定」の分かりやすい流れに進めます。
+
+今日 22:39
+出荷元/出荷先を選ぶと住所・電話が自動表示されるか、出荷可能在庫が正しく表示されるか、下書き保存後に出荷依頼一覧へ正常に反映されるか  
+OKです。
+STEP3へお願いします
+
+STEP3へ進めます。今回は Step2正常版を基準にして、「👁 内容確認へ」画面を追加しました。
+
+app-v159-v161-step3-complete.txt
+
+今回は事前にJavaScript構文チェックを行い、Syntax OK を確認済みです。
+
+Step3では、新規出荷依頼画面に
+
+💾 下書き保存
+👁 内容確認へ
+
+の2ボタンが表示されます。
+
+「👁 内容確認へ」を押すと、
+
+① 基本情報
+② 出荷元
+③ 出荷先
+④ 出荷明細
+合計数量
+
+をまとめた確認画面が表示されます。
+
+そこでは、
+
+← 修正する
+💾 下書き保存して次へ
+
+を選べます。
+
+「修正する」では入力内容を保持したまま元の入力画面へ戻ります。
+
+「下書き保存して次へ」では、これまでと同じ下書き保存処理を実行します。 この段階ではまだ在庫は変わりません。保存後の詳細画面で従来どおり 「出荷指示を確定して在庫反映」 を押した時点で在庫へ反映します。
+
+GitHubでは app-v159.js を全文上書きしてください。index.html は変更不要です。
+
+Commit後、PCで Ctrl + F5 をして、
+
+📦 出荷依頼 → ＋ 新規出荷依頼 → 入力 → 👁 内容確認へ
+
+まで試してください。 
+
+app-v159-v161-step3-complete.txt
+ドキュメント
+
+ライブラリ
+/
+app-v159-v161-step3-complete.txt
 "use strict";
 const PDFJS=globalThis.__KOMBU_PDFJS__||globalThis.pdfjsLib||null;
 /* PDF「R6年度 釧路産昆布 在庫証明書」の見出しを細分類化。対象外2群を除き、大分類6群で管理します。 */
@@ -5222,7 +5288,14 @@ smLogs=function(){
       .v161-step2 .v161-details input{width:100%;margin-top:5px;padding:10px;border:1px solid #d6dee8;border-radius:9px;background:#fff;color:#102a43;font-size:15px}
       .v161-step2 .v161-headrow{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
       .v161-step2 .v161-total{background:#eef4fb;border-radius:999px;padding:7px 12px;font-weight:900}
-      @media(max-width:700px){.v161-step2 .v161-basic,.v161-step2 .v161-party{grid-template-columns:1fr}}
+      .v161-preview-overlay{position:fixed;inset:0;z-index:50000;background:rgba(13,30,50,.48);padding:18px;overflow:auto;-webkit-overflow-scrolling:touch}
+      .v161-preview-panel{max-width:900px;margin:18px auto;background:#f4f7fb;border-radius:20px;padding:14px;box-shadow:0 18px 60px #0005}
+      .v161-preview-top{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:10px}
+      .v161-preview-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+      .v161-preview-party{background:#fff;border-radius:14px;padding:12px;border:1px solid #dbe4ee}
+      .v161-preview-line{background:#fff;border-radius:12px;padding:11px;margin-top:8px;border:1px solid #dbe4ee}
+      .v161-preview-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+      @media(max-width:700px){.v161-step2 .v161-basic,.v161-step2 .v161-party{grid-template-columns:1fr}.v161-preview-grid,.v161-preview-actions{grid-template-columns:1fr}}
     </style>
     <div class="v161-step2">
       <section class="card">
@@ -5257,7 +5330,7 @@ smLogs=function(){
 
       <section class="card v161-s">
         <div class="v161-headrow"><h3 class="v161-title" style="margin:0">④ 出荷明細</h3><div class="v161-total">合計数量：<span id="v161ShipmentTotal">0</span></div></div>
-        <div class="v113-lines-wrap" style="margin-top:12px"><div id="v114Lines"></div><button class="btn secondary" id="v114AddLine">➕ 明細追加</button><button class="btn v159-draft-save" id="v114Save">💾 ${editing?'修正保存':'下書き保存'}</button></div>
+        <div class="v113-lines-wrap" style="margin-top:12px"><div id="v114Lines"></div><button class="btn secondary" id="v114AddLine">➕ 明細追加</button><button class="btn v159-draft-save" id="v114Save">💾 ${editing?'修正保存':'下書き保存'}</button><button class="btn secondary" id="v114Preview">👁 内容確認へ</button></div>
         <div class="note" style="margin-top:10px">このStepでは保存・在庫処理は従来の仕組みをそのまま使用します。</div>
       </section>
     </div>`;
@@ -5291,6 +5364,104 @@ smLogs=function(){
       updateTotal();
     }
     byId('v114AddLine').onclick=()=>{lines.push(productDefs.kushiro.make());render()};
+
+    function v161ValidateCurrent(){
+      if(!sn.value.trim())return '出荷元を選択してください。';
+      if(!dn.value.trim())return '出荷先を選択してください。';
+      if(!lines.length)return '明細を1件以上追加してください。';
+      for(let i=0;i<lines.length;i++){
+        const l=lines[i],d=productDefs[l.product],q=Number(l.qty);
+        if(!q||q<=0)return `明細 ${i+1} の数量を入力してください。`;
+        let av=0;try{av=d.avail(l)}catch(e){}
+        if(q>Number(av||0))return `${d.desc(l)} の出荷可能在庫は ${fmt(av)} です。`;
+      }
+      return '';
+    }
+
+    function v161ShowPreview(){
+      const err=v161ValidateCurrent();
+      if(err)return alert(err);
+
+      const old=document.getElementById('v161ShipmentPreviewOverlay');
+      if(old)old.remove();
+
+      const overlay=document.createElement('div');
+      overlay.id='v161ShipmentPreviewOverlay';
+      overlay.className='v161-preview-overlay';
+
+      const total=lines.reduce((a,l)=>a+Number(l.qty||0),0);
+      const lineHtml=lines.map((l,i)=>{
+        const d=productDefs[l.product]||productDefs.kushiro;
+        let av=0;try{av=d.avail(l)}catch(e){}
+        return `<div class="v161-preview-line">
+          <div><b>明細 ${i+1}　${esc(d.label||l.product||'')}</b></div>
+          <div style="margin-top:5px">${esc(d.desc(l))}</div>
+          <div style="margin-top:5px"><b>数量：</b>${fmt(l.qty)}　<span class="muted">出荷可能在庫：${fmt(av)}</span></div>
+        </div>`;
+      }).join('');
+
+      overlay.innerHTML=`
+        <div class="v161-preview-panel">
+          <div class="v161-preview-top">
+            <div>
+              <h2 style="margin:0">👁 出荷依頼 内容確認</h2>
+              <div class="muted" style="margin-top:4px">まだ在庫には反映されていません。</div>
+            </div>
+            <span class="pill">確認中</span>
+          </div>
+
+          <section class="card" style="margin:0 0 10px">
+            <h3 style="margin-top:0">① 基本情報</h3>
+            <div class="v161-preview-grid">
+              <div><b>依頼日</b><br>${esc(byId('v114ShipDate').value||'')}</div>
+              <div><b>着希望日</b><br>${esc(byId('v114ArrivalDate').value||'未指定')}</div>
+              <div><b>配送・袋入等</b><br>${esc(byId('v114DeliveryPack').value||'なし')}</div>
+              <div><b>備考</b><br>${esc(byId('v114Memo').value||'なし')}</div>
+            </div>
+          </section>
+
+          <section class="card" style="margin:0 0 10px">
+            <div class="v161-preview-grid">
+              <div class="v161-preview-party">
+                <b>② 出荷元</b><br>
+                ${esc(sn.value||'')}<br>
+                <span class="small">${esc(sa.value||'')}</span><br>
+                <span class="small">${sp.value?'TEL '+esc(sp.value):''}</span>
+              </div>
+              <div class="v161-preview-party">
+                <b>③ 出荷先</b><br>
+                ${esc(dn.value||'')}<br>
+                <span class="small">${esc(da.value||'')}</span><br>
+                <span class="small">${dp.value?'TEL '+esc(dp.value):''}</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="card" style="margin:0 0 10px">
+            <div class="row"><h3 style="margin:0">④ 出荷明細</h3><b>合計数量：${fmt(total)}</b></div>
+            ${lineHtml}
+          </section>
+
+          <section class="card" style="margin:0">
+            <div class="note">内容を確認してください。「下書き保存して次へ」を押すと、従来どおり下書きとして保存され、詳細画面へ進みます。詳細画面の「出荷指示を確定して在庫反映」を押すまでは在庫は変わりません。</div>
+            <div class="v161-preview-actions">
+              <button class="btn secondary" id="v161PreviewBack" type="button">← 修正する</button>
+              <button class="btn" id="v161PreviewSave" type="button">💾 下書き保存して次へ</button>
+            </div>
+          </section>
+        </div>`;
+
+      document.body.appendChild(overlay);
+      document.getElementById('v161PreviewBack').onclick=()=>overlay.remove();
+      document.getElementById('v161PreviewSave').onclick=()=>{
+        overlay.remove();
+        byId('v114Save').click();
+      };
+      overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove()});
+    }
+
+    byId('v114Preview').onclick=v161ShowPreview;
+
     byId('v114Save').onclick=()=>{
       if(!sn.value.trim())return alert('出荷元を選択してください。');
       if(!dn.value.trim())return alert('出荷先を選択してください。');
