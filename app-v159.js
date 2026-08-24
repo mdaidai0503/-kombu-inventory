@@ -1,3 +1,60 @@
+問題なしとのことで、STEP4まで完成です。
+
+現在のフローは、
+
+新規出荷依頼 → 入力 → 内容確認 → 下書き保存 → 詳細 → 最終確認 → 確定 → 在庫反映
+
+まで正常につながりました。
+
+次は STEP5「確定後の処理」 に進めるのがよいです。ここでは既存機能を活かしながら、確定済 → PDF/出荷指示書 → 必要な後続処理 → 出荷済 → 出荷依頼履歴 の流れを整理します。
+
+特にFAXBOXについては、以前の方針どおり昆布在庫管理の中へ戻さず、専用FAXBOXとの連携は別工程として扱います。まずSTEP5では出荷依頼側の後半フローだけ整理するのが安全です。
+
+このまま STEP5完成TXT の作成へ進めます。
+
+お願いします
+
+STEP5完成版を作成しました。今回は 正常動作しているSTEP4をそのまま基準にしています。
+
+app-v159-v161-step5-complete.txt
+
+STEP5では、確定後の詳細画面に 「⑤ 確定後の処理」 を追加し、
+
+① 在庫反映完了 → ② 出荷指示書・PDF確認 → ③ 出荷済 → ④ 出荷依頼履歴
+
+という流れが画面上で分かるようにしています。
+
+FAXBOXについては今回変更していません。昆布在庫管理側では帳票確認までとし、専用FAXBOXとの統合は別工程のままです。
+
+GitHubの app-v159.js を全文削除 → このTXT全文を貼り付け → Commitしてください。index.html は変更しません。その後PCで Ctrl + F5 です。
+
+今回は事前に JavaScript構文チェック「Syntax OK」 を確認済みです。
+
+まず、すでに確定済みのテスト出荷依頼を開いて、「⑤ 確定後の処理」 が表示されるか確認してください。 
+
+app-v159-v161-step5-complete.txt
+ドキュメント
+
+「⑤ 確定後の処理」 が表示され ません
+
+原因は、STEP5の追加表示が詳細画面の描画より先に実行される場合があり、挿入対象を見つけられないことでした。
+
+そこで STEP5.1修正版を作りました。今回は詳細画面描画直後だけでなく、次フレームと少し後にも計3回だけ表示確認するようにしています。重いDOM監視は使っていません。
+
+app-v159-v161-step5-1-fixed.txt
+
+GitHubの app-v159.js を全文上書きしてCommitし、PCで Ctrl + F5 をしてください。
+
+その後、確定済みの出荷依頼を開いて「⑤ 確定後の処理」が表示されるか確認してください。
+
+今回もJavaScript構文チェックは Syntax OK です。 
+
+app-v159-v161-step5-1-fixed.txt
+ドキュメント
+
+ライブラリ
+/
+app-v159-v161-step5-1-fixed.txt
 "use strict";
 const PDFJS=globalThis.__KOMBU_PDFJS__||globalThis.pdfjsLib||null;
 /* PDF「R6年度 釧路産昆布 在庫証明書」の見出しを細分類化。対象外2群を除き、大分類6群で管理します。 */
@@ -7484,3 +7541,195 @@ if(histChanged){
   console.info('[KOMBU v161 Step5] 確定後フロー整理を有効化');
 })();
 /* ===== /v161 Step5 ===== */
+/* ===== v161 Step5.1: 確定後処理表示 修正版 ===== */
+(function(){
+  'use strict';
+
+  const LABELS={
+    kushiro:'釧路産昆布',
+    hidaka:'日高昆布',
+    nemuro:'根室産昆布',
+    sanmae:'釧路産棹前昆布'
+  };
+
+  function getShipment(product,id){
+    if(product==='kushiro')return (state.shipments||[]).find(x=>x.id===id)||null;
+    if(product==='hidaka')return (hState.shipments||[]).find(x=>x.id===id)||null;
+    if(product==='nemuro')return (nState.shipments||[]).find(x=>x.id===id)||null;
+    if(product==='sanmae')return (smState.shipments||[]).find(x=>x.id===id)||null;
+    return null;
+  }
+
+  function findFirst(ids){
+    for(const id of ids){
+      const el=document.getElementById(id);
+      if(el)return el;
+    }
+    return null;
+  }
+
+  function draw(product,id){
+    const s=getShipment(product,id);
+    if(!s||!window.app)return false;
+
+    /* Step5旧版が途中まで表示されていた場合は一旦削除して再作成 */
+    document.getElementById('v161Step5Flow')?.remove();
+
+    const detailStatus=document.getElementById('v161DetailStatusCard');
+    const firstCard=app.querySelector('section.card');
+    if(!detailStatus&&!firstCard)return false;
+
+    const confirmed=s.status==='confirmed';
+    const shipped=s.status==='shipped';
+    const draft=s.status==='draft';
+
+    const box=document.createElement('section');
+    box.id='v161Step5Flow';
+    box.className='card';
+    box.style.cssText='margin-top:12px;padding:14px';
+
+    box.innerHTML=`
+      <h3 style="margin:0 0 10px">⑤ 確定後の処理</h3>
+
+      <div class="v161-step51-grid">
+        <div class="stat" style="${confirmed||shipped?'outline:2px solid #2f855a':''}">
+          ① 在庫反映
+          <b style="font-size:15px">${confirmed||shipped?'完了':'未完了'}</b>
+        </div>
+        <div class="stat">
+          ② 帳票確認
+          <b style="font-size:15px">出荷指示書・PDF</b>
+        </div>
+        <div class="stat" style="${shipped?'outline:2px solid #2f855a':''}">
+          ③ 出荷処理
+          <b style="font-size:15px">${shipped?'出荷済':'未完了'}</b>
+        </div>
+      </div>
+
+      <div class="note" style="margin-top:10px">
+        ${draft
+          ?'まだ下書きです。先に「確定・在庫反映」を行ってください。'
+          :confirmed
+            ?'在庫反映は完了しています。帳票を確認してから「出荷済」にしてください。'
+            :shipped
+              ?'出荷済みです。出荷依頼履歴から確認できます。'
+              :'この出荷依頼は取消済みです。'}
+      </div>
+
+      <div id="v161Step51Actions" class="v161-step51-actions"></div>
+    `;
+
+    if(detailStatus?.parentNode){
+      detailStatus.parentNode.insertBefore(box,detailStatus.nextSibling);
+    }else if(firstCard?.parentNode){
+      firstCard.parentNode.insertBefore(box,firstCard.nextSibling);
+    }else{
+      app.appendChild(box);
+    }
+
+    const actions=document.getElementById('v161Step51Actions');
+
+    const pdfBtn=findFirst([
+      'pdf','hpdfs','npdfs','smpdfs',
+      'pdfFaxBtn','pdfBtn','shipmentPdfBtn','shipPdfBtn'
+    ]);
+
+    const shippedBtn=findFirst([
+      'shippedShipmentBtn','hshipped','nshipped','smshipped','shipped'
+    ]);
+
+    if((confirmed||shipped)&&pdfBtn){
+      const b=document.createElement('button');
+      b.className='btn secondary';
+      b.type='button';
+      b.textContent='📄 出荷指示書・PDFを確認';
+      b.onclick=()=>pdfBtn.click();
+      actions.appendChild(b);
+    }
+
+    if(confirmed&&shippedBtn){
+      const b=document.createElement('button');
+      b.className='btn';
+      b.type='button';
+      b.textContent='🚚 出荷済にする';
+      b.onclick=()=>{
+        const latest=getShipment(product,id);
+        if(!latest||latest.status!=='confirmed'){
+          alert('状態が更新されています。最新内容を表示します。');
+          return globalThis.openGlobalShipment(product,id);
+        }
+        shippedBtn.click();
+      };
+      actions.appendChild(b);
+    }
+
+    if(shipped){
+      const h=document.createElement('button');
+      h.className='btn';
+      h.type='button';
+      h.textContent='🕘 出荷依頼履歴を開く';
+      h.onclick=()=>{
+        if(typeof window.v136ShipmentHistory==='function')window.v136ShipmentHistory();
+        else globalThis.v76ShipmentMenu();
+      };
+      actions.appendChild(h);
+
+      const l=document.createElement('button');
+      l.className='btn secondary';
+      l.type='button';
+      l.textContent='📋 出荷依頼一覧へ';
+      l.onclick=()=>globalThis.v76ShipmentMenu();
+      actions.appendChild(l);
+    }
+
+    if(!document.getElementById('v161Step51Style')){
+      const st=document.createElement('style');
+      st.id='v161Step51Style';
+      st.textContent=`
+        .v161-step51-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+        .v161-step51-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+        @media(max-width:700px){
+          .v161-step51-grid,.v161-step51-actions{grid-template-columns:1fr}
+        }`;
+      document.head.appendChild(st);
+    }
+
+    console.info('[KOMBU v161 Step5.1] 確定後処理表示:',product,id,s.status);
+    return true;
+  }
+
+  function deferredDraw(product,id){
+    /* 詳細画面を描画した直後・次フレーム・少し後の3回だけ確認。
+       MutationObserverは使わない。 */
+    draw(product,id);
+    requestAnimationFrame(()=>draw(product,id));
+    setTimeout(()=>draw(product,id),120);
+  }
+
+  const baseOpen=globalThis.openGlobalShipment;
+  if(typeof baseOpen==='function'){
+    globalThis.openGlobalShipment=function(product,id){
+      const r=baseOpen.apply(this,arguments);
+      deferredDraw(product,id);
+      return r;
+    };
+  }
+
+  [
+    ['shipmentDetail','kushiro'],
+    ['hShipDetail','hidaka'],
+    ['nShipDetail','nemuro'],
+    ['smShipDetail','sanmae']
+  ].forEach(([name,product])=>{
+    const fn=globalThis[name];
+    if(typeof fn!=='function')return;
+    globalThis[name]=function(id){
+      const r=fn.apply(this,arguments);
+      deferredDraw(product,id);
+      return r;
+    };
+  });
+
+  console.info('[KOMBU v161 Step5.1] 修正版 ready');
+})();
+/* ===== /v161 Step5.1 ===== */
