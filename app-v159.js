@@ -1,3 +1,53 @@
+フリーズします
+
+わかりました。STEP6は採用せず、正常だったSTEP5.1へ戻しましょう。 今回は画面整理だけの変更なので、出荷依頼データや在庫データそのものには影響しません。
+
+GitHubの app-v159.js を、こちらの正常版で全文上書きしてください。
+
+正常版 STEP5.1 に戻す
+
+作業は app-v159.js 全文削除 → STEP5.1 TXT全文を貼り付け → Commit → PCで Ctrl + F5 です。index.html は触らなくて大丈夫です。
+
+今回のSTEP6では、詳細画面を開くたびに複数の既存ボタンを検索・非表示化し、ツールバー全体も判定する処理を追加していました。既存の画面更新処理と干渉した可能性が高いので、この方式での旧ボタン整理はやめます。
+
+STEP5.1に戻ったら、まず「トップ画面 → 出荷依頼 → 確定済み出荷依頼」が正常に開くか確認してください。正常なら、今後はSTEP5.1を安定版として残し、不要ボタンの整理は後回しにします。
+
+app-v159-v161-step5-1-fixed.txt
+ドキュメント
+読み込みまで少し時間がかかりますが、開いて「⑤ 確定後の処理」内のボタンだけでPDF確認・出荷済処理へ進めるます
+
+確認できました。STEP5.1の機能自体は正常で、「⑤ 確定後の処理」からPDF確認・出荷済処理へ進めています。
+
+気になるのは、画面を開くまで少し時間がかかる点です。STEP5.1では詳細画面の表示後に複数回描画確認をしているため、その分わずかに遅くなっています。
+
+次は機能追加よりも、STEP5.1を安定版として維持したまま表示速度だけ改善するSTEP5.2に進むのがよいです。具体的には、3回行っている表示確認を減らし、必要なときだけ「⑤ 確定後の処理」を描画するようにします。
+
+PDF・在庫反映・出荷済・履歴の処理自体は触りません。これならリスクを抑えて高速化できます。
+
+このまま STEP5.2 高速化版TXT を作成して進めます。
+
+お願いします
+
+STEP5.2高速化版を作成しました。今回は正常だったSTEP5.1を基準にし、機能はそのままで表示処理だけ軽くしています。
+
+app-v159-v161-step5-2-fast.txt
+
+変更点は、「⑤ 確定後の処理」の表示確認をこれまでの最大3回から、基本は1回だけにしたことです。万一その時点で画面描画が終わっていない場合だけ、次フレームでもう1回だけ確認します。
+
+PDF・在庫反映・出荷済・履歴の処理は変更していません。
+
+GitHubの app-v159.js を全文削除 → このTXT全文を貼り付け → Commitし、PCで Ctrl + F5 をしてください。
+
+今回も事前に JavaScript構文チェック「Syntax OK」 を確認済みです。
+
+更新後は、確定済みの出荷依頼を開いて、STEP5.1より表示が速くなったかと、「⑤ 確定後の処理」内のPDF確認・出荷済ボタンが正常に動くかを確認してください。 
+
+app-v159-v161-step5-2-fast.txt
+ドキュメント
+
+ライブラリ
+/
+app-v159-v161-step5-2-fast.txt
 "use strict";
 const PDFJS=globalThis.__KOMBU_PDFJS__||globalThis.pdfjsLib||null;
 /* PDF「R6年度 釧路産昆布 在庫証明書」の見出しを細分類化。対象外2群を除き、大分類6群で管理します。 */
@@ -7484,7 +7534,7 @@ if(histChanged){
   console.info('[KOMBU v161 Step5] 確定後フロー整理を有効化');
 })();
 /* ===== /v161 Step5 ===== */
-/* ===== v161 Step5.1: 確定後処理表示 修正版 ===== */
+/* ===== v161 Step5.2: 確定後処理表示 高速化版 ===== */
 (function(){
   'use strict';
 
@@ -7515,12 +7565,13 @@ if(histChanged){
     const s=getShipment(product,id);
     if(!s||!window.app)return false;
 
-    /* Step5旧版が途中まで表示されていた場合は一旦削除して再作成 */
-    document.getElementById('v161Step5Flow')?.remove();
+    const old=document.getElementById('v161Step5Flow');
+    if(old)old.remove();
 
     const detailStatus=document.getElementById('v161DetailStatusCard');
     const firstCard=app.querySelector('section.card');
-    if(!detailStatus&&!firstCard)return false;
+    const anchor=detailStatus||firstCard;
+    if(!anchor||!anchor.parentNode)return false;
 
     const confirmed=s.status==='confirmed';
     const shipped=s.status==='shipped';
@@ -7534,7 +7585,7 @@ if(histChanged){
     box.innerHTML=`
       <h3 style="margin:0 0 10px">⑤ 確定後の処理</h3>
 
-      <div class="v161-step51-grid">
+      <div class="v161-step52-grid">
         <div class="stat" style="${confirmed||shipped?'outline:2px solid #2f855a':''}">
           ① 在庫反映
           <b style="font-size:15px">${confirmed||shipped?'完了':'未完了'}</b>
@@ -7559,18 +7610,12 @@ if(histChanged){
               :'この出荷依頼は取消済みです。'}
       </div>
 
-      <div id="v161Step51Actions" class="v161-step51-actions"></div>
+      <div id="v161Step52Actions" class="v161-step52-actions"></div>
     `;
 
-    if(detailStatus?.parentNode){
-      detailStatus.parentNode.insertBefore(box,detailStatus.nextSibling);
-    }else if(firstCard?.parentNode){
-      firstCard.parentNode.insertBefore(box,firstCard.nextSibling);
-    }else{
-      app.appendChild(box);
-    }
+    anchor.parentNode.insertBefore(box,anchor.nextSibling);
 
-    const actions=document.getElementById('v161Step51Actions');
+    const actions=document.getElementById('v161Step52Actions');
 
     const pdfBtn=findFirst([
       'pdf','hpdfs','npdfs','smpdfs',
@@ -7625,35 +7670,22 @@ if(histChanged){
       actions.appendChild(l);
     }
 
-    if(!document.getElementById('v161Step51Style')){
-      const st=document.createElement('style');
-      st.id='v161Step51Style';
-      st.textContent=`
-        .v161-step51-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-        .v161-step51-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
-        @media(max-width:700px){
-          .v161-step51-grid,.v161-step51-actions{grid-template-columns:1fr}
-        }`;
-      document.head.appendChild(st);
-    }
-
-    console.info('[KOMBU v161 Step5.1] 確定後処理表示:',product,id,s.status);
     return true;
   }
 
-  function deferredDraw(product,id){
-    /* 詳細画面を描画した直後・次フレーム・少し後の3回だけ確認。
-       MutationObserverは使わない。 */
-    draw(product,id);
-    requestAnimationFrame(()=>draw(product,id));
-    setTimeout(()=>draw(product,id),120);
+  function drawOnceAfterCurrentRender(product,id){
+    // 詳細画面の既存描画は同期処理なので、通常はその直後に1回だけ描画。
+    // 万一まだDOMが無い場合だけ次フレームで1回再試行。
+    if(!draw(product,id)){
+      requestAnimationFrame(()=>draw(product,id));
+    }
   }
 
   const baseOpen=globalThis.openGlobalShipment;
   if(typeof baseOpen==='function'){
     globalThis.openGlobalShipment=function(product,id){
       const r=baseOpen.apply(this,arguments);
-      deferredDraw(product,id);
+      drawOnceAfterCurrentRender(product,id);
       return r;
     };
   }
@@ -7668,160 +7700,23 @@ if(histChanged){
     if(typeof fn!=='function')return;
     globalThis[name]=function(id){
       const r=fn.apply(this,arguments);
-      deferredDraw(product,id);
+      drawOnceAfterCurrentRender(product,id);
       return r;
     };
   });
 
-  console.info('[KOMBU v161 Step5.1] 修正版 ready');
-})();
-/* ===== /v161 Step5.1 ===== */
-/* ===== v161 Step6: 旧ボタン・重複導線の整理 ===== */
-(function(){
-  'use strict';
-
-  function cleanupDetail(){
-    if(!window.app)return;
-
-    const step5=document.getElementById('v161Step5Flow');
-    const step51=document.getElementById('v161Step51Actions');
-
-    /*
-      Step4で追加した一覧・履歴カードは、下部ナビやStep5と重複するため非表示。
-      削除ではなく非表示にして、既存処理は残す。
-    */
-    const oldNav=document.getElementById('v161DetailNavCard');
-    if(oldNav)oldNav.style.display='none';
-
-    /*
-      Step5旧版のアクション領域が残っている場合は非表示。
-      Step5.1のボタンを正式表示として使う。
-    */
-    const oldActions=document.getElementById('v161Step5Actions');
-    if(oldActions)oldActions.style.display='none';
-
-    /*
-      詳細画面にある旧PDF/出荷済ボタンは、
-      Step5.1の新しいボタンから内部的にクリックするためDOMには残し、
-      画面上だけ隠す。
-    */
-    const proxyIds=[
-      'pdf','hpdfs','npdfs','smpdfs',
-      'pdfFaxBtn','pdfBtn','shipmentPdfBtn','shipPdfBtn',
-      'shippedShipmentBtn','hshipped','nshipped','smshipped','shipped'
-    ];
-
-    proxyIds.forEach(id=>{
-      const el=document.getElementById(id);
-      if(!el)return;
-      el.dataset.v161Proxy='1';
-      el.style.display='none';
-    });
-
-    /*
-      「一覧へ」系の旧ボタンも下部ナビと重複するため画面上から整理。
-      戻る処理そのものは削除しない。
-    */
-    [
-      'backShipmentBtn','hback','nback','smback'
-    ].forEach(id=>{
-      const el=document.getElementById(id);
-      if(el)el.style.display='none';
-    });
-
-    /*
-      取消・修正・確定は重要操作なので残す。
-      ただしボタン文言を統一。
-    */
-    [
-      ['editShipmentBtn','✏️ 修正'],
-      ['hedit','✏️ 修正'],
-      ['nedit','✏️ 修正'],
-      ['smedit','✏️ 修正'],
-      ['cancelShipmentBtn','取消'],
-      ['hcancel','取消'],
-      ['ncancel','取消'],
-      ['smcancel','取消'],
-      ['confirmShipmentBtn','✅ 確定・在庫反映'],
-      ['hconf','✅ 確定・在庫反映'],
-      ['nconf','✅ 確定・在庫反映'],
-      ['smconf','✅ 確定・在庫反映']
-    ].forEach(([id,label])=>{
-      const el=document.getElementById(id);
-      if(el&&el.style.display!=='none')el.textContent=label;
-    });
-
-    /*
-      旧ツールバー内で表示ボタンが1個もない場合は、
-      空白だけ残らないよう非表示にする。
-    */
-    document.querySelectorAll('.toolbar').forEach(tb=>{
-      const visible=[...tb.querySelectorAll('button')].some(b=>{
-        const st=getComputedStyle(b);
-        return st.display!=='none'&&st.visibility!=='hidden';
-      });
-      if(!visible&&tb.closest('section.card'))tb.style.display='none';
-    });
-
-    /*
-      Step5.1を主導線として強調。
-    */
-    const flow=document.getElementById('v161Step5Flow');
-    if(flow){
-      flow.style.border='1px solid #d9e2ec';
-      flow.style.boxShadow='0 2px 10px #0001';
-    }
-
-    if(step51){
-      [...step51.querySelectorAll('button')].forEach(b=>{
-        b.style.minHeight='48px';
-      });
-    }
-  }
-
-  function deferredCleanup(){
-    cleanupDetail();
-    requestAnimationFrame(cleanupDetail);
-    setTimeout(cleanupDetail,160);
-  }
-
-  const baseOpen=globalThis.openGlobalShipment;
-  if(typeof baseOpen==='function'){
-    globalThis.openGlobalShipment=function(){
-      const r=baseOpen.apply(this,arguments);
-      deferredCleanup();
-      return r;
-    };
-  }
-
-  [
-    'shipmentDetail',
-    'hShipDetail',
-    'nShipDetail',
-    'smShipDetail'
-  ].forEach(name=>{
-    const fn=globalThis[name];
-    if(typeof fn!=='function')return;
-    globalThis[name]=function(){
-      const r=fn.apply(this,arguments);
-      deferredCleanup();
-      return r;
-    };
-  });
-
-  if(!document.getElementById('v161Step6Style')){
-    const style=document.createElement('style');
-    style.id='v161Step6Style';
-    style.textContent=`
-      #v161DetailStatusCard + #v161Step5Flow{margin-top:10px!important}
-      #v161Step5Flow h3{font-size:18px}
-      #v161Step51Actions .btn{font-size:15px}
+  if(!document.getElementById('v161Step52Style')){
+    const st=document.createElement('style');
+    st.id='v161Step52Style';
+    st.textContent=`
+      .v161-step52-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+      .v161-step52-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
       @media(max-width:700px){
-        #v161Step51Actions .btn{font-size:16px;min-height:52px}
+        .v161-step52-grid,.v161-step52-actions{grid-template-columns:1fr}
       }`;
-    document.head.appendChild(style);
+    document.head.appendChild(st);
   }
 
-  console.info('[KOMBU v161 Step6] 旧ボタン・重複導線整理 ready');
+  console.info('[KOMBU v161 Step5.2] 高速化版 ready');
 })();
-/* ===== /v161 Step6 ===== */
+/* ===== /v161 Step5.2 ===== */
