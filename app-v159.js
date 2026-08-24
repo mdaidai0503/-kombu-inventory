@@ -1,3 +1,66 @@
+確認できました。STEP5.1の機能自体は正常で、「⑤ 確定後の処理」からPDF確認・出荷済処理へ進めています。
+
+気になるのは、画面を開くまで少し時間がかかる点です。STEP5.1では詳細画面の表示後に複数回描画確認をしているため、その分わずかに遅くなっています。
+
+次は機能追加よりも、STEP5.1を安定版として維持したまま表示速度だけ改善するSTEP5.2に進むのがよいです。具体的には、3回行っている表示確認を減らし、必要なときだけ「⑤ 確定後の処理」を描画するようにします。
+
+PDF・在庫反映・出荷済・履歴の処理自体は触りません。これならリスクを抑えて高速化できます。
+
+このまま STEP5.2 高速化版TXT を作成して進めます。
+
+お願いします
+
+STEP5.2高速化版を作成しました。今回は正常だったSTEP5.1を基準にし、機能はそのままで表示処理だけ軽くしています。
+
+app-v159-v161-step5-2-fast.txt
+
+変更点は、「⑤ 確定後の処理」の表示確認をこれまでの最大3回から、基本は1回だけにしたことです。万一その時点で画面描画が終わっていない場合だけ、次フレームでもう1回だけ確認します。
+
+PDF・在庫反映・出荷済・履歴の処理は変更していません。
+
+GitHubの app-v159.js を全文削除 → このTXT全文を貼り付け → Commitし、PCで Ctrl + F5 をしてください。
+
+今回も事前に JavaScript構文チェック「Syntax OK」 を確認済みです。
+
+更新後は、確定済みの出荷依頼を開いて、STEP5.1より表示が速くなったかと、「⑤ 確定後の処理」内のPDF確認・出荷済ボタンが正常に動くかを確認してください。 
+
+app-v159-v161-step5-2-fast.txt
+ドキュメント
+PDF確認・出荷済処理へ進め  ますが出荷指示履歴には反映されていないと思います。
+
+確認したところ、その認識で合っています。原因が分かりました。
+
+現行の履歴処理は、FAX BOX経由では履歴へ保存されますが、通常の「出荷済」にしただけでは、履歴へ確実に追加されないケースがあります。既存の履歴処理は v76ShipmentMenu() の一覧行を見てアーカイブしていますが、一覧側では shipped / cancelled が先に除外されるため、出荷済データを拾えないことがあります。
+
+そこで STEP5.3 履歴反映修正版を作りました。
+
+app-v159-v161-step5-3-history-fixed.txt
+
+この修正版では、FAX BOXを経由しなくても、
+
+「🚚 出荷済にする」→ 自動的に出荷依頼履歴へ保存
+
+されます。さらに、すでに出荷済になっている過去データも、更新時に履歴へ取り込むようにしています。
+
+履歴画面を開く直前にも4種類すべてを再確認するので、
+
+釧路産昆布
+日高昆布
+根室産昆布
+釧路産棹前昆布
+
+すべて同じ仕組みで履歴へ反映します。
+
+GitHubの app-v159.js を全文上書き → Commit → Ctrl + F5 してください。
+
+今回も事前に JavaScript構文チェック「Syntax OK」 を確認済みです。
+
+更新後、まず 🕘 出荷依頼履歴 を開いてください。今回テストで「出荷済」にしたデータが表示されるか確認しましょう。 
+
+app-v159-v161-step5-3-history-fixed.txt
+ドキュメント
+
+app-v159-v161-step5-3-history-fixed.txt
 "use strict";
 const PDFJS=globalThis.__KOMBU_PDFJS__||globalThis.pdfjsLib||null;
 /* PDF「R6年度 釧路産昆布 在庫証明書」の見出しを細分類化。対象外2群を除き、大分類6群で管理します。 */
@@ -7670,3 +7733,158 @@ if(histChanged){
   console.info('[KOMBU v161 Step5.2] 高速化版 ready');
 })();
 /* ===== /v161 Step5.2 ===== */
+/* ===== v161 Step5.3: 出荷済・取消済を履歴へ確実に反映 ===== */
+(function(){
+  'use strict';
+
+  const HIST_KEY='kombu-v136-shipment-history';
+
+  function loadHistory(){
+    try{
+      const v=JSON.parse(localStorage.getItem(HIST_KEY)||'[]');
+      return Array.isArray(v)?v:[];
+    }catch(_e){
+      return [];
+    }
+  }
+
+  function saveHistory(v){
+    localStorage.setItem(HIST_KEY,JSON.stringify(v||[]));
+  }
+
+  function clone(v){
+    return JSON.parse(JSON.stringify(v));
+  }
+
+  function sourceOf(product,s){
+    if(product==='kushiro'){
+      const x=shipmentSource(s);
+      return {name:x.name||'',address:x.address||'',phone:x.phone||''};
+    }
+    const x=s?.source||{};
+    return {name:x.name||'',address:x.address||'',phone:x.phone||''};
+  }
+
+  function destOf(product,s){
+    if(product==='kushiro'){
+      const x=shipmentDest(s);
+      return {name:x.name||'',address:x.address||'',phone:x.phone||''};
+    }
+    const x=(s?.dest&&typeof s.dest==='object')?s.dest:(s?.destInfo||{});
+    return {
+      name:x.name||'',
+      address:x.address||'',
+      phone:x.phone||''
+    };
+  }
+
+  function qtyOf(s){
+    return (s?.lines||[]).reduce((a,l)=>a+Number(l.qty||0),0);
+  }
+
+  function allShipments(){
+    return [
+      ...(state.shipments||[]).map(s=>({product:'kushiro',s})),
+      ...(hState.shipments||[]).map(s=>({product:'hidaka',s})),
+      ...(nState.shipments||[]).map(s=>({product:'nemuro',s})),
+      ...(smState.shipments||[]).map(s=>({product:'sanmae',s}))
+    ];
+  }
+
+  function archiveFinished(){
+    const hist=loadHistory();
+    const map=new Map(hist.map(x=>[x.key,x]));
+    let changed=false;
+    const now=new Date().toISOString();
+
+    allShipments().forEach(({product,s})=>{
+      if(!s||!(s.status==='shipped'||s.status==='cancelled'))return;
+
+      const k=product+'::'+String(s.id||'');
+      const old=map.get(k);
+
+      const item={
+        key:k,
+        product,
+        id:s.id||'',
+        addedAt:s.shippedAt||s.cancelledAt||s.updatedAt||s.createdAt||now,
+        archivedAt:old?.archivedAt||now,
+        shipDate:s.shipDate||'',
+        dest:destOf(product,s),
+        source:sourceOf(product,s),
+        qty:qtyOf(s),
+        status:s.status,
+        snapshot:clone(s)
+      };
+
+      /*
+        既存履歴がある場合も、状態・数量・宛先などは最新状態へ更新。
+        archivedAtだけは最初に履歴入りした時刻を維持。
+      */
+      const before=old?JSON.stringify(old):'';
+      const after=JSON.stringify(item);
+
+      if(before!==after){
+        map.set(k,item);
+        changed=true;
+      }
+    });
+
+    if(changed){
+      saveHistory([...map.values()]);
+      console.info('[KOMBU v161 Step5.3] 出荷履歴同期完了');
+    }
+
+    return changed;
+  }
+
+  /*
+    履歴画面を開く直前に、4種類すべての shipped / cancelled を
+    履歴へ同期する。これによりFAX BOXを経由しない出荷でも履歴へ入る。
+  */
+  const baseHistory=window.v136ShipmentHistory;
+  if(typeof baseHistory==='function'){
+    window.v136ShipmentHistory=function(){
+      archiveFinished();
+      return baseHistory.apply(this,arguments);
+    };
+  }
+
+  /*
+    出荷済・取消処理後に各詳細画面が再描画されたタイミングでも同期。
+    これで「出荷済」にした直後から履歴データへ保存される。
+  */
+  [
+    'shipmentDetail',
+    'hShipDetail',
+    'nShipDetail',
+    'smShipDetail'
+  ].forEach(name=>{
+    const fn=globalThis[name];
+    if(typeof fn!=='function')return;
+
+    globalThis[name]=function(){
+      const r=fn.apply(this,arguments);
+      archiveFinished();
+      return r;
+    };
+  });
+
+  /*
+    一覧を開いた場合も同期しておく。
+    旧v136のDOM行依存アーカイブを補完する。
+  */
+  const baseMenu=globalThis.v76ShipmentMenu;
+  if(typeof baseMenu==='function'){
+    globalThis.v76ShipmentMenu=function(){
+      archiveFinished();
+      return baseMenu.apply(this,arguments);
+    };
+  }
+
+  // 既に出荷済の過去データも、この更新直後に一度だけ取り込む。
+  archiveFinished();
+
+  console.info('[KOMBU v161 Step5.3] 出荷履歴自動反映 ready');
+})();
+/* ===== /v161 Step5.3 ===== */
