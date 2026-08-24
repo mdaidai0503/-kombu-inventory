@@ -1,3 +1,84 @@
+貼り付けられたテキスト（1 点）.txt
+ドキュメント
+
+STEP3へ進めます。今回は Step2正常版を基準にして、「👁 内容確認へ」画面を追加しました。
+
+app-v159-v161-step3-complete.txt
+
+今回は事前にJavaScript構文チェックを行い、Syntax OK を確認済みです。
+
+Step3では、新規出荷依頼画面に
+
+💾 下書き保存
+👁 内容確認へ
+
+の2ボタンが表示されます。
+
+「👁 内容確認へ」を押すと、
+
+① 基本情報
+② 出荷元
+③ 出荷先
+④ 出荷明細
+合計数量
+
+をまとめた確認画面が表示されます。
+
+そこでは、
+
+← 修正する
+💾 下書き保存して次へ
+
+を選べます。
+
+「修正する」では入力内容を保持したまま元の入力画面へ戻ります。
+
+「下書き保存して次へ」では、これまでと同じ下書き保存処理を実行します。 この段階ではまだ在庫は変わりません。保存後の詳細画面で従来どおり 「出荷指示を確定して在庫反映」 を押した時点で在庫へ反映します。
+
+GitHubでは app-v159.js を全文上書きしてください。index.html は変更不要です。
+
+Commit後、PCで Ctrl + F5 をして、
+
+📦 出荷依頼 → ＋ 新規出荷依頼 → 入力 → 👁 内容確認へ
+
+まで試してください。 
+
+app-v159-v161-step3-complete.txt
+ドキュメント
+できました
+
+できました。これで v161 Step3「内容確認画面」まで正常動作しています。
+
+現在の出荷依頼フローは、
+
+出荷依頼 → 新規出荷依頼 → 入力 → 内容確認 → 下書き保存 → 詳細画面 → 確定・在庫反映
+
+まで整理できました。
+
+次は Step4 として、最後の「詳細画面 → 確定・在庫反映」の部分を整理するのがおすすめです。ここでは特に、確定前の最終確認、確定後の状態表示、二重確定防止、一覧・履歴への移動を分かりやすくします。
+
+この部分は在庫を実際に動かす重要な処理なので、Step3までの正常版を基準に、既存の在庫反映ロジック自体は変更せず、まず画面と導線だけ整理して進めます。
+
+お願いします
+
+STEP4を作成しました。今回は Step3正常版をそのまま基準にして、在庫反映ロジックそのものは変えず、詳細画面と確定導線だけ整理しています。
+
+app-v159-v161-step4-complete.txt
+
+今回追加したのは、主に 確定前の最終確認、現在の状態表示、二重確定防止、一覧・履歴への移動ボタン です。既存の詳細画面では下書き→確定→出荷済という処理がすでに種類別に動いているため、その処理を残して手前に安全確認を加える方式にしています。
+
+GitHubでは app-v159.js を全文削除して、このTXT全文を貼り付けてCommitしてください。index.html は変更不要です。
+
+更新後はPCで Ctrl + F5 をして、まずトップ画面が正常に開くか確認してください。その後、テスト用の下書きを1件開き、**「✅ 確定・在庫反映」**を押すと、出荷元・出荷先・出荷日・合計数量を表示した最終確認が出るか確認してください。
+
+なお、今回も事前にJavaScript構文チェックを行い、Syntax OK を確認済みです。 
+
+app-v159-v161-step4-complete.txt
+ドキュメント
+
+ライブラリ
+/
+app-v159-v161-step4-complete.txt
 "use strict";
 const PDFJS=globalThis.__KOMBU_PDFJS__||globalThis.pdfjsLib||null;
 /* PDF「R6年度 釧路産昆布 在庫証明書」の見出しを細分類化。対象外2群を除き、大分類6群で管理します。 */
@@ -7132,3 +7213,187 @@ if(histChanged){
   console.info('[KOMBU v161 Step1] 出荷依頼入口整理を有効化');
 })();
 /* ===== /v161 Step1 ===== */
+/* ===== v161 Step4: 出荷依頼詳細・確定導線整理 ===== */
+(function(){
+  'use strict';
+
+  const productLabel={
+    kushiro:'釧路産昆布',
+    hidaka:'日高昆布',
+    nemuro:'根室産昆布',
+    sanmae:'釧路産棹前昆布'
+  };
+
+  function v161GetShipment(product,id){
+    if(product==='kushiro')return (state.shipments||[]).find(x=>x.id===id)||null;
+    if(product==='hidaka')return (hState.shipments||[]).find(x=>x.id===id)||null;
+    if(product==='nemuro')return (nState.shipments||[]).find(x=>x.id===id)||null;
+    if(product==='sanmae')return (smState.shipments||[]).find(x=>x.id===id)||null;
+    return null;
+  }
+
+  function v161StatusJa(status){
+    return {
+      draft:'下書き',
+      confirmed:'確定・在庫反映済',
+      shipped:'出荷済',
+      cancelled:'取消済'
+    }[status]||String(status||'');
+  }
+
+  function v161StatusNote(status){
+    if(status==='draft')return 'まだ在庫には反映されていません。内容を確認してから確定してください。';
+    if(status==='confirmed')return '在庫表へ反映済みです。次はPDF・送り状確認後に出荷済へ進めます。';
+    if(status==='shipped')return '出荷済みです。入出庫履歴へ正式な出庫記録が作成されています。';
+    if(status==='cancelled')return '取消済みです。';
+    return '';
+  }
+
+  function v161DecorateShipmentDetail(product,id){
+    const s=v161GetShipment(product,id);
+    if(!s||!app)return;
+
+    const firstCard=app.querySelector('section.card');
+    if(!firstCard)return;
+
+    if(document.getElementById('v161DetailStatusCard'))return;
+
+    const total=(s.lines||[]).reduce((a,l)=>a+Number(l.qty||0),0);
+    const status=document.createElement('section');
+    status.id='v161DetailStatusCard';
+    status.className='card';
+    status.style.cssText='margin-top:12px;padding:14px';
+
+    let badgeBg='#eef4fb',badgeColor='#173760';
+    if(s.status==='draft'){badgeBg='#fff4d6';badgeColor='#7a4b00'}
+    if(s.status==='confirmed'){badgeBg='#e8f5e9';badgeColor='#216e39'}
+    if(s.status==='shipped'){badgeBg='#e7edf5';badgeColor='#102a43'}
+    if(s.status==='cancelled'){badgeBg='#fee4e2';badgeColor='#b42318'}
+
+    status.innerHTML=`
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
+        <div>
+          <div style="font-size:12px;color:#627d98;font-weight:800">現在の状態</div>
+          <div style="font-size:20px;font-weight:900;margin-top:3px">${esc(v161StatusJa(s.status))}</div>
+        </div>
+        <span style="display:inline-block;padding:7px 12px;border-radius:999px;background:${badgeBg};color:${badgeColor};font-weight:900">
+          ${esc(productLabel[product]||product)}　${esc(s.id||'')}
+        </span>
+      </div>
+      <div class="note" style="margin-top:10px">${esc(v161StatusNote(s.status))}</div>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px">
+        <div class="stat">出荷日<b style="font-size:17px">${esc(s.shipDate||'未指定')}</b></div>
+        <div class="stat">合計数量<b style="font-size:17px">${fmt(total)}</b></div>
+      </div>
+    `;
+    firstCard.parentNode.insertBefore(status,firstCard);
+
+    // 一覧・履歴への共通導線を詳細画面の末尾へ追加。
+    const navCard=document.createElement('section');
+    navCard.id='v161DetailNavCard';
+    navCard.className='card';
+    navCard.style.cssText='margin-top:12px;padding:12px';
+    navCard.innerHTML=`
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <button class="btn secondary" id="v161DetailList" type="button">📋 出荷依頼一覧</button>
+        <button class="btn secondary" id="v161DetailHistory" type="button">🕘 出荷依頼履歴</button>
+      </div>`;
+    app.appendChild(navCard);
+
+    document.getElementById('v161DetailList').onclick=()=>globalThis.v76ShipmentMenu();
+    document.getElementById('v161DetailHistory').onclick=()=>{
+      if(typeof window.v136ShipmentHistory==='function')window.v136ShipmentHistory();
+      else globalThis.v76ShipmentMenu();
+    };
+
+    // 下書きの「確定・在庫反映」だけ、実行直前に最終確認を追加。
+    if(s.status==='draft'){
+      const confirmIds=['confirmShipmentBtn','hconf','nconf','smconf'];
+      const btn=confirmIds.map(x=>document.getElementById(x)).find(Boolean);
+
+      if(btn&&!btn.dataset.v161Guarded){
+        btn.dataset.v161Guarded='1';
+        const original=btn.onclick;
+        btn.textContent='✅ 確定・在庫反映';
+        btn.onclick=function(ev){
+          const latest=v161GetShipment(product,id);
+          if(!latest||latest.status!=='draft'){
+            alert('この出荷依頼はすでに処理されています。最新状態を表示します。');
+            return globalThis.openGlobalShipment(product,id);
+          }
+
+          const src=product==='kushiro'
+            ? shipmentSource(latest)
+            : (latest.source||{});
+          const dst=product==='kushiro'
+            ? shipmentDest(latest)
+            : (latest.dest||latest.destInfo||{});
+          const q=(latest.lines||[]).reduce((a,l)=>a+Number(l.qty||0),0);
+
+          const ok=window.confirm(
+            'この内容で出荷依頼を確定します。\n\n'+
+            '昆布：'+(productLabel[product]||product)+'\n'+
+            '出荷元：'+(src.name||'')+'\n'+
+            '出荷先：'+(dst.name||'')+'\n'+
+            '出荷日：'+(latest.shipDate||'')+'\n'+
+            '合計数量：'+fmt(q)+'\n\n'+
+            '確定すると在庫表へ反映されます。\nよろしいですか？'
+          );
+          if(!ok)return;
+
+          btn.disabled=true;
+          btn.textContent='確定処理中…';
+
+          try{
+            if(typeof original==='function')original.call(btn,ev);
+          }finally{
+            setTimeout(()=>{
+              const now=v161GetShipment(product,id);
+              if(now&&now.status==='draft'){
+                btn.disabled=false;
+                btn.textContent='✅ 確定・在庫反映';
+              }
+            },800);
+          }
+        };
+      }
+    }
+
+    // 確定後は確定ボタンが存在しないことを保証し、状態を明示。
+    if(s.status!=='draft'){
+      ['confirmShipmentBtn','hconf','nconf','smconf'].forEach(x=>{
+        const b=document.getElementById(x);
+        if(b)b.remove();
+      });
+    }
+  }
+
+  const v161BaseOpenGlobalShipment=globalThis.openGlobalShipment;
+  if(typeof v161BaseOpenGlobalShipment==='function'){
+    globalThis.openGlobalShipment=function(product,id){
+      const r=v161BaseOpenGlobalShipment.apply(this,arguments);
+      v161DecorateShipmentDetail(product,id);
+      return r;
+    };
+  }
+
+  // 詳細画面内部から自分自身を再描画する場合にもStep4表示を維持する。
+  const detailTargets=[
+    ['shipmentDetail','kushiro'],
+    ['hShipDetail','hidaka'],
+    ['nShipDetail','nemuro'],
+    ['smShipDetail','sanmae']
+  ];
+  detailTargets.forEach(([name,product])=>{
+    const fn=globalThis[name];
+    if(typeof fn!=='function')return;
+    globalThis[name]=function(id){
+      const r=fn.apply(this,arguments);
+      v161DecorateShipmentDetail(product,id);
+      return r;
+    };
+  });
+
+  console.info('[KOMBU v161 Step4] 出荷依頼詳細・確定導線整理を有効化');
+})();
+/* ===== /v161 Step4 ===== */
