@@ -1,3 +1,51 @@
+原因は、STEP5の追加表示が詳細画面の描画より先に実行される場合があり、挿入対象を見つけられないことでした。
+
+そこで STEP5.1修正版を作りました。今回は詳細画面描画直後だけでなく、次フレームと少し後にも計3回だけ表示確認するようにしています。重いDOM監視は使っていません。
+
+app-v159-v161-step5-1-fixed.txt
+
+GitHubの app-v159.js を全文上書きしてCommitし、PCで Ctrl + F5 をしてください。
+
+その後、確定済みの出荷依頼を開いて「⑤ 確定後の処理」が表示されるか確認してください。
+
+今回もJavaScript構文チェックは Syntax OK です。 
+
+app-v159-v161-step5-1-fixed.txt
+ドキュメント
+できました
+
+できました。これで STEP5.1「確定後の処理」表示まで正常です。
+
+現在の出荷依頼フローは、
+
+新規作成 → 入力 → 内容確認 → 下書き保存 → 最終確認 → 確定・在庫反映 → 出荷指示書/PDF確認 → 出荷済 → 出荷依頼履歴
+
+まで一連の流れとして整理できました。
+
+次は実際に 「📄 出荷指示書・PDFを確認」→「🚚 出荷済にする」→「🕘 出荷依頼履歴」 の順にテストするのが安全です。
+
+ここがすべて正常なら、出荷依頼フローの再構成はひとまず完成として、次に画面上に残っている旧ボタンや重複導線を整理してシンプルにするSTEP6へ進めます。
+
+お願いします
+
+STEP6を作成しました。今回は 正常動作しているSTEP5.1をそのまま基準にして、旧ボタンや重複した導線を画面上だけ整理しています。
+
+app-v159-v161-step6-complete.txt
+
+主な変更は、古い「PDF」「出荷済」「一覧へ」ボタンを画面上では非表示にし、STEP5.1の新しい導線を主に使うようにしたことです。内部処理は削除していないため、新しい「📄 出荷指示書・PDFを確認」「🚚 出荷済にする」ボタンから従来処理を呼び出せます。また、修正・取消・確定など重要な操作は残しています。
+
+GitHubの app-v159.js を全文削除 → このTXT全文を貼り付け → Commitしてください。index.html は変更不要です。その後PCで Ctrl + F5 をしてください。
+
+今回も事前にJavaScript構文チェックを行い、Syntax OK を確認済みです。
+
+更新後、確定済みの出荷依頼を開いて、画面が以前よりシンプルになり、「⑤ 確定後の処理」内のボタンだけでPDF確認・出荷済処理へ進めるか確認してください。 
+
+app-v159-v161-step6-complete.txt
+ドキュメント
+
+ライブラリ
+/
+app-v159-v161-step6-complete.txt
 "use strict";
 const PDFJS=globalThis.__KOMBU_PDFJS__||globalThis.pdfjsLib||null;
 /* PDF「R6年度 釧路産昆布 在庫証明書」の見出しを細分類化。対象外2群を除き、大分類6群で管理します。 */
@@ -7676,3 +7724,152 @@ if(histChanged){
   console.info('[KOMBU v161 Step5.1] 修正版 ready');
 })();
 /* ===== /v161 Step5.1 ===== */
+/* ===== v161 Step6: 旧ボタン・重複導線の整理 ===== */
+(function(){
+  'use strict';
+
+  function cleanupDetail(){
+    if(!window.app)return;
+
+    const step5=document.getElementById('v161Step5Flow');
+    const step51=document.getElementById('v161Step51Actions');
+
+    /*
+      Step4で追加した一覧・履歴カードは、下部ナビやStep5と重複するため非表示。
+      削除ではなく非表示にして、既存処理は残す。
+    */
+    const oldNav=document.getElementById('v161DetailNavCard');
+    if(oldNav)oldNav.style.display='none';
+
+    /*
+      Step5旧版のアクション領域が残っている場合は非表示。
+      Step5.1のボタンを正式表示として使う。
+    */
+    const oldActions=document.getElementById('v161Step5Actions');
+    if(oldActions)oldActions.style.display='none';
+
+    /*
+      詳細画面にある旧PDF/出荷済ボタンは、
+      Step5.1の新しいボタンから内部的にクリックするためDOMには残し、
+      画面上だけ隠す。
+    */
+    const proxyIds=[
+      'pdf','hpdfs','npdfs','smpdfs',
+      'pdfFaxBtn','pdfBtn','shipmentPdfBtn','shipPdfBtn',
+      'shippedShipmentBtn','hshipped','nshipped','smshipped','shipped'
+    ];
+
+    proxyIds.forEach(id=>{
+      const el=document.getElementById(id);
+      if(!el)return;
+      el.dataset.v161Proxy='1';
+      el.style.display='none';
+    });
+
+    /*
+      「一覧へ」系の旧ボタンも下部ナビと重複するため画面上から整理。
+      戻る処理そのものは削除しない。
+    */
+    [
+      'backShipmentBtn','hback','nback','smback'
+    ].forEach(id=>{
+      const el=document.getElementById(id);
+      if(el)el.style.display='none';
+    });
+
+    /*
+      取消・修正・確定は重要操作なので残す。
+      ただしボタン文言を統一。
+    */
+    [
+      ['editShipmentBtn','✏️ 修正'],
+      ['hedit','✏️ 修正'],
+      ['nedit','✏️ 修正'],
+      ['smedit','✏️ 修正'],
+      ['cancelShipmentBtn','取消'],
+      ['hcancel','取消'],
+      ['ncancel','取消'],
+      ['smcancel','取消'],
+      ['confirmShipmentBtn','✅ 確定・在庫反映'],
+      ['hconf','✅ 確定・在庫反映'],
+      ['nconf','✅ 確定・在庫反映'],
+      ['smconf','✅ 確定・在庫反映']
+    ].forEach(([id,label])=>{
+      const el=document.getElementById(id);
+      if(el&&el.style.display!=='none')el.textContent=label;
+    });
+
+    /*
+      旧ツールバー内で表示ボタンが1個もない場合は、
+      空白だけ残らないよう非表示にする。
+    */
+    document.querySelectorAll('.toolbar').forEach(tb=>{
+      const visible=[...tb.querySelectorAll('button')].some(b=>{
+        const st=getComputedStyle(b);
+        return st.display!=='none'&&st.visibility!=='hidden';
+      });
+      if(!visible&&tb.closest('section.card'))tb.style.display='none';
+    });
+
+    /*
+      Step5.1を主導線として強調。
+    */
+    const flow=document.getElementById('v161Step5Flow');
+    if(flow){
+      flow.style.border='1px solid #d9e2ec';
+      flow.style.boxShadow='0 2px 10px #0001';
+    }
+
+    if(step51){
+      [...step51.querySelectorAll('button')].forEach(b=>{
+        b.style.minHeight='48px';
+      });
+    }
+  }
+
+  function deferredCleanup(){
+    cleanupDetail();
+    requestAnimationFrame(cleanupDetail);
+    setTimeout(cleanupDetail,160);
+  }
+
+  const baseOpen=globalThis.openGlobalShipment;
+  if(typeof baseOpen==='function'){
+    globalThis.openGlobalShipment=function(){
+      const r=baseOpen.apply(this,arguments);
+      deferredCleanup();
+      return r;
+    };
+  }
+
+  [
+    'shipmentDetail',
+    'hShipDetail',
+    'nShipDetail',
+    'smShipDetail'
+  ].forEach(name=>{
+    const fn=globalThis[name];
+    if(typeof fn!=='function')return;
+    globalThis[name]=function(){
+      const r=fn.apply(this,arguments);
+      deferredCleanup();
+      return r;
+    };
+  });
+
+  if(!document.getElementById('v161Step6Style')){
+    const style=document.createElement('style');
+    style.id='v161Step6Style';
+    style.textContent=`
+      #v161DetailStatusCard + #v161Step5Flow{margin-top:10px!important}
+      #v161Step5Flow h3{font-size:18px}
+      #v161Step51Actions .btn{font-size:15px}
+      @media(max-width:700px){
+        #v161Step51Actions .btn{font-size:16px;min-height:52px}
+      }`;
+    document.head.appendChild(style);
+  }
+
+  console.info('[KOMBU v161 Step6] 旧ボタン・重複導線整理 ready');
+})();
+/* ===== /v161 Step6 ===== */
