@@ -1,3 +1,102 @@
+では次は、STEP5.3を安定版として固定したまま、画面整理を1か所ずつ進めます。
+
+最初は最も安全な 「出荷依頼詳細画面の重複表示だけを整理」 から始めます。PDF・出荷済・履歴・在庫反映などの処理ロジックには触れません。
+
+まず現在の 確定済み出荷依頼の詳細画面 のスクリーンショットを1枚送ってください。
+
+その画面を見て、「残すボタン」「重複しているので消すボタン」を具体的に決めてから、STEP5.4 を作ります。前回のSTEP6のように一括でDOMを変更する方式は使いません。
+
+画像3枚確認しました。かなり整理ポイントがはっきりしました。
+
+現在は同じ機能が上下に重複しています。特に、
+
+上部の 「📄 出荷指示書・PDFを確認」
+下部の 「📄 PDF・FAX用」
+上部の 「🚚 出荷済にする」
+下部の 「出荷済にする」
+下部の 「FAX BOXへ追加」
+最上部の 「📤 専用FAXBOXへ送る」
+「一覧へ」と最下部の「出荷依頼一覧」
+
+が重複しています。
+
+また、今回の方針ではFAXBOXは専用アプリへ分離するので、昆布在庫管理側の 「FAX BOXへ追加」 は最終的に不要です。
+
+STEP5.4ではこう整理するのがよいです
+
+詳細情報そのものは今の表示を残します。そのうえで操作部分を 「⑤ 確定後の処理」へ一本化します。
+
+完成イメージは、
+
+現在の状態
+確定・在庫反映済
+
+出荷日：2026-08-24
+合計数量：3
+
+────────────────────
+
+⑤ 確定後の処理
+
+① 在庫反映       ② 帳票確認       ③ 出荷処理
+   完了          出荷指示書・PDF      未完了
+
+[ 📄 出荷指示書・PDFを確認 ]
+
+[ 📤 専用FAXBOXへ送る ]
+
+[ 🚚 出荷済にする ]
+
+────────────────────
+
+📦 出荷指示書 S00017
+
+出荷元
+出荷先
+出荷日
+希望着日
+生産年度
+明細
+備考
+
+[ 取消 ]
+
+────────────────────
+
+[ 📋 出荷依頼一覧 ]  [ 🕘 出荷依頼履歴 ]
+
+とします。
+
+つまり、下側に残っている旧 「PDF・FAX用」「FAX BOXへ追加」「出荷済にする」「一覧へ」 は画面から外します。ただし今回は前回のSTEP6のようにJavaScriptで後から大量に非表示にする方法は使いません。
+
+元の詳細画面を生成している部分だけを特定して、不要な旧ボタンのHTMLだけを削る方式にします。これならフリーズの危険をかなり下げられます。
+
+さらに重要なのは、スクリーンショットでは 出荷元と出荷先がどちらも「山三商事(株)」 になっています。これは今回の画面整理とは別に、実データとして正しいケースなのか確認した方がよさそうです。
+
+次は正常版 STEP5.3を基準に、まず釧路産昆布の詳細画面だけを整理するSTEP5.4 にします。釧路で正常確認できてから、日高・根室・釧路棹前へ横展開するのが安全です。
+
+お願いします
+
+STEP5.4を作成しました。今回はご希望どおり、釧路産昆布の出荷指示詳細画面だけを整理しています。他の3種類にはまだ変更を加えていません。
+
+STEP5.4 釧路産昆布・詳細画面整理版
+
+今回、画面上から整理するのは旧 「PDF・FAX用」「FAX BOXへ追加」「出荷済にする」「一覧へ」 です。ただし、PDFや出荷済処理を実行するための内部ボタン自体は削除せず非表示で残しているので、「⑤ 確定後の処理」から従来処理を呼び出せます。
+
+一方、重要な 「取消」 は残します。下書き時の 「確定・在庫反映」「修正」 も残します。また、上部の 「📤 専用FAXBOXへ送る」 は今回そのままです。
+
+GitHubの app-v159.js を全文上書き → Commit → Ctrl + F5 してください。GitHub Pagesでは公開反映に時間がかかる場合があるため、更新直後に変わらなければ少し待ってから再読み込みしてください。
+
+今回も JavaScript構文チェックは Syntax OK です。
+
+更新後、まず釧路産昆布の確定済み出荷指示だけを開いてください。画面が正常なら、次に日高・根室・釧路棹前へ同じ整理を横展開します。 
+
+app-v159-v161-step5-4-kushiro-clean.txt
+ドキュメント
+
+ライブラリ
+/
+app-v159-v161-step5-4-kushiro-clean.txt
 "use strict";
 const PDFJS=globalThis.__KOMBU_PDFJS__||globalThis.pdfjsLib||null;
 /* PDF「R6年度 釧路産昆布 在庫証明書」の見出しを細分類化。対象外2群を除き、大分類6群で管理します。 */
@@ -408,7 +507,7 @@ function shipmentDetail(id){
  const statusName={draft:'下書き',confirmed:'確定・在庫反映済',shipped:'出荷済',cancelled:'取消'}[s.status]||s.status;
  const totalQ=s.lines.reduce((a,l)=>a+Number(l.qty||0),0),src=shipmentSource(s),dst=shipmentDest(s);
  const shipmentYears=[...new Set(s.lines.map(l=>l.year||s.baseYear||DEFAULT_YEAR))].sort((a,b)=>YEARS.indexOf(a)-YEARS.indexOf(b));
- app.innerHTML=`<section class="card"><div class="row"><h2>📦 出荷指示書 ${esc(s.id)}</h2><span class="pill">${statusName}</span></div><div class="subgrid"><div class="card" style="margin:0;padding:10px;background:#f8fafc"><b>出荷元</b><br>${esc(src.name)}<br><span class="small">${esc(src.address||'')} ${src.phone?'／ TEL '+esc(src.phone):''}</span></div><div class="card" style="margin:0;padding:10px;background:#f8fafc"><b>出荷先</b><br>${esc(dst.name)}<br><span class="small">${esc(dst.address||'')} ${dst.phone?'／ TEL '+esc(dst.phone):''}</span></div></div><p><b>出荷日：</b>${esc(s.shipDate||'')}　　<b>希望着日：</b>${esc(s.arrivalDate||'未指定')}</p><p><b>生産年度：</b>${esc(shipmentYears.map(y=>y+'年産').join('・'))}　　<b>合計：</b>${fmt(totalQ)}</p><div class="tablewrap"><table style="min-width:900px"><tr><th>生産年度</th><th>漁協</th><th>季節</th><th>大分類</th><th>細分類</th><th>数量</th><th>備考</th></tr>${s.lines.map(l=>`<tr><td>${esc(l.year||DEFAULT_YEAR)}年産</td><td>${esc(l.coop)}</td><td>${esc(l.season)}</td><td>${esc(l.group)}</td><td>${esc(l.item)}</td><td>${fmt(l.qty)}</td><td>${esc(l.memo||'')}</td></tr>`).join('')}</table></div><p class="muted">備考：${esc(s.memo||'')}</p><div class="note">下書きでは在庫は変わりません。「出荷指示を確定して在庫反映」を押すと在庫表から即時差し引き、取消時は自動で在庫へ戻します。出荷済みにすると入出庫履歴へ正式な出庫記録を作成します。</div><div class="toolbar"><button class="btn" id="pdf">📄 PDF・FAX用</button>${s.status==='draft'?'<button class="btn" id="confirmShipmentBtn">出荷指示を確定して在庫反映</button>':''}${s.status==='confirmed'?'<button class="btn" id="shippedShipmentBtn">出荷済にする</button>':''}${s.status==='draft'?'<button class="btn secondary" id="editShipmentBtn">修正</button>':''}${s.status!=='shipped'&&s.status!=='cancelled'?'<button class="btn danger" id="cancelShipmentBtn">取消</button>':''}<button class="btn secondary" id="backShipmentBtn">一覧へ</button></div></section>`;
+ app.innerHTML=`<section class="card"><div class="row"><h2>📦 出荷指示書 ${esc(s.id)}</h2><span class="pill">${statusName}</span></div><div class="subgrid"><div class="card" style="margin:0;padding:10px;background:#f8fafc"><b>出荷元</b><br>${esc(src.name)}<br><span class="small">${esc(src.address||'')} ${src.phone?'／ TEL '+esc(src.phone):''}</span></div><div class="card" style="margin:0;padding:10px;background:#f8fafc"><b>出荷先</b><br>${esc(dst.name)}<br><span class="small">${esc(dst.address||'')} ${dst.phone?'／ TEL '+esc(dst.phone):''}</span></div></div><p><b>出荷日：</b>${esc(s.shipDate||'')}　　<b>希望着日：</b>${esc(s.arrivalDate||'未指定')}</p><p><b>生産年度：</b>${esc(shipmentYears.map(y=>y+'年産').join('・'))}　　<b>合計：</b>${fmt(totalQ)}</p><div class="tablewrap"><table style="min-width:900px"><tr><th>生産年度</th><th>漁協</th><th>季節</th><th>大分類</th><th>細分類</th><th>数量</th><th>備考</th></tr>${s.lines.map(l=>`<tr><td>${esc(l.year||DEFAULT_YEAR)}年産</td><td>${esc(l.coop)}</td><td>${esc(l.season)}</td><td>${esc(l.group)}</td><td>${esc(l.item)}</td><td>${fmt(l.qty)}</td><td>${esc(l.memo||'')}</td></tr>`).join('')}</table></div><p class="muted">備考：${esc(s.memo||'')}</p><div class="note">下書きでは在庫は変わりません。「出荷指示を確定して在庫反映」を押すと在庫表から即時差し引き、取消時は自動で在庫へ戻します。出荷済みにすると入出庫履歴へ正式な出庫記録を作成します。</div><div class="toolbar v161-kushiro-detail-toolbar"><button class="btn v161-proxy-btn" id="pdf" type="button" aria-hidden="true" tabindex="-1">📄 PDF・FAX用</button>${s.status==='draft'?'<button class="btn" id="confirmShipmentBtn">出荷指示を確定して在庫反映</button>':''}${s.status==='confirmed'?'<button class="btn v161-proxy-btn" id="shippedShipmentBtn" type="button" aria-hidden="true" tabindex="-1">出荷済にする</button>':''}${s.status==='draft'?'<button class="btn secondary" id="editShipmentBtn">修正</button>':''}${s.status!=='shipped'&&s.status!=='cancelled'?'<button class="btn danger" id="cancelShipmentBtn">取消</button>':''}<button class="btn secondary v161-proxy-btn" id="backShipmentBtn" type="button" aria-hidden="true" tabindex="-1">一覧へ</button></div></section>`;
  const pdfBtn=document.getElementById('pdf');if(pdfBtn)pdfBtn.onclick=()=>openShipmentPdfDirect(s.id);
 if(s.status==='draft'){
   const confirmBtn=document.getElementById('confirmShipmentBtn');
@@ -7825,3 +7924,24 @@ if(histChanged){
   console.info('[KOMBU v161 Step5.3] 出荷履歴自動反映 ready');
 })();
 /* ===== /v161 Step5.3 ===== */
+/* ===== v161 Step5.4: 釧路産昆布 詳細画面だけ安全整理 ===== */
+(function(){
+  'use strict';
+  if(document.getElementById('v161Step54Style'))return;
+  const st=document.createElement('style');
+  st.id='v161Step54Style';
+  st.textContent=`
+    .v161-kushiro-detail-toolbar .v161-proxy-btn{display:none!important}
+    .v161-kushiro-detail-toolbar #v99FaxAdd{display:none!important}
+    .v161-kushiro-detail-toolbar{
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:10px;
+    }
+    @media(max-width:700px){
+      .v161-kushiro-detail-toolbar{grid-template-columns:1fr}
+    }
+  `;
+  document.head.appendChild(st);
+  console.info('[KOMBU v161 Step5.4] 釧路産昆布 詳細画面整理 ready');
+})();
+/* ===== /v161 Step5.4 ===== */
