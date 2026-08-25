@@ -1,3 +1,49 @@
+よかったです。これで STEP5.4の釧路産昆布も正常です。
+
+次は同じ整理を、日高昆布・根室産昆布・釧路産棹前昆布にも横展開できます。釧路で動作確認できた方式だけを使い、保存・在庫反映・PDF・履歴などの処理ロジックは変更しません。
+
+次を STEP5.5「4種類共通・詳細画面整理版」 として作成します。
+
+お願いします
+
+STEP5.5を作成しました。今回は 釧路で正常確認できた整理方法を、そのまま日高・根室・釧路棹前にも横展開しています。
+
+app-v159-v161-step5-5-all-detail-clean.txt
+
+対象は 釧路・日高・根室・釧路棹前の4種類すべてです。旧「PDF/FAX」「出荷済」「一覧へ」などの重複ボタンは画面上では隠しますが、内部処理用として残しているので、「⑤ 確定後の処理」から従来処理を呼び出せます。
+
+GitHubの app-v159.js を全文上書き → Commit → Ctrl + F5 してください。
+
+今回も JavaScript構文チェックは Syntax OK です。
+
+更新後は、まず日高・根室・釧路棹前を1件ずつ開いて、釧路と同じように画面が整理されているか確認してください。 
+
+app-v159-v161-step5-5-all-detail-clean.txt
+ドキュメント
+今日 16:58
+新規出荷依頼で日高の出荷依頼をしたときに確定して在庫反映したときに、在庫管理の在庫表にはその在庫が反映されいますが、出荷済にはなっていないものの入出庫履歴には残っていません。その時点でホーム画面に戻ると在庫には反映されているが当該出荷指示自体はどこにも残っていない状態になってしまいます。
+つまり、出荷指示も履歴もないのに在庫だけ減るという状況になってしまします。
+
+状況を確認すると、これは重要な不具合です。「確定・在庫反映済」の出荷依頼は、出荷済になるまでは入出庫履歴には出なくてもよいですが、少なくとも「出荷依頼一覧」には必ず残っていなければなりません。
+
+今回の原因として、過去の履歴やFAXBOXに同じ出荷指示番号が残っていると、現在の確定済み出荷依頼まで一覧から消される処理がありました。さらに、番号の再利用が起こる余地もありました。
+
+その2点を修正した STEP5.6 出荷依頼消失防止版 を作成しました。
+
+app-v159-v161-step5-6-shipment-integrity-fix.txt
+
+今回の修正では、下書き・確定済みは過去履歴/FAXBOXに同じ番号があっても一覧から消えないようにしています。また、今後は釧路・日高・根室・釧路棹前すべてで、過去履歴も含めた最大番号より後ろから採番するよう補正します。履歴側でも番号が重複していた場合、古い履歴を上書きしないようにしています。
+
+GitHubの app-v159.js を全文上書き → Commit → Ctrl + F5 してください。今回も Syntax OK を確認済みです。
+
+更新後、まず先ほどの日高の確定済み出荷依頼が「出荷依頼一覧」に再表示されるか確認してください。データ自体が hState.shipments に残っていれば、今回の修正で見えるようになるはずです。 
+
+app-v159-v161-step5-6-shipment-integrity-fix.txt
+ドキュメント
+
+ライブラリ
+/
+app-v159-v161-step5-6-shipment-integrity-fix.txt
 "use strict";
 const PDFJS=globalThis.__KOMBU_PDFJS__||globalThis.pdfjsLib||null;
 /* PDF「R6年度 釧路産昆布 在庫証明書」の見出しを細分類化。対象外2群を除き、大分類6群で管理します。 */
@@ -6257,7 +6303,11 @@ document.querySelectorAll('#v76ShipBody tr[data-gprod][data-gid]').forEach(tr=>{
     histChanged=true;
   }
 
-  if(archived.has(k)||inFax.has(k)){
+  /* v161 Step5.6:
+     過去履歴/FAXBOXに同じ番号が残っていても、
+     現在の下書き・確定済み出荷依頼は一覧から消さない。
+     shipped/cancelled は元の一覧生成時点で除外済み。 */
+  if(x && (x.status==='shipped'||x.status==='cancelled')){
     tr.remove();
   }
 });
@@ -7735,8 +7785,22 @@ if(histChanged){
     allShipments().forEach(({product,s})=>{
       if(!s||!(s.status==='shipped'||s.status==='cancelled'))return;
 
-      const k=product+'::'+String(s.id||'');
-      const old=map.get(k);
+      const baseKey=product+'::'+String(s.id||'');
+      let k=baseKey;
+      let old=map.get(k);
+
+      /* 同じ指示番号が過去履歴と再利用されていた場合は、
+         createdAtを付けて別履歴として保持する。 */
+      if(
+        old &&
+        old.snapshot &&
+        old.snapshot.createdAt &&
+        s.createdAt &&
+        String(old.snapshot.createdAt)!==String(s.createdAt)
+      ){
+        k=baseKey+'::'+String(s.createdAt);
+        old=map.get(k);
+      }
 
       const item={
         key:k,
@@ -7848,3 +7912,59 @@ if(histChanged){
   console.info('[KOMBU v161 Step5.5] 4種類共通 詳細画面整理 ready');
 })();
 /* ===== /v161 Step5.5 ===== */
+/* ===== v161 Step5.6: 出荷依頼の消失防止・番号重複防止 ===== */
+(function(){
+  'use strict';
+
+  function hist(){
+    try{
+      const a=JSON.parse(localStorage.getItem('kombu-v136-shipment-history')||'[]');
+      return Array.isArray(a)?a:[];
+    }catch(_e){
+      return [];
+    }
+  }
+
+  function maxNo(prefix, product, shipments){
+    let max=0;
+    (shipments||[]).forEach(s=>{
+      const m=String(s?.id||'').match(new RegExp('^'+prefix+'(\\d+)$'));
+      if(m)max=Math.max(max,Number(m[1]||0));
+    });
+    hist().forEach(h=>{
+      if(h?.product!==product)return;
+      const m=String(h?.id||'').match(new RegExp('^'+prefix+'(\\d+)$'));
+      if(m)max=Math.max(max,Number(m[1]||0));
+    });
+    return max;
+  }
+
+  /* 次回採番を「現在データ＋履歴」の最大番号より必ず後ろへ進める。 */
+  const kMax=maxNo('S','kushiro',state.shipments);
+  state.shipmentSeq=Math.max(Number(state.shipmentSeq||1),kMax+1);
+
+  const hMax=maxNo('H','hidaka',hState.shipments);
+  hState.shipmentSeq=Math.max(Number(hState.shipmentSeq||1),hMax+1);
+
+  const nMax=maxNo('N','nemuro',nState.shipments);
+  nState.shipmentSeq=Math.max(Number(nState.shipmentSeq||1),nMax+1);
+
+  const smMax=maxNo('S','sanmae',smState.shipments);
+  smState.shipmentSeq=Math.max(Number(smState.shipmentSeq||1),smMax+1);
+
+  save();
+  hSave();
+  nSave();
+  smSave();
+
+  console.info(
+    '[KOMBU v161 Step5.6] 採番補正',
+    {
+      kushiro:state.shipmentSeq,
+      hidaka:hState.shipmentSeq,
+      nemuro:nState.shipmentSeq,
+      sanmae:smState.shipmentSeq
+    }
+  );
+})();
+/* ===== /v161 Step5.6 ===== */
