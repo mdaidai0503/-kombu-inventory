@@ -1,3 +1,206 @@
+状況を確認すると、これは重要な不具合です。「確定・在庫反映済」の出荷依頼は、出荷済になるまでは入出庫履歴には出なくてもよいですが、少なくとも「出荷依頼一覧」には必ず残っていなければなりません。
+
+今回の原因として、過去の履歴やFAXBOXに同じ出荷指示番号が残っていると、現在の確定済み出荷依頼まで一覧から消される処理がありました。さらに、番号の再利用が起こる余地もありました。
+
+その2点を修正した STEP5.6 出荷依頼消失防止版 を作成しました。
+
+app-v159-v161-step5-6-shipment-integrity-fix.txt
+
+今回の修正では、下書き・確定済みは過去履歴/FAXBOXに同じ番号があっても一覧から消えないようにしています。また、今後は釧路・日高・根室・釧路棹前すべてで、過去履歴も含めた最大番号より後ろから採番するよう補正します。履歴側でも番号が重複していた場合、古い履歴を上書きしないようにしています。
+
+GitHubの app-v159.js を全文上書き → Commit → Ctrl + F5 してください。今回も Syntax OK を確認済みです。
+
+更新後、まず先ほどの日高の確定済み出荷依頼が「出荷依頼一覧」に再表示されるか確認してください。データ自体が hState.shipments に残っていれば、今回の修正で見えるようになるはずです。 
+
+app-v159-v161-step5-6-shipment-integrity-fix.txt
+ドキュメント
+出荷依頼日がデフォルトで当日になるよう設定お願いします。
+あと出荷指示部分で最初の3つのボタンからそれぞれの画面に移った後にボタンをそれぞれ押すとどのようなフローにプログラムされているか把握したい。そのうえで前の画面に戻れなかったり、適切な出荷指示フローになっていないと感じますので修正のプランをください。
+
+はい。ここは一度コードを増やす前に、現在の出荷指示フローを整理してから直すのがよいです。現行コードを確認しました。
+
+まず「出荷依頼日をデフォルトで当日」は、現行コードにも existing?.shipDate || today() が入っています。つまり新規作成時は本来当日になる設計です。
+ただし現在は改修を重ねているので、次版で新規作成時は必ず当日、修正時だけ元の日付を保持する形に明示的に固定します。
+
+現在の最初の3ボタンの実際の動き
+
+現在の「📦 出荷依頼」入口は次の3つです。
+
+📦 出荷依頼
+│
+├─ ① ＋ 新規出荷依頼
+│      ↓
+│   v114UnifiedShipmentForm()
+│      ↓
+│   入力
+│      ↓
+│   内容確認
+│      ↓
+│   下書き保存
+│      ↓
+│   詳細
+│      ↓
+│   確定・在庫反映
+│      ↓
+│   PDF
+│      ↓
+│   出荷済
+│
+├─ ② 📋 出荷依頼一覧
+│      ↓
+│   v76ShipmentMenu()
+│      ↓
+│   一覧から「開く」
+│      ↓
+│   各昆布の詳細画面
+│
+└─ ③ 🕘 出荷依頼履歴
+       ↓
+    v136ShipmentHistory()
+       ↓
+    出荷済・取消済の履歴
+
+この3ボタン自体の振り分けは正しく、実際に「新規」は共通フォーム、「一覧」は v76ShipmentMenu()、「履歴」は v136ShipmentHistory() を呼んでいます。
+
+問題はその先の「戻る」が昔の画面構造と新しい画面構造で混在していることです。
+
+たとえば既存の全昆布一覧には、戻る処理として productChoicePage('shipment') を呼ぶ古い導線が残っています。
+しかし現在は入口を v161ShipmentEntryMenu() に作り替えています。このため「戻る」を押したときに、ユーザーが期待する一つ前の画面ではなく、旧画面へ飛んだり、ホームへ飛んだりする構造になっています。
+
+修正プラン
+
+ここは今後、出荷依頼専用のナビゲーションを一本化します。
+
+【ホーム】
+   ↓
+【📦 出荷依頼】
+   │
+   ├──────────────┐
+   ↓              ↓              ↓
+【新規】       【一覧】        【履歴】
+   │              │              │
+   ↓              ↓              ↓
+【入力】       【詳細】        【履歴詳細】
+   ↓              │              │
+【内容確認】      │              │
+   ↓              │              │
+【下書き】────────┘              │
+   ↓                             │
+【詳細】                          │
+   ↓                             │
+【確定・在庫反映】                │
+   ↓                             │
+【PDF/FAX】                       │
+   ↓                             │
+【出荷済】──────────────────────→【履歴】
+
+そして「戻る」のルールを明確にします。
+
+現在いる画面	「戻る」で行く画面
+新規出荷依頼	📦 出荷依頼メニュー
+内容確認	新規出荷依頼（入力内容保持）
+出荷依頼一覧	📦 出荷依頼メニュー
+一覧から開いた詳細	出荷依頼一覧
+下書き保存直後の詳細	出荷依頼一覧
+出荷依頼履歴	📦 出荷依頼メニュー
+履歴から開いた詳細	出荷依頼履歴
+📦 出荷依頼メニュー	ホーム
+
+これが一番重要です。詳細画面を「どこから開いたか」も記録するようにします。
+
+たとえば、
+
+一覧 → 詳細
+
+なら戻る先は一覧。
+
+履歴 → 詳細
+
+なら戻る先は履歴。
+
+これを固定すれば、「戻ったら変な画面に行く」という問題がなくなります。
+
+さらに直したい重要点
+
+先ほど発見した日高の問題も含め、状態を次の4段階に統一します。
+
+下書き
+  ↓
+確定・在庫反映済
+  ↓
+出荷済
+  ↓
+履歴
+
+「確定・在庫反映済」は絶対に出荷依頼一覧に残すことにします。
+
+つまり、
+
+在庫だけ減っているのに、出荷依頼がどこにもない
+
+という状態を構造上起こさないようにします。
+
+履歴はあくまで出荷済・取消済。入出庫履歴への正式な出庫記録は現在の処理どおり「出荷済」時点、と整理するのが分かりやすいです。
+
+次の作業
+
+一気に全部直すとまたフリーズ原因になりやすいので、次を STEP5.7「出荷依頼ナビゲーション統一」 として、
+
+① 新規の依頼日を必ず当日 → ② 3つの入口は維持 → ③ 各画面の戻る先だけ統一 → ④ 詳細画面に開いた元を記憶
+
+までを先に直すのが安全です。
+
+在庫処理・PDF・出荷済・履歴保存ロジックにはまだ触れません。
+
+その後STEP5.8で、下書き→確定→出荷済→履歴という状態遷移を4種類すべて完全に統一する、という2段階で進めるのをおすすめします。
+
+進めてください
+
+進めました。**STEP5.7「出荷依頼ナビゲーション統一＋依頼日当日固定」**を作成しました。
+
+app-v159-v161-step5-7-navigation.txt
+
+今回の変更は大きく2点です。まず、新規出荷依頼を開いたときの依頼日は必ず当日に設定します。修正画面では、保存済みの日付をそのまま維持します。
+
+次に、出荷依頼内の「戻る」を次のように統一しました。
+
+出荷依頼メニュー
+├─ 新規出荷依頼
+│   └─ 戻る → 出荷依頼メニュー
+│
+├─ 出荷依頼一覧
+│   ├─ 戻る → 出荷依頼メニュー
+│   └─ 詳細を開く
+│       └─ 戻る → 出荷依頼一覧
+│
+└─ 出荷依頼履歴
+    ├─ 戻る → 出荷依頼メニュー
+    └─ 詳細を開く
+        └─ 戻る → 出荷依頼履歴
+
+新規出荷依頼を保存して詳細画面へ進んだ場合は、詳細から戻ると出荷依頼一覧へ戻ります。
+
+また、昔の productChoicePage('shipment') や全昆布一覧から戻る古い経路も、新しい 📦 出荷依頼メニューへ統一しています。現在の入口3ボタンは「新規→共通フォーム」「一覧→v76ShipmentMenu」「履歴→v136ShipmentHistory」という構造なので、そこを基準に整理しています。
+
+今回は在庫計算・確定処理・PDF・出荷済・履歴保存のロジックには触れていません。
+
+GitHubの app-v159.js を全文上書き → Commit → Ctrl + F5 してください。今回も JavaScript構文チェックは Syntax OK です。
+
+更新後は、まず次の4点だけ確認してください。
+
+新規出荷依頼の依頼日が今日になっている
+新規出荷依頼 → 戻る → 出荷依頼メニュー
+出荷依頼一覧 → 詳細 → 戻る → 出荷依頼一覧
+出荷依頼履歴 → 詳細 → 戻る → 出荷依頼履歴
+
+ここが正常なら、次に STEP5.8で「下書き→確定→出荷済→履歴」の状態遷移を4種類共通で整理します。 
+
+app-v159-v161-step5-7-navigation.txt
+ドキュメント
+
+ライブラリ
+/
+app-v159-v161-step5-7-navigation.txt
 "use strict";
 const PDFJS=globalThis.__KOMBU_PDFJS__||globalThis.pdfjsLib||null;
 /* PDF「R6年度 釧路産昆布 在庫証明書」の見出しを細分類化。対象外2群を除き、大分類6群で管理します。 */
@@ -7922,3 +8125,264 @@ if(histChanged){
   );
 })();
 /* ===== /v161 Step5.6 ===== */
+/* ===== v161 Step5.7: 出荷依頼ナビゲーション統一 + 依頼日当日固定 ===== */
+(function(){
+  'use strict';
+
+  /*
+    出荷依頼内だけで使う簡単な画面位置。
+    menu / form / list / history / detail
+  */
+  let navPlace='menu';
+  let detailReturn='list';
+
+  function menu(){
+    navPlace='menu';
+    return globalThis.v161ShipmentEntryMenu();
+  }
+
+  function list(){
+    navPlace='list';
+    return globalThis.v76ShipmentMenu();
+  }
+
+  function history(){
+    navPlace='history';
+    if(typeof window.v136ShipmentHistory==='function'){
+      return window.v136ShipmentHistory();
+    }
+    return list();
+  }
+
+  function home(){
+    navPlace='menu';
+    return globalThis.productLanding();
+  }
+
+  function removeOldStep57Nav(){
+    document.querySelectorAll('[data-v161-step57-nav="1"]').forEach(x=>x.remove());
+  }
+
+  function addBackCard(label,handler){
+    removeOldStep57Nav();
+    const card=document.createElement('section');
+    card.className='card';
+    card.dataset.v161Step57Nav='1';
+    card.style.cssText='margin-top:12px;padding:12px';
+    card.innerHTML=`<button class="btn secondary" type="button" id="v161Step57Back">${label}</button>`;
+    app.appendChild(card);
+    document.getElementById('v161Step57Back').onclick=handler;
+  }
+
+  /* ---------------------------------------------------------
+     1. 出荷依頼メニュー
+     --------------------------------------------------------- */
+  const baseEntry=globalThis.v161ShipmentEntryMenu;
+  if(typeof baseEntry==='function'){
+    globalThis.v161ShipmentEntryMenu=function(){
+      navPlace='menu';
+      const r=baseEntry.apply(this,arguments);
+
+      const n=document.getElementById('v161NewShipment');
+      const l=document.getElementById('v161ShipmentList');
+      const h=document.getElementById('v161ShipmentHistory');
+      const hm=document.getElementById('v161ShipmentHome');
+
+      if(n)n.onclick=()=>{
+        navPlace='form';
+        globalThis.v114UnifiedShipmentForm();
+      };
+      if(l)l.onclick=list;
+      if(h)h.onclick=history;
+      if(hm)hm.onclick=home;
+
+      return r;
+    };
+  }
+
+  /* ---------------------------------------------------------
+     2. 新規・修正フォーム
+     新規作成時の依頼日は毎回「当日」を明示的にセット。
+     --------------------------------------------------------- */
+  const baseForm=globalThis.v114UnifiedShipmentForm;
+  if(typeof baseForm==='function'){
+    globalThis.v114UnifiedShipmentForm=function(editProduct=null,editId=null,preset=null){
+      navPlace='form';
+      const r=baseForm.apply(this,arguments);
+
+      const date=document.getElementById('v114ShipDate');
+
+      /*
+        新規作成だけ必ず本日。
+        修正画面では保存済みの日付を維持。
+      */
+      if(date&&!editProduct&&!editId){
+        date.value=today();
+      }
+
+      const card=document.createElement('section');
+      card.className='card';
+      card.dataset.v161Step57Nav='1';
+      card.style.cssText='margin-top:12px;padding:12px';
+
+      const backLabel=(editProduct&&editId)
+        ?'← 出荷依頼詳細へ戻る'
+        :'← 出荷依頼メニューへ戻る';
+
+      card.innerHTML=`<button class="btn secondary" type="button" id="v161Step57FormBack">${backLabel}</button>`;
+      app.appendChild(card);
+
+      const b=document.getElementById('v161Step57FormBack');
+      if(b)b.onclick=()=>{
+        if(editProduct&&editId){
+          detailReturn='list';
+          navPlace='detail';
+          globalThis.openGlobalShipment(editProduct,editId);
+        }else{
+          menu();
+        }
+      };
+
+      return r;
+    };
+  }
+
+  /* ---------------------------------------------------------
+     3. 出荷依頼一覧
+     戻る先を必ず「出荷依頼メニュー」に統一。
+     --------------------------------------------------------- */
+  const baseList=globalThis.v76ShipmentMenu;
+  if(typeof baseList==='function'){
+    globalThis.v76ShipmentMenu=function(){
+      navPlace='list';
+      const r=baseList.apply(this,arguments);
+
+      const oldHome=document.getElementById('v76Home');
+      const oldBack=document.getElementById('v76Back');
+
+      if(oldHome)oldHome.onclick=home;
+      if(oldBack)oldBack.onclick=menu;
+
+      addBackCard('← 出荷依頼メニューへ戻る',menu);
+      return r;
+    };
+  }
+
+  /* ---------------------------------------------------------
+     4. 出荷依頼履歴
+     戻る先を必ず「出荷依頼メニュー」に統一。
+     --------------------------------------------------------- */
+  const baseHistory=window.v136ShipmentHistory;
+  if(typeof baseHistory==='function'){
+    window.v136ShipmentHistory=function(){
+      navPlace='history';
+      const r=baseHistory.apply(this,arguments);
+      addBackCard('← 出荷依頼メニューへ戻る',menu);
+      return r;
+    };
+  }
+
+  /* ---------------------------------------------------------
+     5. 詳細画面
+     「一覧から開いた」か「履歴から開いた」かを記録。
+     --------------------------------------------------------- */
+  function addDetailBack(){
+    removeOldStep57Nav();
+
+    const card=document.createElement('section');
+    card.className='card';
+    card.dataset.v161Step57Nav='1';
+    card.style.cssText='margin-top:12px;padding:12px';
+
+    const fromHistory=detailReturn==='history';
+    card.innerHTML=`
+      <button class="btn secondary" type="button" id="v161Step57DetailBack">
+        ${fromHistory?'← 出荷依頼履歴へ戻る':'← 出荷依頼一覧へ戻る'}
+      </button>`;
+
+    app.appendChild(card);
+
+    const b=document.getElementById('v161Step57DetailBack');
+    if(b)b.onclick=fromHistory?history:list;
+  }
+
+  const baseOpen=globalThis.openGlobalShipment;
+  if(typeof baseOpen==='function'){
+    globalThis.openGlobalShipment=function(product,id){
+      /*
+        新規保存後はフォームから詳細が開くため一覧へ戻す。
+        履歴から開いた時だけ履歴へ戻す。
+      */
+      detailReturn=(navPlace==='history')?'history':'list';
+      navPlace='detail';
+
+      const r=baseOpen.apply(this,arguments);
+      addDetailBack();
+      return r;
+    };
+  }
+
+  /*
+    確定・出荷済・取消などで詳細画面自身が再描画された場合も
+    戻る先を失わない。
+  */
+  [
+    'shipmentDetail',
+    'hShipDetail',
+    'nShipDetail',
+    'smShipDetail'
+  ].forEach(name=>{
+    const fn=globalThis[name];
+    if(typeof fn!=='function')return;
+
+    globalThis[name]=function(){
+      const r=fn.apply(this,arguments);
+      navPlace='detail';
+      addDetailBack();
+      return r;
+    };
+  });
+
+  /* ---------------------------------------------------------
+     6. 古い全昆布一覧が呼ばれた場合も、新メニューへ戻す。
+     --------------------------------------------------------- */
+  const baseAll=globalThis.allShipmentHistory;
+  if(typeof baseAll==='function'){
+    globalThis.allShipmentHistory=function(){
+      navPlace='list';
+      const r=baseAll.apply(this,arguments);
+      const old=document.getElementById('gShipBack');
+      if(old)old.onclick=menu;
+      addBackCard('← 出荷依頼メニューへ戻る',menu);
+      return r;
+    };
+  }
+
+  /* 入口を productChoicePage('shipment') から呼ばれた場合も統一 */
+  const baseChoice=globalThis.productChoicePage;
+  if(typeof baseChoice==='function'){
+    globalThis.productChoicePage=function(mode){
+      if(mode==='shipment')return menu();
+      return baseChoice.apply(this,arguments);
+    };
+  }
+
+  if(!document.getElementById('v161Step57Style')){
+    const st=document.createElement('style');
+    st.id='v161Step57Style';
+    st.textContent=`
+      [data-v161-step57-nav="1"] .btn{
+        min-height:46px;
+      }
+      @media(max-width:700px){
+        [data-v161-step57-nav="1"] .btn{
+          min-height:52px;
+          font-size:16px;
+        }
+      }`;
+    document.head.appendChild(st);
+  }
+
+  console.info('[KOMBU v161 Step5.7] 出荷依頼ナビゲーション統一 ready');
+})();
+/* ===== /v161 Step5.7 ===== */
