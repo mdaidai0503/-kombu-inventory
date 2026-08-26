@@ -1,5 +1,5 @@
 /* =========================================================
-   昆布在庫管理 → FAXBOX専用アプリ 完全統合 UI v2.2
+   昆布在庫管理 → FAXBOX専用アプリ 完全統合 UI v2.4
    ---------------------------------------------------------
    ・旧ローカルFAX BOXを通常操作から外す
    ・出荷指示一覧「まとめてFAXBOXへ」→ 専用FAXBOXへ直接登録
@@ -159,6 +159,41 @@
     }
   }
 
+  async function sendOneShipmentFromPreview(shipment){
+    if(!shipment) return null;
+    const id=String(shipment.id||'');
+    let product='';
+    if(/^H/i.test(id)) product='hidaka';
+    else if(/^N/i.test(id)) product='nemuro';
+    else if(/^[MS]/i.test(id)) product='sanmae';
+    else if(/^S/i.test(id)) product='kushiro';
+
+    // Prefix aloneで判別できない場合は各在庫から検索。
+    if(!product){
+      for(const p of ['kushiro','hidaka','nemuro','sanmae']){
+        if(lookup(p,id)){ product=p; break; }
+      }
+    }
+    if(!product) throw new Error('出荷依頼の昆布種類を判別できません。');
+
+    let it=itemFor(product,id);
+    // 履歴から開いた場合に現行一覧から取得できないときは、
+    // 画面で保持しているshipmentを利用できる最低限の形へ補完する。
+    if(!it){
+      const d=dest(product,shipment);
+      it={
+        product,
+        id,
+        shipDate:shipment.shipDate||'',
+        source:shipment.source||{},
+        dest:d||shipment.dest||{},
+        raw:shipment,
+        shipment
+      };
+    }
+    return await sendItems([it]);
+  }
+
   function tuneBulkButton(){
     const old=document.getElementById('v136BulkFax');
     if(!old || old.dataset.dedicatedFaxbox==='1')return;
@@ -207,5 +242,6 @@
   setTimeout(tune,100);
   setTimeout(tune,600);
 
-  window.kombuFaxboxDirectIntegrationVersion='2.2';
+  window.kombuSendOneShipmentToFaxbox=sendOneShipmentFromPreview;
+  window.kombuFaxboxDirectIntegrationVersion='2.4';
 })();
