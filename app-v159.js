@@ -1096,13 +1096,58 @@ bindNav=function(){
 
 function companyMasterPage(){
   currentProduct=null; setHeader('会社マスター'); setNavVisible(false);
+  let editIndex=-1;
   const draw=()=>{
-    app.innerHTML=`<section class="card" style="margin-top:22px"><div class="row"><h2>会社マスター</h2><span class="pill">v37</span></div><p class="muted">出荷指示で使用する会社名・住所・電話番号を登録します。釧路産昆布では会社名を選ぶと住所・電話番号を自動入力できます。</p><div id="globalCompanyList" class="master-list"></div><button class="btn secondary" id="globalAddCompany" style="margin-top:10px">＋ 会社を追加</button><button class="btn" id="globalSaveCompanies" style="margin-top:10px">会社マスターを保存</button><button class="btn secondary" id="globalMasterBack" style="margin-top:10px">← 昆布選択画面へ戻る</button></section>`;
+    const editing=editIndex>=0&&state.companies[editIndex];
+    const draft=editing||{name:'',address:'',phone:''};
+    app.innerHTML=`<section class="card" style="margin-top:22px"><div class="row"><h2>会社マスター</h2><span class="pill">v37</span></div><p class="muted">出荷指示で使用する会社名・住所・電話番号を登録します。登録済みの会社は一覧で表示し、新しい会社は下の入力欄から続けて登録できます。</p>
+    <h3>登録済み会社</h3><div id="globalCompanyList" class="master-list"></div>
+    <hr><h3 id="globalCompanyFormTitle">${editing?'会社を編集':'新しい会社を登録'}</h3>
+    <div class="card" style="margin:6px 0;padding:10px;background:#f8fafc"><div class="form">
+      <label>会社名<input id="globalCompanyName" value="${esc(draft.name||'')}" autocomplete="organization"></label>
+      <label>住所<input id="globalCompanyAddress" value="${esc(draft.address||'')}" autocomplete="street-address"></label>
+      <label>電話番号<input id="globalCompanyPhone" value="${esc(draft.phone||'')}" inputmode="tel" autocomplete="tel"></label>
+      <button class="btn" id="globalSaveCompanies" type="button">${editing?'変更を保存':'この会社を登録'}</button>
+      ${editing?'<button class="btn secondary" id="globalCancelEdit" type="button">編集をやめる</button>':''}
+    </div></div>
+    <button class="btn secondary" id="globalMasterBack" style="margin-top:10px">← 昆布選択画面へ戻る</button></section>`;
+
     const list=document.getElementById('globalCompanyList');
-    list.innerHTML=state.companies.map((v,i)=>`<div class="card" style="margin:6px 0;padding:10px;background:#f8fafc"><div class="form"><label>会社名<input value="${esc(v.name)}" data-gcf="name" data-gci="${i}"></label><label>住所<input value="${esc(v.address||'')}" data-gcf="address" data-gci="${i}"></label><label>電話番号<input value="${esc(v.phone||'')}" data-gcf="phone" data-gci="${i}" inputmode="tel"></label><button class="mini danger" data-gcd="${i}" type="button">削除</button></div></div>`).join('')||'<div class="empty">会社はまだ登録されていません。</div>';
-    list.onclick=e=>{const i=e.target.dataset.gcd;if(i!==undefined){state.companies.splice(+i,1);save();draw()}};
-    document.getElementById('globalAddCompany').onclick=()=>{state.companies.push({name:'',address:'',phone:''});save();draw()};
-    document.getElementById('globalSaveCompanies').onclick=()=>{const arr=state.companies.map((c,i)=>{const q=f=>document.querySelector(`[data-gci="${i}"][data-gcf="${f}"]`);return {name:(q('name')?.value||'').trim(),address:(q('address')?.value||'').trim(),phone:(q('phone')?.value||'').trim()}}).filter(c=>c.name);if(new Set(arr.map(c=>c.name)).size!==arr.length)return alert('会社名が重複しています。');state.companies=arr;save();alert('会社マスターを保存しました。');draw()};
+    list.innerHTML=state.companies.map((v,i)=>`<div class="card" style="margin:6px 0;padding:10px;background:#f8fafc"><div style="display:flex;gap:10px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap"><div style="min-width:0;flex:1"><b>${esc(v.name)}</b>${v.address?`<div class="small" style="margin-top:4px">${esc(v.address)}</div>`:''}${v.phone?`<div class="small" style="margin-top:2px">TEL ${esc(v.phone)}</div>`:''}</div><div style="display:flex;gap:6px"><button class="mini" data-gce="${i}" type="button">編集</button><button class="mini danger" data-gcd="${i}" type="button">削除</button></div></div></div>`).join('')||'<div class="empty">会社はまだ登録されていません。</div>';
+
+    list.onclick=e=>{
+      const edit=e.target.dataset.gce;
+      if(edit!==undefined){editIndex=+edit;draw();document.getElementById('globalCompanyName')?.focus();return;}
+      const del=e.target.dataset.gcd;
+      if(del!==undefined){
+        const i=+del, c=state.companies[i];
+        if(!c)return;
+        if(!confirm(`「${c.name}」を会社マスターから削除しますか？`))return;
+        state.companies.splice(i,1);
+        if(editIndex===i)editIndex=-1; else if(editIndex>i)editIndex--;
+        save();draw();
+      }
+    };
+
+    document.getElementById('globalSaveCompanies').onclick=()=>{
+      const name=(document.getElementById('globalCompanyName')?.value||'').trim();
+      const address=(document.getElementById('globalCompanyAddress')?.value||'').trim();
+      const phone=(document.getElementById('globalCompanyPhone')?.value||'').trim();
+      if(!name){alert('会社名を入力してください。');document.getElementById('globalCompanyName')?.focus();return;}
+      const duplicate=state.companies.findIndex((c,i)=>i!==editIndex&&String(c?.name||'').trim()===name);
+      if(duplicate>=0){alert('同じ会社名がすでに登録されています。');document.getElementById('globalCompanyName')?.focus();return;}
+      if(editIndex>=0&&state.companies[editIndex]){
+        state.companies[editIndex]={name,address,phone};
+        save();editIndex=-1;alert('会社情報を変更しました。');draw();
+      }else{
+        state.companies.push({name,address,phone});
+        save();alert('会社を登録しました。');draw();
+      }
+      document.getElementById('globalCompanyName')?.focus();
+    };
+
+    const cancel=document.getElementById('globalCancelEdit');
+    if(cancel)cancel.onclick=()=>{editIndex=-1;draw();document.getElementById('globalCompanyName')?.focus();};
     document.getElementById('globalMasterBack').onclick=productLanding;
   }; draw();
 }
