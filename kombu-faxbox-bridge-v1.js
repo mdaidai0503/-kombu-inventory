@@ -1,5 +1,5 @@
 /* =========================================================
-   昆布在庫管理 → FAXBOX専用アプリ 連携ブリッジ v2.0
+   昆布在庫管理 → FAXBOX専用アプリ 連携ブリッジ v2.2
    ---------------------------------------------------------
    移行テスト用:
    ・既存の昆布在庫管理内 FAX BOX はまだ残す
@@ -30,7 +30,7 @@
     );
 
     console.error(
-      '[FAXBOX BRIDGE v2.0][' + stage + ']',
+      '[FAXBOX BRIDGE v2.2][' + stage + ']',
       error
     );
 
@@ -44,14 +44,14 @@
 
   async function runStage(stage, fn) {
     console.info(
-      '[FAXBOX BRIDGE v2.0][' + stage + '] 開始'
+      '[FAXBOX BRIDGE v2.2][' + stage + '] 開始'
     );
 
     try {
       const result = await fn();
 
       console.info(
-        '[FAXBOX BRIDGE v2.0][' + stage + '] 成功'
+        '[FAXBOX BRIDGE v2.2][' + stage + '] 成功'
       );
 
       return result;
@@ -290,7 +290,25 @@
     return hit;
   }
 
-  async function registerGroup(items) {
+  async function loadFaxboxRecipients() {
+    const c = sb();
+    if (!c) throw new Error('FAXBOX専用Supabaseへ接続できません。');
+    await session();
+    const result = await c.from('faxbox_recipients').select('id,district,recipient_name,fax_number,favorite,sort_order,active').eq('active', true);
+    if (result.error) throw new Error('FAXBOX送信先マスター取得失敗: ' + result.error.message);
+    const rows = Array.isArray(result.data) ? result.data : [];
+    return rows.filter(x => clean(x.fax_number)).sort(function(a,b){
+      return (Number(Boolean(b.favorite))-Number(Boolean(a.favorite))) || (Number(a.sort_order||100)-Number(b.sort_order||100)) || clean(a.recipient_name).localeCompare(clean(b.recipient_name),'ja');
+    });
+  }
+
+  function recipientForGroup(items, options) {
+    options = options || {};
+    const map = options.recipientByDestination || {};
+    return map[destinationKey(items[0])] || options.recipient || null;
+  }
+
+  async function registerGroup(items, recipientOverride) {
     const c = sb();
 
     const s = await runStage(
@@ -312,14 +330,10 @@
       );
     }
 
-    const recipient =
+    const recipient = recipientOverride ||
       await runStage(
         '2 FAXBOX送信先マスター検索',
-        async function () {
-          return await findFaxboxRecipientByName(
-            originalRecipientName
-          );
-        }
+        async function () { return await findFaxboxRecipientByName(originalRecipientName); }
       );
 
     const recipientName =
@@ -634,7 +648,7 @@
     try {
       for (const group of groups) {
         try {
-          const result = await registerGroup(group);
+          const result = await registerGroup(group, recipientForGroup(group, options));
           succeeded.push(result);
         } catch (e) {
           failed.push({
@@ -666,6 +680,8 @@
   }
 
   window.kombuSendShipmentItemsToDedicated = sendItemsToDedicated;
+  window.kombuLoadFaxboxRecipients = loadFaxboxRecipients;
+  window.kombuFaxboxDestinationKey = destinationKey;
 
   function isOldFaxBoxPage() {
     const header =

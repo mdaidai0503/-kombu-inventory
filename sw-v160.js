@@ -1,4 +1,4 @@
-const CACHE = 'kombu-inventory-v160-6';
+const CACHE = 'kombu-inventory-v160-7';
 
 const APP_SHELL = [
   './',
@@ -13,8 +13,8 @@ const APP_SHELL = [
   './supabase-auth-v159.js',
   './shipment-waybill-inbox-v159.js?v=159.8',
   './kombu-complete-sync-v160.js?v=160.3',
-  './kombu-faxbox-bridge-v1.js?v=2.0',
-  './kombu-faxbox-direct-v2.js?v=2.0'
+  './kombu-faxbox-bridge-v1.js?v=2.2',
+  './kombu-faxbox-direct-v2.js?v=2.2'
 ];
 
 self.addEventListener('install', event => {
