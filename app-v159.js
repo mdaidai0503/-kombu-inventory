@@ -5329,7 +5329,7 @@ smLogs=function(){
       </section>
 
       <section class="card v161-s">
-        <h3 class="v161-title">② 出荷元</h3>
+        <h3 class="v161-title">② 出荷人</h3>
         <div class="v161-party">
           <div class="v161-box"><label>登録済み出荷元を選択<select id="v161SourceSelect">${companyOptions(source0.name)}</select></label><div class="small" style="margin-top:8px">会社マスターの登録内容を使用します。</div></div>
           <div class="v161-details"><label>会社名<input id="v114SourceName" readonly value="${esc(source0.name||'')}"></label><label>住所<input id="v114SourceAddress" readonly value="${esc(source0.address||'')}"></label><label>電話<input id="v114SourcePhone" readonly value="${esc(source0.phone||'')}"></label></div>
@@ -5346,8 +5346,8 @@ smLogs=function(){
 
       <section class="card v161-s">
         <div class="v161-headrow"><h3 class="v161-title" style="margin:0">④ 出荷明細</h3><div class="v161-total">合計数量：<span id="v161ShipmentTotal">0</span></div></div>
-        <div class="v113-lines-wrap" style="margin-top:12px"><div id="v114Lines"></div><button class="btn secondary" id="v114AddLine">➕ 明細追加</button><button class="btn v159-draft-save" id="v114Save">💾 ${editing?'修正保存':'下書き保存'}</button><button class="btn secondary" id="v114Preview">👁 内容確認へ</button></div>
-        <div class="note" style="margin-top:10px">このStepでは保存・在庫処理は従来の仕組みをそのまま使用します。</div>
+        <div class="v113-lines-wrap" style="margin-top:12px"><div id="v114Lines"></div><button class="btn secondary" id="v114AddLine">➕ 明細追加</button><button class="btn" id="v114PdfFlow" style="margin-top:12px;font-size:17px;padding:14px">📄 出荷依頼PDFを確認</button></div>
+        <div class="note" style="margin-top:10px">PDFを確認後、そのままFAXBOXへ登録します。FAXBOX登録が成功するまで在庫には反映されません。</div>
       </section>
     </div>`;
 
@@ -5392,6 +5392,54 @@ smLogs=function(){
         if(q>Number(av||0))return `${d.desc(l)} の出荷可能在庫は ${fmt(av)} です。`;
       }
       return '';
+    }
+
+    function v25BuildDraftObjects(){
+      const source={name:sn.value.trim(),address:sa.value.trim(),phone:sp.value.trim()};
+      const dest={name:dn.value.trim(),address:da.value.trim(),phone:dp.value.trim()};
+      const common={source,dest,shipDate:byId('v114ShipDate').value,arrivalDate:byId('v114ArrivalDate').value,deliveryPack:byId('v114DeliveryPack').value||'',memo:byId('v114Memo').value||'',batchId:'M'+Date.now().toString(36).toUpperCase(),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),status:'draft'};
+      const groups={}; for(const l of lines)(groups[l.product]||(groups[l.product]=[])).push({...l});
+      const created=[];
+      if(groups.kushiro){const ls=groups.kushiro.map(({product,...x})=>x),o={id:shipmentId(),status:'draft',source,destInfo:dest,dest:dest.name,baseYear:ls[0]?.year||state.activeYear,shipDate:common.shipDate,arrivalDate:common.arrivalDate,deliveryPack:common.deliveryPack,memo:common.memo,batchId:common.batchId,createdAt:common.createdAt,updatedAt:common.updatedAt,lines:ls};state.shipments.push(o);save();created.push({product:'kushiro',shipment:o})}
+      if(groups.hidaka){const ls=groups.hidaka.map(({product,memo,...x})=>x),o={id:hShipId(),status:'draft',source,dest,shipDate:common.shipDate,arrivalDate:common.arrivalDate,deliveryPack:common.deliveryPack,memo:common.memo,batchId:common.batchId,createdAt:common.createdAt,updatedAt:common.updatedAt,lines:ls};hState.shipments.push(o);hSave();created.push({product:'hidaka',shipment:o})}
+      if(groups.nemuro){const ls=groups.nemuro.map(({product,memo,...x})=>x),o={id:nShipId(),status:'draft',source,dest,shipDate:common.shipDate,arrivalDate:common.arrivalDate,deliveryPack:common.deliveryPack,memo:common.memo,batchId:common.batchId,createdAt:common.createdAt,updatedAt:common.updatedAt,lines:ls};nState.shipments.push(o);nSave();created.push({product:'nemuro',shipment:o})}
+      if(groups.sanmae){const ls=groups.sanmae.map(({product,memo,...x})=>x),o={id:smShipId(),status:'draft',source,dest,shipDate:common.shipDate,arrivalDate:common.arrivalDate,deliveryPack:common.deliveryPack,memo:common.memo,batchId:common.batchId,createdAt:common.createdAt,updatedAt:common.updatedAt,lines:ls};smState.shipments.push(o);smSave();created.push({product:'sanmae',shipment:o})}
+      return created;
+    }
+
+    function v25RemoveDrafts(created){
+      (created||[]).forEach(({product,shipment})=>{
+        const store=product==='kushiro'?state:product==='hidaka'?hState:product==='nemuro'?nState:smState;
+        store.shipments=(store.shipments||[]).filter(x=>x.id!==shipment.id);
+        if(product==='kushiro')save(); else if(product==='hidaka')hSave(); else if(product==='nemuro')nSave(); else smSave();
+      });
+    }
+
+    async function v25StartPdfFlow(){
+      const err=v161ValidateCurrent();
+      if(err)return alert(err);
+      if(editing){
+        alert('既存の出荷依頼を修正する場合は、修正保存後に履歴から帳票を確認してください。');
+        return;
+      }
+      const created=v25BuildDraftObjects();
+      if(!created.length)return alert('出荷依頼を作成できませんでした。');
+
+      // 新規フローは昆布種類ごとにPDFを確認する。まず1件目をプレビュー。
+      const first=created[0];
+      globalThis.__v25PendingShipments=created;
+      globalThis.__v25PendingCurrent=0;
+      try{
+        if(typeof globalThis.kombuPreviewShipmentForFlow==='function'){
+          await globalThis.kombuPreviewShipmentForFlow(first.product,first.shipment,created);
+        }else{
+          openGlobalShipment(first.product,first.shipment.id);
+          alert('帳票プレビュー機能を読み込めませんでした。出荷依頼は下書きとして保持しています。');
+        }
+      }catch(e){
+        console.error(e);
+        alert('PDF確認画面を開けませんでした。出荷依頼は下書きとして保持しています。\n'+(e?.message||e));
+      }
     }
 
     function v161ShowPreview(){
@@ -5476,9 +5524,14 @@ smLogs=function(){
       overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove()});
     }
 
-    byId('v114Preview').onclick=v161ShowPreview;
+    const v25PdfFlowBtn=byId('v114PdfFlow');
+    if(v25PdfFlowBtn)v25PdfFlowBtn.onclick=v25StartPdfFlow;
 
-    byId('v114Save').onclick=()=>{
+    const v114PreviewBtn=byId('v114Preview');
+    if(v114PreviewBtn)v114PreviewBtn.onclick=v161ShowPreview;
+
+    const v114SaveBtn=byId('v114Save');
+    if(v114SaveBtn)v114SaveBtn.onclick=()=>{
       if(!sn.value.trim())return alert('出荷元を選択してください。');
       if(!dn.value.trim())return alert('出荷先を選択してください。');
       if(!lines.length)return alert('明細を1件以上追加してください。');

@@ -1,4 +1,4 @@
-/* ===== 出荷依頼PDF・帳票プレビュー v1.1 =====
+/* ===== 出荷依頼PDF・帳票プレビュー v1.2 =====
    形式: YYYYMMDD_出荷先名_出荷依頼.pdf
    同じ出荷日・出荷先が複数ある場合: _02, _03 ...
    Windowsで使えない記号は自動除去。
@@ -97,7 +97,8 @@
     setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},3000);
   }
 
-  function makePreviewOverlay(canvases, shipment, blob, name){
+  function makePreviewOverlay(canvases, shipment, blob, name, options){
+    options=options||{};
     const old=document.getElementById('kombuShipmentPreviewOverlay');
     if(old) old.remove();
 
@@ -123,34 +124,61 @@
 
     const foot=document.createElement('div');
     foot.style.cssText='background:#fff;border-top:1px solid #ccd5df;padding:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px;flex:0 0 auto;padding-bottom:calc(10px + env(safe-area-inset-bottom));';
-    foot.innerHTML='<button type="button" data-save style="padding:13px 8px;border:0;border-radius:10px;background:#0b2b55;color:#fff;font-size:15px;font-weight:700">PDF保存・共有</button><button type="button" data-fax style="padding:13px 8px;border:0;border-radius:10px;background:#173f73;color:#fff;font-size:15px;font-weight:700">FAXBOXへ送る</button>';
+    foot.innerHTML=options.flow
+      ? '<button type="button" data-fix style="padding:13px 8px;border:0;border-radius:10px;background:#e7edf5;color:#102a43;font-size:15px;font-weight:700">← 修正する</button><button type="button" data-fax style="padding:13px 8px;border:0;border-radius:10px;background:#0b2b55;color:#fff;font-size:15px;font-weight:700">FAXBOXへ送る</button>'
+      : '<button type="button" data-save style="padding:13px 8px;border:0;border-radius:10px;background:#0b2b55;color:#fff;font-size:15px;font-weight:700">PDF保存・共有</button><button type="button" data-fax style="padding:13px 8px;border:0;border-radius:10px;background:#173f73;color:#fff;font-size:15px;font-weight:700">FAXBOXへ送る</button>';
 
     overlay.append(head,area,foot);
     document.body.appendChild(overlay);
 
     const close=()=>overlay.remove();
     head.querySelector('[data-close]').onclick=close;
-    foot.querySelector('[data-save]').onclick=async()=>{ await saveOrSharePdf(blob,name); };
+    const saveBtn=foot.querySelector('[data-save]');
+    if(saveBtn)saveBtn.onclick=async()=>{ await saveOrSharePdf(blob,name); };
+    const fixBtn=foot.querySelector('[data-fix]');
+    if(fixBtn)fixBtn.onclick=()=>{
+      overlay.remove();
+      if(typeof globalThis.kombuCancelPendingShipmentFlow==='function')globalThis.kombuCancelPendingShipmentFlow(options.created||[]);
+    };
 
     const faxBtn=foot.querySelector('[data-fax]');
     faxBtn.onclick=async()=>{
       try{
-        // 専用FAXBOX UI側が提供する詳細送信APIを優先。
-        if(typeof globalThis.kombuSendOneShipmentToFaxbox==='function'){
-          await globalThis.kombuSendOneShipmentToFaxbox(shipment);
+        if(options.flow && typeof globalThis.kombuCompleteNewShipmentFlow==='function'){
+          faxBtn.disabled=true;faxBtn.textContent='FAXBOXへ登録中…';
+          const result=await globalThis.kombuCompleteNewShipmentFlow(options.created||[{product:options.product,shipment}]);
+          if(result?.success) overlay.remove();
+          else {faxBtn.disabled=false;faxBtn.textContent='FAXBOXへ送る';}
           return;
         }
-        // ブリッジへ直接渡せる場合のフォールバック。
-        if(typeof globalThis.kombuSendShipmentItemsToDedicated==='function'){
-          alert('FAXBOX送信先の選択は出荷依頼画面の「FAXBOXへ送信」から行ってください。');
+        if(typeof globalThis.kombuSendOneShipmentToFaxbox==='function'){
+          await globalThis.kombuSendOneShipmentToFaxbox(shipment);
           return;
         }
         alert('FAXBOX連携機能を読み込めませんでした。');
       }catch(e){
         console.error(e);
+        faxBtn.disabled=false;faxBtn.textContent='FAXBOXへ送る';
         alert('FAXBOXへの送信処理を開始できませんでした。\n'+(e&&e.message?e.message:e));
       }
     };
+  }
+
+  function flowCanvasInfo(product){
+    if(product==='hidaka')return {label:'日高昆布',year:(globalThis.hState&&hState.activeYear)||'',maker:globalThis.v55CanvasHidaka};
+    if(product==='nemuro')return {label:'根室産昆布',year:(globalThis.nState&&nState.activeYear)||'',maker:globalThis.v55CanvasNemuro};
+    if(product==='sanmae')return {label:'釧路産棹前昆布',year:(globalThis.smState&&smState.activeYear)||'',maker:globalThis.v55CanvasSanmae};
+    return {label:'釧路産昆布',year:(globalThis.state&&state.activeYear)||'',maker:globalThis.v55CanvasKushiro};
+  }
+
+  async function previewShipmentForFlow(product,shipment,created){
+    const info=flowCanvasInfo(product);
+    if(typeof info.maker!=='function')throw new Error('帳票作成機能を確認できません。');
+    const ys=v55ShipmentYears(shipment,info.year);
+    const canvases=ys.map(y=>info.maker(shipment,y));
+    const blob=await v65LandscapePdfBlobFromCanvases(canvases);
+    const name=filenameFor(shipment);
+    makePreviewOverlay(canvases,shipment,blob,name,{flow:true,product,created:created||[{product,shipment}]});
   }
 
   async function outputNamedPdf(productName, shipment, activeYear, canvasMaker){
@@ -170,6 +198,7 @@
   }
 
   // v69のPDF出力だけを差し替え、帳票レイアウトやFAXBOX処理には触れない。
+  globalThis.kombuPreviewShipmentForFlow=previewShipmentForFlow;
   globalThis.v69OpenShipmentLandscapePdf=outputNamedPdf;
   globalThis.kombuShipmentPdfFilename=filenameFor;
 })();

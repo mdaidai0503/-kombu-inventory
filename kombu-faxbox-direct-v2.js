@@ -1,5 +1,5 @@
 /* =========================================================
-   昆布在庫管理 → FAXBOX専用アプリ 完全統合 UI v2.4
+   昆布在庫管理 → FAXBOX専用アプリ 完全統合 UI v2.5
    ---------------------------------------------------------
    ・旧ローカルFAX BOXを通常操作から外す
    ・出荷指示一覧「まとめてFAXBOXへ」→ 専用FAXBOXへ直接登録
@@ -194,6 +194,74 @@
     return await sendItems([it]);
   }
 
+  function confirmInventoryFor(product,shipment){
+    if(!shipment || shipment.status==='confirmed' || shipment.status==='shipped')return true;
+    try{
+      if(product==='kushiro'){
+        for(const l of shipment.lines||[]){
+          const av=typeof globalThis.shipmentLineAvailable==='function'
+            ? globalThis.shipmentLineAvailable(l,shipment.id)
+            : null;
+          if(av!=null && Number(l.qty)>Number(av))throw new Error('在庫不足があります。');
+        }
+        shipment.status='confirmed';shipment.confirmedAt=new Date().toISOString();
+        if(typeof globalThis.save==='function')globalThis.save();
+        return true;
+      }
+      if(product==='hidaka'){
+        for(const l of shipment.lines||[])if(typeof globalThis.hAvail==='function' && Number(l.qty)>Number(globalThis.hAvail(l.year,l.location,l.section,l.grade,shipment.id)))throw new Error('在庫不足があります。');
+        shipment.status='confirmed';shipment.confirmedAt=new Date().toISOString(); if(typeof globalThis.hSave==='function')globalThis.hSave(); return true;
+      }
+      if(product==='nemuro'){
+        for(const l of shipment.lines||[])if(typeof globalThis.nAvail==='function' && Number(l.qty)>Number(globalThis.nAvail(l.year,l.coop,l.season,l.group,l.item,shipment.id)))throw new Error('在庫不足があります。');
+        shipment.status='confirmed';shipment.confirmedAt=new Date().toISOString(); if(typeof globalThis.nSave==='function')globalThis.nSave(); return true;
+      }
+      if(product==='sanmae'){
+        for(const l of shipment.lines||[])if(typeof globalThis.smAvail==='function' && Number(l.qty)>Number(globalThis.smAvail(l.year,l.coop,l.season,l.group,l.item,shipment.id)))throw new Error('在庫不足があります。');
+        shipment.status='confirmed';shipment.confirmedAt=new Date().toISOString(); if(typeof globalThis.smSave==='function')globalThis.smSave(); return true;
+      }
+    }catch(e){throw e}
+    return false;
+  }
+
+  function removePending(created){
+    (created||[]).forEach(({product,shipment})=>{
+      try{
+        const store=product==='kushiro'?globalThis.state:product==='hidaka'?globalThis.hState:product==='nemuro'?globalThis.nState:globalThis.smState;
+        if(store&&Array.isArray(store.shipments))store.shipments=store.shipments.filter(x=>x.id!==shipment.id);
+        if(product==='kushiro'&&typeof globalThis.save==='function')globalThis.save();
+        else if(product==='hidaka'&&typeof globalThis.hSave==='function')globalThis.hSave();
+        else if(product==='nemuro'&&typeof globalThis.nSave==='function')globalThis.nSave();
+        else if(product==='sanmae'&&typeof globalThis.smSave==='function')globalThis.smSave();
+      }catch(_e){}
+    });
+  }
+
+  async function completeNewShipmentFlow(created){
+    if(!Array.isArray(created)||!created.length)return {success:false};
+    const items=created.map(x=>itemFor(x.product,x.shipment.id)).filter(Boolean);
+    if(items.length!==created.length){alert('出荷依頼データを確認できません。');return {success:false};}
+    // sendItems includes FAX recipient selection and only returns succeeded after FAXBOX registration.
+    const result=await sendItems(items);
+    if(!result || !result.succeeded?.length)return {success:false};
+
+    const succeededKeys=new Set(result.succeeded.map(x=>x.key||key(x.product,x.id)));
+    const succeededCreated=created.filter(x=>succeededKeys.has(key(x.product,x.shipment.id)));
+    try{
+      succeededCreated.forEach(x=>confirmInventoryFor(x.product,x.shipment));
+    }catch(e){
+      alert('FAXBOXへの登録は完了しましたが、在庫反映でエラーが発生しました。\n二重送信せず管理者へ確認してください。\n'+String(e?.message||e));
+      return {success:false,faxboxRegistered:true};
+    }
+    if(succeededCreated.length===created.length){
+      alert('FAXBOXへ登録しました。\n在庫にも反映しました。');
+      if(typeof globalThis.v76ShipmentMenu==='function')globalThis.v76ShipmentMenu();
+      return {success:true};
+    }
+    alert('一部のみFAXBOXへ登録されました。成功分だけ在庫へ反映しました。未登録分を確認してください。');
+    return {success:false,partial:true};
+  }
+
   function tuneBulkButton(){
     const old=document.getElementById('v136BulkFax');
     if(!old || old.dataset.dedicatedFaxbox==='1')return;
@@ -243,5 +311,7 @@
   setTimeout(tune,600);
 
   window.kombuSendOneShipmentToFaxbox=sendOneShipmentFromPreview;
-  window.kombuFaxboxDirectIntegrationVersion='2.4';
+  window.kombuCompleteNewShipmentFlow=completeNewShipmentFlow;
+  window.kombuCancelPendingShipmentFlow=function(created){removePending(created);};
+  window.kombuFaxboxDirectIntegrationVersion='2.5';
 })();
