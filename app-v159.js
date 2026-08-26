@@ -1957,11 +1957,11 @@ function v57ShipmentParty(s, side){
 }
 
 
-/* ===== v161.1: 山三商事 会社情報ヘッダー（PDF原本ロゴ） ===== */
+/* ===== v161.2: 山三商事ヘッダー位置調整 + 新規依頼日を当日に固定 ===== */
 const V161_YAMASAN_LOGO_DATA='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGIAAABZCAAAAADgc668AAAB1UlEQVR42u2Z25IDIQhEbSr//8u9D8kmmdFBWrD2UvEpt/EIDQoGbLvHTfo1WtOXZAoAd8o2BPC0RBtg3EevwR1WwHlXg8DkfRqB54ykzjDJBL5kAAoROKpM1VmmEnRnCanH7lXMWbO8wDgVIGSIacHazYwsog/WBYat2HAUHQkEgnsSlhEzAoMMS9jAwQ6jICJeYotALKUDI4pYTun3YIaEiBJOzhIQAiHAsCxhzrA0YRpYlifMAssuj2mlknEZFnpMrUo9BBYJdBiW99KMYeNvdC/xUg8rIjiaY1SxsERonqyoIFxUKVZIuGBYJWHMsFJCx8ADUUjoJkBrYIaAi1kPTHCZAGfl6333VVvG07pP3wb3JcgafH/+pgXj80m7vw2q7uIxbmHQCs2w2hMve82yrsX0gMkRnHYSzkT9KcOljhVVFQn1jnjXfdSviKgfRNxSXg7JtKqFcFUoIyDvOHEE1nI7iEBm/3DkxicvdjRirE89xtXyIgrB1SKRF+u3/fG8QEWh8DkvPoia65XiiIKXmcwtMZD/GHU3zB0WdBE15xD3RxQ8BDcw/mfq8U9a0acepLQK/G6Q3Rg8MKnB3Z4N9J9Y+VOfwu0BF9wOzrUoLAzu4wueJ5iNTB1zTgAAAABJRU5ErkJggg==';
 const V161_YAMASAN_LOGO_IMG=new Image();
 V161_YAMASAN_LOGO_IMG.src=V161_YAMASAN_LOGO_DATA;
-/* ===== /v161.1 ===== */
+/* ===== /v161.2 ===== */
 
 v55RetitleStockCanvas=function(sourceCanvas, title, year, shipment, tableY, tableX){
   const W=sourceCanvas.width,H=sourceCanvas.height;
@@ -1995,12 +1995,14 @@ v55RetitleStockCanvas=function(sourceCanvas, title, year, shipment, tableY, tabl
      事業者番号は表示しない。郵便番号と住所、TELとFAXはそれぞれ横並び。 */
   const productLabel=productName?`(${productName})`:'';
   const titleSize=42;
-  const companyBlockW=Math.min(720,Math.round(W*0.40));
-  const companyLeft=W-tableX-companyBlockW;
-  const logoSize=86;
+  const companyRight=W-tableX;
+  const companyBlockW=Math.min(620,Math.round(W*0.34));
+  const companyLeft=companyRight-companyBlockW;
+  /* v161.2: ロゴは会社名の文字高とほぼ同じ見た目サイズへ縮小 */
+  const logoSize=42;
   const logoX=companyLeft;
-  const logoY=5;
-  const companyTextX=logoX+logoSize+20;
+  const logoY=11;
+  const companyTextX=logoX+logoSize+14;
 
   /* タイトルは会社情報と重ならない左側領域の中央へ配置 */
   const titleAreaLeft=Math.max(tableX+250,Math.round(W*0.20));
@@ -2019,12 +2021,12 @@ v55RetitleStockCanvas=function(sourceCanvas, title, year, shipment, tableY, tabl
   if(V161_YAMASAN_LOGO_IMG.complete&&V161_YAMASAN_LOGO_IMG.naturalWidth){
     x.drawImage(V161_YAMASAN_LOGO_IMG,logoX,logoY,logoSize,logoSize*89/98);
   }
-  /* 会社名の文字高をロゴの見た目の高さに近づける */
+  /* 会社名はロゴとほぼ同じ文字高で横並び */
   text('山三商事株式会社',companyTextX,31,36,'left',true);
-  /* 〒はロゴの真下から。郵便番号と住所は同じ行に横並び。 */
-  text('〒933-0804　富山県高岡市問屋町90',logoX,82,20,'left',false);
-  /* TEL・FAXも同じ行に横並び。 */
-  text('TEL 0766-24-3660　　FAX 0766-24-3661',logoX,106,20,'left',false);
+  /* 〒は山三ロゴの真下から開始し、住所まで1行で横並び */
+  text('〒933-0804　富山県高岡市問屋町90',logoX,72,19,'left',false);
+  /* TEL/FAXはページ右端側へ揃えて1行表示 */
+  text('TEL 0766-24-3660　　FAX 0766-24-3661',companyRight,96,19,'right',false);
 
   const boxY=108,boxH=145,boxW=(W-tableX*2)/2;
   x.strokeStyle='#111';x.lineWidth=1.5;
@@ -5267,7 +5269,7 @@ smLogs=function(){
       <section class="card v161-s">
         <h3 class="v161-title">① 基本情報</h3>
         <div class="v161-basic">
-          <div class="v161-box"><label>依頼日<input id="v114ShipDate" type="date" value="${existing?.shipDate||today()}"></label></div>
+          <div class="v161-box"><label>依頼日<input id="v114ShipDate" type="date" value="${existing?.shipDate||(new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10))}"></label></div>
           <div class="v161-box"><label>着希望日<input id="v114ArrivalDate" type="date" value="${existing?.arrivalDate||''}"></label></div>
           <div class="v161-box"><label>配送・袋入等<select id="v114DeliveryPack"><option value="" ${!existing?.deliveryPack?'selected':''}>　</option><option value="ビニール袋入り" ${existing?.deliveryPack==='ビニール袋入り'?'selected':''}>ビニール袋入り</option><option value="コンテナ対応" ${existing?.deliveryPack==='コンテナ対応'?'selected':''}>コンテナ対応</option></select></label></div>
           <div class="v161-box"><label>備考<input id="v114Memo" type="text" placeholder="自由入力" value="${esc(existing?.memo||'')}"></label></div>
