@@ -1,9 +1,10 @@
-const CACHE = 'kombu-inventory-v160-5';
+const CACHE = 'kombu-inventory-v160-6';
 
 const APP_SHELL = [
   './',
   './index.html',
   './app-v159.js',
+  './kombu-pdf-filename-v1.js?v=1.0',
   './manifest.webmanifest',
   './icon-180.png',
   './pdf-v58.js',
