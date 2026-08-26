@@ -1,5 +1,5 @@
 /* =========================================================
-   昆布在庫管理 → FAXBOX専用アプリ 連携ブリッジ v1.2
+   昆布在庫管理 → FAXBOX専用アプリ 連携ブリッジ v2.0
    ---------------------------------------------------------
    移行テスト用:
    ・既存の昆布在庫管理内 FAX BOX はまだ残す
@@ -30,7 +30,7 @@
     );
 
     console.error(
-      '[FAXBOX BRIDGE v1.2][' + stage + ']',
+      '[FAXBOX BRIDGE v2.0][' + stage + ']',
       error
     );
 
@@ -44,14 +44,14 @@
 
   async function runStage(stage, fn) {
     console.info(
-      '[FAXBOX BRIDGE v1.2][' + stage + '] 開始'
+      '[FAXBOX BRIDGE v2.0][' + stage + '] 開始'
     );
 
     try {
       const result = await fn();
 
       console.info(
-        '[FAXBOX BRIDGE v1.2][' + stage + '] 成功'
+        '[FAXBOX BRIDGE v2.0][' + stage + '] 成功'
       );
 
       return result;
@@ -61,7 +61,9 @@
   }
 
   function sb() {
-    return window.kombuSupabase || null;
+    /* FAXBOX専用Supabaseクライアントが設定されていれば優先。
+       未設定時は従来どおり昆布アプリ側クライアントを使用する。 */
+    return window.faxboxSupabase || window.kombuFaxboxSupabase || window.kombuSupabase || null;
   }
 
   function readOldBox() {
@@ -597,6 +599,74 @@
     }
   }
 
+  /* v2.0: 旧FAX BOXを経由せず、出荷指示スナップショットを直接
+     FAXBOX専用アプリの送信待ちへ登録する公開API。 */
+  async function sendItemsToDedicated(items, options) {
+    options = options || {};
+
+    if (sending) {
+      return { succeeded: [], failed: [], busy: true };
+    }
+
+    const sourceItems = Array.isArray(items)
+      ? items.filter(Boolean)
+      : [];
+
+    if (!sourceItems.length) {
+      alert('FAXBOXへ送る出荷指示がありません。');
+      return { succeeded: [], failed: [] };
+    }
+
+    const groups = groupByDestination(sourceItems);
+
+    if (options.confirm !== false) {
+      const ok = confirm(
+        groups.length + '送信先・' + sourceItems.length +
+        '件をFAXBOX専用アプリの送信待ちへ登録します。'
+      );
+      if (!ok) return { succeeded: [], failed: [], cancelled: true };
+    }
+
+    sending = true;
+    const succeeded = [];
+    const failed = [];
+
+    try {
+      for (const group of groups) {
+        try {
+          const result = await registerGroup(group);
+          succeeded.push(result);
+        } catch (e) {
+          failed.push({
+            destination: clean(group[0]?.dest?.name) || '送信先未設定',
+            error: String(e?.message || e),
+            stage: e?.stage || '不明',
+            items: group
+          });
+        }
+      }
+
+      if (options.showResult !== false) {
+        let msg = 'FAXBOX登録結果\n\n成功: ' + succeeded.length + '送信先';
+        if (failed.length) {
+          msg += '\n失敗: ' + failed.length + '送信先\n\n' +
+            failed.map(x =>
+              x.destination + '\n段階: ' + x.stage + '\n内容: ' + x.error
+            ).join('\n\n');
+        } else {
+          msg += '\n\nFAXBOX専用アプリの「送信待ち一覧」を確認してください。';
+        }
+        alert(msg);
+      }
+
+      return { succeeded: succeeded, failed: failed };
+    } finally {
+      sending = false;
+    }
+  }
+
+  window.kombuSendShipmentItemsToDedicated = sendItemsToDedicated;
+
   function isOldFaxBoxPage() {
     const header =
       clean(
@@ -690,7 +760,7 @@
 
   window
     .kombuFaxboxBridgeVersion =
-      '1.2';
+      '2.0';
 
   setTimeout(
     injectButton,
