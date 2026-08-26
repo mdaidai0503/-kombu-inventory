@@ -1,5 +1,5 @@
 /* =========================================================
-   昆布在庫管理 → FAXBOX専用アプリ 連携ブリッジ v2.2
+   昆布在庫管理 → FAXBOX専用アプリ 連携ブリッジ v2.3
    ---------------------------------------------------------
    移行テスト用:
    ・既存の昆布在庫管理内 FAX BOX はまだ残す
@@ -30,7 +30,7 @@
     );
 
     console.error(
-      '[FAXBOX BRIDGE v2.2][' + stage + ']',
+      '[FAXBOX BRIDGE v2.3][' + stage + ']',
       error
     );
 
@@ -44,14 +44,14 @@
 
   async function runStage(stage, fn) {
     console.info(
-      '[FAXBOX BRIDGE v2.2][' + stage + '] 開始'
+      '[FAXBOX BRIDGE v2.3][' + stage + '] 開始'
     );
 
     try {
       const result = await fn();
 
       console.info(
-        '[FAXBOX BRIDGE v2.2][' + stage + '] 成功'
+        '[FAXBOX BRIDGE v2.3][' + stage + '] 成功'
       );
 
       return result;
@@ -187,31 +187,59 @@
   }
 
   function filenameFor(items) {
-    const ids = items
-      .map(x => clean(x.id))
-      .filter(Boolean);
+    const first = items && items[0] ? items[0] : {};
 
-    const date =
-      clean(items[0]?.shipDate) ||
-      new Date().toLocaleDateString('sv-SE');
-
-    if (ids.length === 1) {
-      return (
-        '出荷指示_' +
-        ids[0] +
-        '_' +
-        date +
-        '.pdf'
-      );
+    function yyyymmdd(v) {
+      const raw = clean(v);
+      if (!raw) {
+        const d = new Date();
+        return String(d.getFullYear()) +
+          String(d.getMonth() + 1).padStart(2, '0') +
+          String(d.getDate()).padStart(2, '0');
+      }
+      const digits = raw.replace(/\D/g, '');
+      if (digits.length >= 8) return digits.slice(0, 8);
+      const d = new Date(raw);
+      if (!Number.isNaN(d.getTime())) {
+        return String(d.getFullYear()) +
+          String(d.getMonth() + 1).padStart(2, '0') +
+          String(d.getDate()).padStart(2, '0');
+      }
+      return digits || '日付未設定';
     }
 
-    return (
-      '出荷指示_まとめ_' +
-      date +
-      '_' +
-      ids.length +
-      '件.pdf'
+    function safePart(v) {
+      const t = clean(v)
+        .replace(/[\\/:*?"<>|]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      return t || '出荷先未設定';
+    }
+
+    // FAXBOXへ送る場合も通常PDF出力と同じ命名規則を使用する。
+    // 1グループ = 同一出荷先のPDFを想定。
+    const date = yyyymmdd(first.shipDate);
+    const dest = safePart(
+      first?.dest?.name ||
+      first?.destinationName ||
+      first?.shipToName ||
+      first?.toName ||
+      ''
     );
+
+    // 同じ出荷日・同じ出荷先が複数PDFになる場合は、
+    // 既存の共通命名関数が使えるときだけその結果を優先する。
+    if (
+      items.length === 1 &&
+      typeof window.kombuShipmentPdfFilename === 'function'
+    ) {
+      try {
+        const common = window.kombuShipmentPdfFilename(first);
+        if (common && /\.pdf$/i.test(common)) return common;
+      } catch (_) {}
+    }
+
+    return date + '_' + dest + '_出荷依頼.pdf';
   }
 
   function normalizeRecipientName(name) {
