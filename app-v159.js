@@ -1957,11 +1957,11 @@ function v57ShipmentParty(s, side){
 }
 
 
-/* ===== v161.2: 山三商事ヘッダー位置調整 + 新規依頼日を当日に固定 ===== */
+/* ===== v161.3: 会社情報右揃え + PDFタイトル中央 + 最新版表示 ===== */
 const V161_YAMASAN_LOGO_DATA='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGIAAABZCAAAAADgc668AAAB1UlEQVR42u2Z25IDIQhEbSr//8u9D8kmmdFBWrD2UvEpt/EIDQoGbLvHTfo1WtOXZAoAd8o2BPC0RBtg3EevwR1WwHlXg8DkfRqB54ykzjDJBL5kAAoROKpM1VmmEnRnCanH7lXMWbO8wDgVIGSIacHazYwsog/WBYat2HAUHQkEgnsSlhEzAoMMS9jAwQ6jICJeYotALKUDI4pYTun3YIaEiBJOzhIQAiHAsCxhzrA0YRpYlifMAssuj2mlknEZFnpMrUo9BBYJdBiW99KMYeNvdC/xUg8rIjiaY1SxsERonqyoIFxUKVZIuGBYJWHMsFJCx8ADUUjoJkBrYIaAi1kPTHCZAGfl6333VVvG07pP3wb3JcgafH/+pgXj80m7vw2q7uIxbmHQCs2w2hMve82yrsX0gMkRnHYSzkT9KcOljhVVFQn1jnjXfdSviKgfRNxSXg7JtKqFcFUoIyDvOHEE1nI7iEBm/3DkxicvdjRirE89xtXyIgrB1SKRF+u3/fG8QEWh8DkvPoia65XiiIKXmcwtMZD/GHU3zB0WdBE15xD3RxQ8BDcw/mfq8U9a0acepLQK/G6Q3Rg8MKnB3Z4N9J9Y+VOfwu0BF9wOzrUoLAzu4wueJ5iNTB1zTgAAAABJRU5ErkJggg==';
 const V161_YAMASAN_LOGO_IMG=new Image();
 V161_YAMASAN_LOGO_IMG.src=V161_YAMASAN_LOGO_DATA;
-/* ===== /v161.2 ===== */
+/* ===== /v161.3 ===== */
 
 v55RetitleStockCanvas=function(sourceCanvas, title, year, shipment, tableY, tableX){
   const W=sourceCanvas.width,H=sourceCanvas.height;
@@ -2004,16 +2004,15 @@ v55RetitleStockCanvas=function(sourceCanvas, title, year, shipment, tableY, tabl
   const logoY=11;
   const companyTextX=logoX+logoSize+14;
 
-  /* タイトルは会社情報と重ならない左側領域の中央へ配置 */
-  const titleAreaLeft=Math.max(tableX+250,Math.round(W*0.20));
-  const titleAreaRight=companyLeft-24;
-  const titleCenter=(titleAreaLeft+titleAreaRight)/2;
-  x.font=font(titleSize,true);const mainW=x.measureText(mainTitle).width;
-  x.font=font(titleSize,true);const productW=x.measureText(productLabel).width;
+  /* v161.3: 出荷依頼書タイトルをページ全体の中央へ配置 */
+  const titleCenter=W/2;
+  const titleSizeCentered=38;
+  x.font=font(titleSizeCentered,true);const mainW=x.measureText(mainTitle).width;
+  x.font=font(titleSizeCentered,true);const productW=x.measureText(productLabel).width;
   const titleStart=titleCenter-(mainW+productW)/2;
-  text(mainTitle,titleStart,30,titleSize,'left',true);
-  if(productLabel)text(productLabel,titleStart+mainW,30,titleSize,'left',true);
-  text(`(${year}年産)`,titleCenter,76,titleSize,'center',true);
+  text(mainTitle,titleStart,30,titleSizeCentered,'left',true);
+  if(productLabel)text(productLabel,titleStart+mainW,30,titleSizeCentered,'left',true);
+  text(`(${year}年産)`,titleCenter,76,titleSizeCentered,'center',true);
 
   text(`依頼日：${shipment?.shipDate||''}`,tableX,26,30,'left',true);
   text(`依頼番号：${shipment?.id||''}`,tableX,72,18,'left',false);
@@ -2021,11 +2020,19 @@ v55RetitleStockCanvas=function(sourceCanvas, title, year, shipment, tableY, tabl
   if(V161_YAMASAN_LOGO_IMG.complete&&V161_YAMASAN_LOGO_IMG.naturalWidth){
     x.drawImage(V161_YAMASAN_LOGO_IMG,logoX,logoY,logoSize,logoSize*89/98);
   }
-  /* 会社名はロゴとほぼ同じ文字高で横並び */
-  text('山三商事株式会社',companyTextX,31,36,'left',true);
-  /* 〒は山三ロゴの真下から開始し、住所まで1行で横並び */
-  text('〒933-0804　富山県高岡市問屋町90',logoX,72,19,'left',false);
-  /* TEL/FAXはページ右端側へ揃えて1行表示 */
+  /* v161.3: 会社名・住所・TEL/FAXはすべて右端を同じ位置へ揃える */
+  const companyName='山三商事株式会社';
+  x.font=font(36,true);
+  const companyNameW=x.measureText(companyName).width;
+  const alignedLogoX=companyRight-companyNameW-logoSize-14;
+  if(V161_YAMASAN_LOGO_IMG.complete&&V161_YAMASAN_LOGO_IMG.naturalWidth){
+    /* 先に描いた旧位置ロゴを白で消し、新しい位置へ原本ロゴを再描画 */
+    x.fillStyle='#fff';
+    x.fillRect(logoX-2,logoY-2,logoSize+5,logoSize*89/98+5);
+    x.drawImage(V161_YAMASAN_LOGO_IMG,alignedLogoX,logoY,logoSize,logoSize*89/98);
+  }
+  text(companyName,companyRight,31,36,'right',true);
+  text('〒933-0804　富山県高岡市問屋町90',companyRight,72,19,'right',false);
   text('TEL 0766-24-3660　　FAX 0766-24-3661',companyRight,96,19,'right',false);
 
   const boxY=108,boxH=145,boxW=(W-tableX*2)/2;
@@ -7855,3 +7862,29 @@ if(histChanged){
   console.info('[KOMBU v161 Step5.3] 出荷履歴自動反映 ready');
 })();
 /* ===== /v161 Step5.3 ===== */
+/* ===== v161.3: トップ画面のバージョン表示を最新版へ統一 ===== */
+(function(){
+  'use strict';
+  const CURRENT_VERSION='v161.3';
+
+  function setLatestVersion(){
+    if(!window.app)return;
+    const el=app.querySelector('.v106-version,.pill');
+    if(el)el.textContent=CURRENT_VERSION;
+  }
+
+  const baseLanding=productLanding;
+  productLanding=function(){
+    const r=baseLanding.apply(this,arguments);
+    setLatestVersion();
+    requestAnimationFrame(setLatestVersion);
+    return r;
+  };
+  try{globalThis.productLanding=productLanding}catch(_e){}
+
+  /* 現在トップ画面が表示中の場合も、その場で最新版へ更新 */
+  setLatestVersion();
+
+  console.info('[KOMBU v161.3] 最新バージョン表示 ready');
+})();
+/* ===== /v161.3 version ===== */
