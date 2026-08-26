@@ -1,5 +1,5 @@
 /* =========================================================
-   昆布在庫管理 → FAXBOX専用アプリ 連携ブリッジ v2.3
+   昆布在庫管理 → FAXBOX専用アプリ 連携ブリッジ v2.8
    ---------------------------------------------------------
    移行テスト用:
    ・既存の昆布在庫管理内 FAX BOX はまだ残す
@@ -30,7 +30,7 @@
     );
 
     console.error(
-      '[FAXBOX BRIDGE v2.3][' + stage + ']',
+      '[FAXBOX BRIDGE v2.8][' + stage + ']',
       error
     );
 
@@ -44,14 +44,14 @@
 
   async function runStage(stage, fn) {
     console.info(
-      '[FAXBOX BRIDGE v2.3][' + stage + '] 開始'
+      '[FAXBOX BRIDGE v2.8][' + stage + '] 開始'
     );
 
     try {
       const result = await fn();
 
       console.info(
-        '[FAXBOX BRIDGE v2.3][' + stage + '] 成功'
+        '[FAXBOX BRIDGE v2.8][' + stage + '] 成功'
       );
 
       return result;
@@ -706,6 +706,42 @@
       sending = false;
     }
   }
+
+  async function syncFaxboxCancellations(){
+    const c=sb();
+    if(!c || typeof window.kombuApplyFaxboxInventory!=='function')return;
+    try{
+      const s=await session();
+      const r=await c
+        .from('faxbox_jobs')
+        .select('id,status,source_record_id,source_meta,source_app')
+        .eq('user_id',s.user.id)
+        .eq('source_app',SOURCE_APP)
+        .in('status',['cancelled','canceled']);
+      if(r.error)return;
+      for(const job of (r.data||[])){
+        const ids=Array.isArray(job?.source_meta?.shipment_ids)
+          ? job.source_meta.shipment_ids
+          : String(job.source_record_id||'').split(',').filter(Boolean);
+        const products=Array.isArray(job?.source_meta?.products)
+          ? job.source_meta.products : [];
+        ids.forEach((id,i)=>{
+          let product=products[i]||products[0]||'';
+          if(!product){
+            if(/^H/i.test(id))product='hidaka';
+            else if(/^N/i.test(id))product='nemuro';
+            else if(/^[MS]/i.test(id))product='sanmae';
+            else product='kushiro';
+          }
+          try{window.kombuApplyFaxboxInventory(product,id,'cancel',{jobId:job.id});}catch(_e){}
+        });
+      }
+    }catch(_e){}
+  }
+
+  setTimeout(syncFaxboxCancellations,1500);
+  setInterval(syncFaxboxCancellations,60000);
+  window.kombuSyncFaxboxCancellations=syncFaxboxCancellations;
 
   window.kombuSendShipmentItemsToDedicated = sendItemsToDedicated;
   window.kombuLoadFaxboxRecipients = loadFaxboxRecipients;

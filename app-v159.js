@@ -403,6 +403,57 @@ function v160AvailableForShipmentLine(product,l,excludeShipmentId=null){
         excludeShipmentId
       );
 }
+
+/* ===== v2.8 FAXBOX連動：在庫確定/取消をapp本体で一元処理 ===== */
+window.kombuApplyFaxboxInventory=function(product,id,action,meta){
+  meta=meta||{};
+  let store=null, saver=null;
+  if(product==='kushiro'){store=state;saver=save}
+  else if(product==='hidaka'){store=hState;saver=hSave}
+  else if(product==='nemuro'){store=nState;saver=nSave}
+  else if(product==='sanmae'){store=smState;saver=smSave}
+  else throw new Error('昆布種類を判別できません。');
+
+  const s=(store.shipments||[]).find(x=>String(x.id)===String(id));
+  if(!s)throw new Error('出荷依頼 '+id+' が見つかりません。');
+
+  if(action==='confirm'){
+    if(s.status==='confirmed' || s.status==='shipped') return true;
+
+    for(const l of (s.lines||[])){
+      const av=v160AvailableForShipmentLine(product,l,s.id);
+      if(Number(l.qty)>Math.max(0,Number(av||0))){
+        throw new Error('在庫不足があります。');
+      }
+    }
+
+    s.status='confirmed';
+    s.confirmedAt=new Date().toISOString();
+    s.faxboxJobId=meta.jobId||s.faxboxJobId||'';
+    s.faxboxStatus='queued';
+    s.inventoryAppliedByFaxbox=true;
+    saver();
+    return true;
+  }
+
+  if(action==='cancel'){
+    if(s.status==='cancelled') return true;
+    if(s.status==='shipped'){
+      throw new Error('すでに出荷済みのため自動取消できません。');
+    }
+
+    s.status='cancelled';
+    s.cancelledAt=new Date().toISOString();
+    s.faxboxStatus='cancelled';
+    s.inventoryAppliedByFaxbox=false;
+    saver();
+    return true;
+  }
+
+  throw new Error('不明な在庫処理です。');
+};
+/* ===== /v2.8 ===== */
+
 function shipmentDetail(id){
  const s=state.shipments.find(x=>x.id===id);if(!s)return shipments();
  const statusName={draft:'下書き',confirmed:'確定・在庫反映済',shipped:'出荷済',cancelled:'取消'}[s.status]||s.status;
