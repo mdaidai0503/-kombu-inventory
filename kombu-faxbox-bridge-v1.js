@@ -1,5 +1,5 @@
 /* =========================================================
-   昆布在庫管理 → FAXBOX専用アプリ 連携ブリッジ v2.8
+   昆布在庫管理 → FAXBOX専用アプリ 連携ブリッジ v2.9
    ---------------------------------------------------------
    移行テスト用:
    ・既存の昆布在庫管理内 FAX BOX はまだ残す
@@ -30,7 +30,7 @@
     );
 
     console.error(
-      '[FAXBOX BRIDGE v2.8][' + stage + ']',
+      '[FAXBOX BRIDGE v2.9][' + stage + ']',
       error
     );
 
@@ -44,14 +44,14 @@
 
   async function runStage(stage, fn) {
     console.info(
-      '[FAXBOX BRIDGE v2.8][' + stage + '] 開始'
+      '[FAXBOX BRIDGE v2.9][' + stage + '] 開始'
     );
 
     try {
       const result = await fn();
 
       console.info(
-        '[FAXBOX BRIDGE v2.8][' + stage + '] 成功'
+        '[FAXBOX BRIDGE v2.9][' + stage + '] 成功'
       );
 
       return result;
@@ -707,6 +707,48 @@
     }
   }
 
+  function productForSource(id,products,index){
+    let product=(products&&products[index])||(products&&products[0])||'';
+    if(product)return product;
+    if(/^H/i.test(id))return 'hidaka';
+    if(/^N/i.test(id))return 'nemuro';
+    if(/^[MS]/i.test(id))return 'sanmae';
+    return 'kushiro';
+  }
+
+  async function syncFaxboxSentJobs(){
+    const c=sb();
+    if(!c || typeof window.kombuFinalizeFaxboxShipment!=='function')return;
+    try{
+      const s=await session();
+      const r=await c
+        .from('faxbox_jobs')
+        .select('id,status,source_record_id,source_meta,source_app')
+        .eq('user_id',s.user.id)
+        .eq('source_app',SOURCE_APP)
+        .in('status',['sent','completed','success','succeeded']);
+      if(r.error)return;
+
+      for(const job of (r.data||[])){
+        const ids=Array.isArray(job?.source_meta?.shipment_ids)
+          ? job.source_meta.shipment_ids
+          : String(job.source_record_id||'').split(',').filter(Boolean);
+        const products=Array.isArray(job?.source_meta?.products)
+          ? job.source_meta.products : [];
+
+        ids.forEach((id,i)=>{
+          const product=productForSource(id,products,i);
+          try{
+            window.kombuFinalizeFaxboxShipment(product,id,{
+              jobId:job.id,
+              sentAt:new Date().toISOString()
+            });
+          }catch(_e){}
+        });
+      }
+    }catch(_e){}
+  }
+
   async function syncFaxboxCancellations(){
     const c=sb();
     if(!c || typeof window.kombuApplyFaxboxInventory!=='function')return;
@@ -741,7 +783,10 @@
 
   setTimeout(syncFaxboxCancellations,1500);
   setInterval(syncFaxboxCancellations,60000);
+  setTimeout(syncFaxboxSentJobs,1800);
+  setInterval(syncFaxboxSentJobs,60000);
   window.kombuSyncFaxboxCancellations=syncFaxboxCancellations;
+  window.kombuSyncFaxboxSentJobs=syncFaxboxSentJobs;
 
   window.kombuSendShipmentItemsToDedicated = sendItemsToDedicated;
   window.kombuLoadFaxboxRecipients = loadFaxboxRecipients;

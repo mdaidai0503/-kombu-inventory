@@ -1,5 +1,5 @@
 /* =========================================================
-   昆布在庫管理 → FAXBOX専用アプリ 完全統合 UI v2.8
+   昆布在庫管理 → FAXBOX専用アプリ 完全統合 UI v2.9
    ---------------------------------------------------------
    ・旧ローカルFAX BOXを通常操作から外す
    ・出荷指示一覧「まとめてFAXBOXへ」→ 専用FAXBOXへ直接登録
@@ -63,23 +63,19 @@
   }
 
   function archiveSucceeded(result){
-    const hist=load(HIST_KEY);
-    const hm=new Map(hist.map(x=>[x.key,x]));
+    // v2.9: FAXBOX登録時点では「出荷依頼履歴」へ移さない。
+    // 履歴保存はFAXBOX側の実送信完了を確認した時点で行う。
     const now=new Date().toISOString();
-
     (result?.succeeded||[]).forEach(groupResult=>{
       (groupResult.items||[]).forEach(it=>{
-        hm.set(it.key,{
-          ...it,
-          archivedAt:now,
-          faxboxQueuedAt:now,
-          faxboxJobId:groupResult.jobId||'',
-          faxboxStatus:'queued'
-        });
+        const x=lookup(it.product,it.id);
+        if(x){
+          x.faxboxQueuedAt=now;
+          x.faxboxJobId=groupResult.jobId||x.faxboxJobId||'';
+          x.faxboxStatus='queued';
+        }
       });
     });
-
-    save(HIST_KEY,[...hm.values()]);
   }
 
   function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
@@ -326,5 +322,5 @@
   window.kombuSendOneShipmentToFaxbox=sendOneShipmentFromPreview;
   window.kombuCompleteNewShipmentFlow=completeNewShipmentFlow;
   window.kombuCancelPendingShipmentFlow=function(created){removePending(created);};
-  window.kombuFaxboxDirectIntegrationVersion='2.8';
+  window.kombuFaxboxDirectIntegrationVersion='2.9';
 })();

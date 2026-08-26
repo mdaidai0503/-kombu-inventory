@@ -1,5 +1,5 @@
 /* =========================================================
-   昆布在庫管理 ライブ画面反映 v160.7
+   昆布在庫管理 ライブ画面反映 v160.8
    ---------------------------------------------------------
    ・「最新データを反映」後も現在画面をできるだけ維持
    ・新規出荷依頼画面を会社マスターと誤判定しない
@@ -120,7 +120,7 @@
         home: ['home', 'productLanding'],
         stock: ['stock'],
         logs: ['logs'],
-        shipments: ['v76ShipmentMenu', 'shipments'],
+        shipments: ['v136ShipmentHistory'],
         shipHistory: ['shipmentHistory', 'shipHistory'],
         masters: ['masters']
       },
@@ -128,7 +128,7 @@
         home: ['hHome', 'hidakaHome', 'home'],
         stock: ['hStock', 'hidakaStock', 'stock'],
         logs: ['hLogs', 'hidakaLogs', 'logs'],
-        shipments: ['v76ShipmentMenu', 'hShipments', 'hidakaShipments', 'shipments'],
+        shipments: ['v136ShipmentHistory'],
         shipHistory: ['hShipmentHistory', 'hShipHistory', 'shipmentHistory'],
         masters: ['hMasters', 'hidakaMasters', 'masters']
       },
@@ -136,7 +136,7 @@
         home: ['nHome', 'nemuroHome', 'home'],
         stock: ['nStock', 'nemuroStock', 'stock'],
         logs: ['nLogs', 'nemuroLogs', 'logs'],
-        shipments: ['v76ShipmentMenu', 'nShipments', 'nemuroShipments', 'shipments'],
+        shipments: ['v136ShipmentHistory'],
         shipHistory: ['nShipmentHistory', 'nShipHistory', 'shipmentHistory'],
         masters: ['nMasters', 'nemuroMasters', 'masters']
       },
@@ -144,7 +144,7 @@
         home: ['smHome', 'ksHome', 'sHome', 'sanmaeHome', 'home'],
         stock: ['smStock', 'ksStock', 'sStock', 'sanmaeStock', 'stock'],
         logs: ['smLogs', 'ksLogs', 'sLogs', 'sanmaeLogs', 'logs'],
-        shipments: ['v76ShipmentMenu', 'smShipments', 'ksShipments', 'sShipments', 'shipments'],
+        shipments: ['v136ShipmentHistory'],
         shipHistory: ['smShipmentHistory', 'ksShipmentHistory', 'sShipmentHistory', 'shipmentHistory'],
         masters: ['ksMasters', 'sMasters', 'sanmaeMasters', 'masters']
       }
@@ -185,7 +185,7 @@
 
     if (view === 'editing' || view === 'hold') {
       showAppliedToast('最新データを取得しました。現在の画面は維持しています。');
-      console.info('[KOMBU v160.7] 再描画を保留:', view);
+      console.info('[KOMBU v160.8] 再描画を保留:', view);
       return true;
     }
 
@@ -196,15 +196,15 @@
       try {
         fn();
         showAppliedToast('最新データを画面に反映しました');
-        console.info('[KOMBU v160.7] 現在画面へライブ反映:', product, view);
+        console.info('[KOMBU v160.8] 現在画面へライブ反映:', product, view);
         return true;
       } catch (error) {
-        console.warn('[KOMBU v160.7] 画面再描画に失敗:', error);
+        console.warn('[KOMBU v160.8] 画面再描画に失敗:', error);
       }
     }
 
     showAppliedToast('最新データを取得しました');
-    console.info('[KOMBU v160.7] state更新済み。現在画面は維持:', product, view);
+    console.info('[KOMBU v160.8] state更新済み。現在画面は維持:', product, view);
     return false;
   }
 
@@ -214,5 +214,5 @@
     applyLatestToCurrentView();
   });
 
-  console.info('[KOMBU v160.7] ライブ画面反映モジュール ready');
+  console.info('[KOMBU v160.8] ライブ画面反映モジュール ready');
 })();

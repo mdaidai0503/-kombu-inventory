@@ -1007,83 +1007,52 @@
   }
 
   function patchReviewButton() {
-    const headings = Array.from(document.querySelectorAll('h2'));
+    const historyCard=document.querySelector('.v159-history-card');
+    if(!historyCard)return;
 
-    // 画面内の候補を全部対象にする。
-    const targets = headings.filter(function (h) {
-      const text = String(h.textContent || '');
-      return text.includes('出荷指示') || text.includes('出荷依頼');
-    });
+    let tools=document.getElementById('v159HistoryTools');
+    if(!tools){
+      tools=document.createElement('div');
+      tools.id='v159HistoryTools';
+      tools.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center';
 
-    if (!targets.length) return;
+      const review=document.createElement('button');
+      review.className='btn secondary v159-waybill-review-open';
+      review.style.cssText='width:auto;padding:9px 12px';
+      review.onclick=async function(){
+        await loadWaybills();
+        openReviewModal();
+      };
 
-    targets.forEach(function (target) {
-      const card = target.closest('.card');
-      if (!card) return;
-
-      let btn = card.querySelector('.v159-waybill-review-open');
-
-      if (!btn) {
-        let exceptionCount = 0;
-
-        waybillCache.forEach(function (w) {
-          const key = classifyWaybill(w).key;
-
-          if (key === 'review' || key === 'unmatched') {
-            exceptionCount++;
-          }
-        });
-
-        btn = document.createElement('button');
-        btn.className = 'mini v159-waybill-review-open';
-        btn.textContent =
-          exceptionCount > 0
-            ? '⚠ 送り状確認 (' + exceptionCount + ')'
-            : '📎 送り状確認';
-
-        if (exceptionCount > 0) {
-          btn.style.fontWeight = '700';
-        }
-
-        btn.style.marginLeft = '8px';
-
-        btn.onclick = async function () {
-          await loadWaybills();
-          openReviewModal();
-        };
-
-        const row = target.closest('.row');
-
-        if (row) {
-          row.appendChild(btn);
-        } else {
-          target.insertAdjacentElement('afterend', btn);
-        }
-      }
-
-      // 「送り状確認」がある場所のすぐ隣に必ずエラー一覧を置く。
-      if (!card.querySelector('.v159-error-list-open')) {
-        btn.insertAdjacentElement(
-          'afterend',
-          makeErrorListButton()
-        );
-      }
-    });
-
-    // 念のため、既に画面にある「送り状確認」ボタンにも補完。
-    document
-      .querySelectorAll('.v159-waybill-review-open')
-      .forEach(function (reviewBtn) {
-        const parent = reviewBtn.parentElement;
-        if (!parent) return;
-
-        if (!parent.querySelector('.v159-error-list-open')) {
-          reviewBtn.insertAdjacentElement(
-            'afterend',
-            makeErrorListButton()
-          );
-        }
+      let exceptionCount=0;
+      waybillCache.forEach(function(x){
+        const k=classifyWaybill(x).key;
+        if(k==='review'||k==='unmatched')exceptionCount++;
       });
+      review.textContent=exceptionCount>0
+        ? '⚠ 送り状確認 ('+exceptionCount+')'
+        : '📎 送り状確認';
+
+      const err=makeErrorListButton();
+      err.className='btn secondary v159-error-list-open';
+      err.style.cssText='width:auto;padding:9px 12px;margin-left:0';
+
+      tools.appendChild(review);
+      tools.appendChild(err);
+      historyCard.insertBefore(tools,historyCard.firstChild);
+    }else{
+      const review=tools.querySelector('.v159-waybill-review-open');
+      if(review){
+        let exceptionCount=0;
+        waybillCache.forEach(function(x){
+          const k=classifyWaybill(x).key;
+          if(k==='review'||k==='unmatched')exceptionCount++;
+        });
+        review.textContent=exceptionCount>0
+          ? '⚠ 送り状確認 ('+exceptionCount+')'
+          : '📎 送り状確認';
+      }
+    }
   }
 
 
@@ -1094,7 +1063,6 @@
     try {
       await loadWaybills();
       patchHistoryTable();
-      patchShipmentDetail();
       patchReviewButton();
     } finally {
       refreshing = false;
@@ -1121,8 +1089,7 @@
           return true;
         }
 
-        const text = String(node.textContent || '');
-        return text.includes('出荷指示');
+        return false;
       });
     });
 
@@ -1137,11 +1104,14 @@
   window.addEventListener('kombu:supabase-login', scheduleRefresh);
   window.addEventListener('load', scheduleRefresh);
 
-  window.KOMBU_WAYBILL_UI_VERSION = '159.8';
+  window.KOMBU_WAYBILL_UI_VERSION = '159.9';
   window.kombuWaybillInboxRefresh = refreshWaybills;
   window.kombuWaybillReviewOpen = async function () {
     await loadWaybills();
     openReviewModal();
+  };
+  window.kombuWaybillErrorListOpen = async function () {
+    await openErrorListModal();
   };
 
 })();
