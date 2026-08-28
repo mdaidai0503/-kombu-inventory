@@ -8595,3 +8595,56 @@ document.getElementById('v161ShipmentHistory').onclick=function(){
   document.head.appendChild(st);
 })();
 
+
+
+/* ===== v2.26 出荷依頼履歴 列幅バランス調整 ===== */
+(function(){
+  const old=document.getElementById('v226-history-width-balance');
+  if(old)old.remove();
+
+  const st=document.createElement('style');
+  st.id='v226-history-width-balance';
+  st.textContent=`
+    .v159-history-table{
+      width:100%!important;
+      min-width:1060px!important;
+      table-layout:fixed!important;
+    }
+
+    .v159-history-table col.c1{width:11%!important}   /* 依頼日 */
+    .v159-history-table col.c2{width:7%!important}    /* 昆布 */
+    .v159-history-table col.c3{width:14%!important}   /* 出荷人 */
+    .v159-history-table col.c4{width:14%!important}   /* 出荷先 */
+    .v159-history-table col.c5{width:7%!important}    /* 個数 */
+    .v159-history-table col.c6{width:9%!important}    /* 状態 */
+    .v159-history-table col.c7{width:9%!important}    /* 送り状 */
+    .v159-history-table col.c8{width:29%!important}   /* PDF */
+
+    .v159-history-table th,
+    .v159-history-table td{
+      padding-left:5px!important;
+      padding-right:5px!important;
+    }
+
+    .v215-history-pdf{
+      width:100%!important;
+      max-width:100%!important;
+      overflow:hidden!important;
+      text-overflow:clip!important;
+      white-space:nowrap!important;
+      font-size:10.5px!important;
+      padding:7px 8px!important;
+      text-align:left!important;
+    }
+
+    @media(max-width:900px){
+      .v159-history-table{
+        min-width:1040px!important;
+      }
+      .v159-history-table col.c8{width:30%!important}
+      .v215-history-pdf{font-size:10px!important}
+    }
+  `;
+  document.head.appendChild(st);
+})();
+

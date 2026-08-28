@@ -1,4 +1,4 @@
-const CACHE = 'kombu-inventory-v163-0';
+const CACHE = 'kombu-inventory-v163-1';
 
 const APP_SHELL = [
   './',
