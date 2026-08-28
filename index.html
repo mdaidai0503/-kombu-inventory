@@ -21,7 +21,7 @@ nav{position:fixed;bottom:0;left:0;right:0;background:#0b2b55;display:flex;justi
 (function(){
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function(){
-      navigator.serviceWorker.register('./sw-v160.js?v=161.4', {scope:'./'}).catch(function(err){
+      navigator.serviceWorker.register('./sw-v160.js?v=161.5', {scope:'./'}).catch(function(err){
         console.warn('Service Worker登録に失敗しました:', err);
       });
     });
@@ -98,7 +98,7 @@ nav{position:fixed;bottom:0;left:0;right:0;background:#0b2b55;display:flex;justi
   './refactor/js/products/products.js',
   './refactor/js/core/storage.js',
   './refactor/js/inventory/inventory.js',
-'./app-v159.js?v=159.6',
+'./app-v159.js?v=159.7',
 './kombu-pdf-filename-v1.js?v=1.3',
 './kombu-live-refresh-v160.js?v=160.8',
 './kombu-faxbox-bridge-v1.js?v=2.9',

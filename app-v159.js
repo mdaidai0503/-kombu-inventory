@@ -6400,6 +6400,9 @@ async function v130TopBackup(){
     const makeOptions=(col)=>`<option value="">すべて</option><option value="__asc">↑ 昇順</option><option value="__desc">↓ 降順</option>${unique(col).map(v=>`<option value="${escAttr(v)}">${esc(v)}</option>`).join('')}`;
 
     app.innerHTML=`<section class="card v159-history-card v159-history-title-marker" style="margin-top:14px;padding:12px">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+        <button type="button" id="v210ResetShipmentHistory" class="btn secondary" style="width:auto;padding:8px 12px;font-size:13px">🧹 テスト履歴を初期化</button>
+      </div>
       <div class="tablewrap" style="overflow:auto">
         <table class="v159-compact-table v159-history-table">
           <colgroup><col class="c1"><col class="c2"><col class="c3"><col class="c4"><col class="c5"><col class="c6"><col class="c7"><col class="c8"></colgroup>
@@ -6420,6 +6423,14 @@ async function v130TopBackup(){
         </table>
       </div>
     </section>`;
+
+    const resetHistoryBtn=document.getElementById('v210ResetShipmentHistory');
+    if(resetHistoryBtn)resetHistoryBtn.onclick=()=>{
+      if(!confirm('この端末に残っているテスト用の出荷依頼履歴を全削除します。\n\n在庫・入出庫履歴・会社マスター・FAX送信先は削除しません。\n\n実行しますか？'))return;
+      localStorage.removeItem(HIST_KEY);
+      alert('この端末の出荷依頼履歴を初期化しました。');
+      shipmentHistory();
+    };
 
     const body=document.getElementById('v136HistBody');
     const selects=[...document.querySelectorAll('.v159-filter-row select[data-col]')];
