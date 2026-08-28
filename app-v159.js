@@ -5810,10 +5810,13 @@ smLogs=function(){
       };
 
       nav.querySelector('#v119List').onclick=()=>{
-        screenKind='history';
-        setMode('shipment','history');
-        if(typeof window.v136ShipmentHistory==='function'){
-          window.v136ShipmentHistory();
+        try{
+          if(typeof window.v136ShipmentHistory==='function'){
+            window.v136ShipmentHistory();
+          }
+        }catch(e){
+          console.error('[KOMBU v2.21] 下部履歴ボタン',e);
+          alert('出荷依頼履歴を開けませんでした。\n'+String(e?.message||e));
         }
       };
     }
@@ -6484,7 +6487,6 @@ async function v130TopBackup(){
     v76ShipmentMenu();
   }
   function shipmentHistory(){
-    try{setMode('shipment','history');ensureShipmentNav();}catch(_e){}
     const hist=load(HIST_KEY)
       .filter(it=>it.faxboxStatus!=='queued')
       .sort((a,b)=>{
@@ -6501,7 +6503,6 @@ async function v130TopBackup(){
       });
     /* v159: 履歴画面は上部タイトル文字なし。固定ナビは維持。 */
     setHeader('出荷依頼履歴');setNavVisible(false);
-    v217ForceShipmentFourNav('history');
 
     const escAttr=v=>esc(String(v??''));
     const historyStatus=it=>{
@@ -6687,9 +6688,10 @@ body.innerHTML=items.map(it=>`<tr data-hprod="${it.product}" data-hid="${escAttr
     render();
     document.body.dataset.v119NavMode='shipment';
 
-    // v2.17: トップ→出荷依頼→履歴の経路でも必ず同一4ボタン。
-    v217ForceShipmentFourNav('history');
-    requestAnimationFrame(()=>v217ForceShipmentFourNav('history'));
+    // v2.21: 履歴を描画してから公開済みの4ボタン関数を適用。
+    document.body.dataset.v119NavMode='shipment';
+    window.kombuForceShipmentFourNav?.('history');
+    requestAnimationFrame(()=>window.kombuForceShipmentFourNav?.('history'));
   }
   window.v136ShipmentHistory=shipmentHistory;
 
@@ -7591,10 +7593,14 @@ if(histChanged){
       globalThis.v114UnifiedShipmentForm();
     };
 document.getElementById('v161ShipmentHistory').onclick=function(){
-      if(typeof window.v136ShipmentHistory==='function'){
+      try{
+        if(typeof window.v136ShipmentHistory!=='function'){
+          throw new Error('出荷依頼履歴を読み込めません。');
+        }
         window.v136ShipmentHistory();
-      }else{
-        alert('出荷依頼履歴を読み込めませんでした。');
+      }catch(e){
+        console.error('[KOMBU v2.21] 履歴表示エラー',e);
+        alert('出荷依頼履歴を開けませんでした。\n'+String(e?.message||e));
       }
     };
 
