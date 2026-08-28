@@ -8648,3 +8648,70 @@ document.getElementById('v161ShipmentHistory').onclick=function(){
   document.head.appendChild(st);
 })();
 
+
+
+/* ===== v2.27 出荷依頼履歴 PDF列 最終コンパクト調整 ===== */
+(function(){
+  const st=document.createElement('style');
+  st.id='v227-history-pdf-compact';
+  st.textContent=`
+    .v159-history-table col.c1{width:12%!important}
+    .v159-history-table col.c2{width:7%!important}
+    .v159-history-table col.c3{width:15%!important}
+    .v159-history-table col.c4{width:15%!important}
+    .v159-history-table col.c5{width:7%!important}
+    .v159-history-table col.c6{width:9%!important}
+    .v159-history-table col.c7{width:10%!important}
+    .v159-history-table col.c8{width:25%!important}
+
+    .v215-history-pdf{
+      width:100%!important;
+      max-width:100%!important;
+      white-space:nowrap!important;
+      overflow:hidden!important;
+      text-overflow:clip!important;
+      font-size:10.5px!important;
+      padding:7px 8px!important;
+    }
+  `;
+  document.head.appendChild(st);
+})();
+
+
+
+/* ===== v2.28 出荷依頼履歴 PDF列20% ===== */
+(function(){
+  const st=document.createElement('style');
+  st.id='v228-history-pdf20';
+  st.textContent=`
+    .v159-history-table col.c1{width:13%!important}
+    .v159-history-table col.c2{width:8%!important}
+    .v159-history-table col.c3{width:16%!important}
+    .v159-history-table col.c4{width:16%!important}
+    .v159-history-table col.c5{width:7%!important}
+    .v159-history-table col.c6{width:9%!important}
+    .v159-history-table col.c7{width:11%!important}
+    .v159-history-table col.c8{width:20%!important}
+  `;
+  document.head.appendChild(st);
+})();
+
+
+
+/* ===== v2.29 出荷依頼履歴 PDF列15% ===== */
+(function(){
+  const st=document.createElement('style');
+  st.id='v229-history-pdf15';
+  st.textContent=`
+    .v159-history-table col.c1{width:14%!important}
+    .v159-history-table col.c2{width:8%!important}
+    .v159-history-table col.c3{width:17%!important}
+    .v159-history-table col.c4{width:17%!important}
+    .v159-history-table col.c5{width:8%!important}
+    .v159-history-table col.c6{width:9%!important}
+    .v159-history-table col.c7{width:12%!important}
+    .v159-history-table col.c8{width:15%!important}
+  `;
+  document.head.appendChild(st);
+})();
+
