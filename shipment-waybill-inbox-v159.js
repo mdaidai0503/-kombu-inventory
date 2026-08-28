@@ -282,7 +282,11 @@
 
       if (cells.length !== 8) return;
 
-      cells[5].innerHTML = makeWaybillCell(product, shipmentId);
+      // v2.16: 8列構成
+      // 0依頼日 / 1昆布 / 2出荷人 / 3出荷先 / 4個数 /
+      // 5状態 / 6送り状 / 7PDF
+      // 状態欄は絶対に上書きしない。
+      cells[6].innerHTML = makeWaybillCell(product, shipmentId);
     });
 
     bindWaybillButtons(body);
@@ -1104,7 +1108,7 @@
   window.addEventListener('kombu:supabase-login', scheduleRefresh);
   window.addEventListener('load', scheduleRefresh);
 
-  window.KOMBU_WAYBILL_UI_VERSION = '159.9';
+  window.KOMBU_WAYBILL_UI_VERSION = '160.0';
   window.kombuWaybillInboxRefresh = refreshWaybills;
   window.kombuWaybillReviewOpen = async function () {
     await loadWaybills();

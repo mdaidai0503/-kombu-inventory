@@ -6631,7 +6631,18 @@ body.innerHTML=items.map(it=>`<tr data-hprod="${it.product}" data-hid="${escAttr
     };
     render();
     document.body.dataset.v119NavMode='shipment';
+
+    // v2.16: 履歴画面でも新規出荷依頼と同一の4ボタンを固定。
     if(typeof window.v136EnsureHistoryNav==='function')window.v136EnsureHistoryNav();
+    requestAnimationFrame(()=>{
+      const nav=document.getElementById('v119ShipmentNav');
+      if(nav){
+        nav.querySelector('#v136History')?.remove();
+        nav.querySelector('#v119Fax')?.remove();
+        nav.style.setProperty('display','grid','important');
+        nav.style.setProperty('grid-template-columns','repeat(4,1fr)','important');
+      }
+    });
   }
   window.v136ShipmentHistory=shipmentHistory;
 
@@ -6693,14 +6704,19 @@ if(histChanged){
   };
 
   function upgradeNav(){
-    const nav=document.getElementById('v119ShipmentNav');if(!nav)return;
-    if(!document.getElementById('v136History')){
-      const b=document.createElement('button');b.id='v136History';b.setAttribute('aria-label','出荷指示履歴');b.title='出荷指示履歴';
-      b.innerHTML='<span class="v124-nav-icon">🕘</span><span class="v124-nav-label">履歴</span>';
-      const fax=nav.querySelector('#v119Fax');fax?.after(b);
-      b.onclick=shipmentHistory;
-    }
-    nav.style.setProperty('grid-template-columns','repeat(5,1fr)','important');
+    // v2.16: 旧5ボタン化処理は廃止。
+    // 新規出荷依頼と同じ4ボタン
+    // 🏠 ホーム / ⬅️ 戻る / ➕ 新規 / 🕘 履歴
+    // をそのまま維持する。
+    const nav=document.getElementById('v119ShipmentNav');
+    if(!nav)return;
+
+    // 過去版で追加されたボタンがDOMに残っていた場合だけ除去。
+    nav.querySelector('#v136History')?.remove();
+    nav.querySelector('#v119Fax')?.remove();
+
+    nav.style.setProperty('display','grid','important');
+    nav.style.setProperty('grid-template-columns','repeat(4,1fr)','important');
   }
   window.v136EnsureHistoryNav=upgradeNav;
   const mo=new MutationObserver(()=>{if(document.body.dataset.v119NavMode==='shipment')upgradeNav()});
