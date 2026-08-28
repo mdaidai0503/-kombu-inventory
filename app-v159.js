@@ -6427,17 +6427,60 @@ async function v130TopBackup(){
     try{screenKind='history';setMode('shipment','history');}catch(_e){}
     const hist=load(HIST_KEY)
       .filter(it=>it.faxboxStatus!=='queued')
-      .sort((a,b)=>String(b.sentAt||b.archivedAt||b.shipDate||'').localeCompare(String(a.sentAt||a.archivedAt||a.shipDate||'')));
+      .sort((a,b)=>{
+        const aCancelled=(a.faxboxStatus==='cancelled'||a.faxboxStatus==='canceled'||a.snapshot?.status==='cancelled');
+        const bCancelled=(b.faxboxStatus==='cancelled'||b.faxboxStatus==='canceled'||b.snapshot?.status==='cancelled');
+
+        // 取消済は必ず最下部
+        if(aCancelled!==bCancelled)return aCancelled?1:-1;
+
+        // 同じグループ内は最新順
+        const at=String(a.sentAt||a.cancelledAt||a.archivedAt||a.shipDate||'');
+        const bt=String(b.sentAt||b.cancelledAt||b.archivedAt||b.shipDate||'');
+        return bt.localeCompare(at);
+      });
     /* v159: 履歴画面は上部タイトル文字なし。固定ナビは維持。 */
     setHeader('出荷依頼履歴');setNavVisible(false);
 
     const escAttr=v=>esc(String(v??''));
+    const historyStatus=it=>{
+      const cancelled=
+        it?.faxboxStatus==='cancelled' ||
+        it?.faxboxStatus==='canceled' ||
+        it?.snapshot?.status==='cancelled';
+
+      if(cancelled)return '取消済';
+
+      const faxDone=
+        it?.faxboxStatus==='sent' ||
+        it?.faxboxStatus==='completed' ||
+        it?.faxboxStatus==='success' ||
+        it?.faxboxStatus==='succeeded' ||
+        it?.snapshot?.status==='shipped';
+
+      if(faxDone)return 'FAX済';
+
+      return '処理中';
+    };
+
+    const statusBadge=it=>{
+      const st=historyStatus(it);
+      if(st==='取消済'){
+        return '<span style="display:inline-block;padding:4px 8px;border-radius:999px;background:#fee4e2;color:#b42318;font-weight:900">取消済</span>';
+      }
+      if(st==='FAX済'){
+        return '<span style="display:inline-block;padding:4px 8px;border-radius:999px;background:#e8f5e9;color:#216e39;font-weight:900">FAX済</span>';
+      }
+      return '<span style="display:inline-block;padding:4px 8px;border-radius:999px;background:#eef4fb;color:#173760;font-weight:800">処理中</span>';
+    };
+
     const getVal=(it,col)=>{
       if(col==='date')return it.shipDate||'';
       if(col==='product')return label(it.product);
       if(col==='source')return it.source?.name||'';
       if(col==='dest')return it.dest?.name||'';
       if(col==='qty')return Number(it.qty||0);
+      if(col==='status')return historyStatus(it);
       if(col==='id')return it.id||'';
       return '';
     };
@@ -6450,15 +6493,16 @@ async function v130TopBackup(){
       </div>
       <div class="tablewrap" style="overflow:auto">
         <table class="v159-compact-table v159-history-table">
-          <colgroup><col class="c1"><col class="c2"><col class="c3"><col class="c4"><col class="c5"><col class="c6"><col class="c7"><col class="c8"></colgroup>
+          <colgroup><col class="c1"><col class="c2"><col class="c3"><col class="c4"><col class="c5"><col class="c6"><col class="c7"><col class="c8"><col class="c9"></colgroup>
           <thead>
-            <tr><th>依頼日</th><th>昆布</th><th>出荷人</th><th>出荷先</th><th>個数</th><th>送り状</th><th>開く</th><th>指示</th></tr>
+            <tr><th>依頼日</th><th>昆布</th><th>出荷人</th><th>出荷先</th><th>個数</th><th>状態</th><th>送り状</th><th>開く</th><th>指示</th></tr>
             <tr class="v159-filter-row">
               <th><select data-col="date">${makeOptions('date')}</select></th>
               <th><select data-col="product">${makeOptions('product')}</select></th>
               <th><select data-col="source">${makeOptions('source')}</select></th>
               <th><select data-col="dest">${makeOptions('dest')}</select></th>
               <th><select data-col="qty">${makeOptions('qty')}</select></th>
+<th><select data-col="status">${makeOptions('status')}</select></th>
 <th></th>
 <th><select disabled><option>--</option></select></th>
 <th><select data-col="id">${makeOptions('id')}</select></th>
@@ -6490,6 +6534,12 @@ async function v130TopBackup(){
       }
       if(sortCol){
         items.sort((a,b)=>{
+          const aCancelled=historyStatus(a)==='取消済';
+          const bCancelled=historyStatus(b)==='取消済';
+
+          // 取消済はどの並び替えでも最下部を維持
+          if(aCancelled!==bCancelled)return aCancelled?1:-1;
+
           const av=getVal(a,sortCol),bv=getVal(b,sortCol);
           if(sortCol==='qty')return (Number(av)-Number(bv))*(sortDir==='desc'?-1:1);
           return String(av).localeCompare(String(bv),'ja',{numeric:true})*(sortDir==='desc'?-1:1);
@@ -6501,10 +6551,11 @@ body.innerHTML=items.map(it=>`<tr data-hprod="${it.product}" data-hid="${escAttr
   <td>${esc(it.source?.name||'')}</td>
   <td>${esc(it.dest?.name||'')}</td>
   <td>${fmt(it.qty||0)}</td>
+  <td>${statusBadge(it)}</td>
   <td><span class="muted">未着</span></td>
   <td><button class="mini" data-hopen="1">開く</button></td>
   <td>${esc(it.id||'')}</td>
-</tr>`).join('')||'<tr><td colspan="8" class="empty">該当する出荷指示履歴はありません</td></tr>';
+</tr>`).join('')||'<tr><td colspan="9" class="empty">該当する出荷指示履歴はありません</td></tr>';
     }
 
     selects.forEach(sel=>sel.onchange=()=>{
@@ -6642,9 +6693,10 @@ if(histChanged){
 .v159-history-table col.c3{width:16%}
 .v159-history-table col.c4{width:16%}
 .v159-history-table col.c5{width:8%}
-.v159-history-table col.c6{width:14%}
-.v159-history-table col.c7{width:9%}
-.v159-history-table col.c8{width:18%}
+.v159-history-table col.c6{width:10%}
+.v159-history-table col.c7{width:10%}
+.v159-history-table col.c8{width:8%}
+.v159-history-table col.c9{width:10%}
  .v159-filter-row th{padding:3px 2px;background:#f4f7fb}
  .v159-filter-row select{width:100%;min-width:0;height:28px;padding:1px 14px 1px 3px;font-size:9.5px;border:1px solid #cbd5e1;border-radius:5px;background:#fff;color:#17324f}
  .v159-filter-row select:disabled{opacity:.45}
@@ -6675,8 +6727,10 @@ if(histChanged){
  .v159-history-table col.c3{width:76px!important}
  .v159-history-table col.c4{width:76px!important}
  .v159-history-table col.c5{width:34px!important}
- .v159-history-table col.c6{width:38px!important}
- .v159-history-table col.c7{width:50px!important}
+ .v159-history-table col.c6{width:52px!important}
+ .v159-history-table col.c7{width:38px!important}
+ .v159-history-table col.c8{width:50px!important}
+ .v159-history-table col.c9{width:54px!important}
  .v159-filter-row select{height:26px!important;font-size:8.8px!important;padding-left:2px!important;padding-right:12px!important}
  `;
  document.head.appendChild(st);
