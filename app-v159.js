@@ -5753,17 +5753,22 @@ smLogs=function(){
       nav.setAttribute('aria-label','出荷依頼 共通固定メニュー');
       nav.innerHTML=`
         <button id="v119Home" aria-label="ホーム" title="ホーム">
-          <span class="v124-nav-icon">🏠</span><span class="v124-nav-label">ホーム</span>
+          <span class="v124-nav-icon">🏠</span>
+          <span class="v124-nav-label">ホーム</span>
         </button>
-        <button id="v119Back" aria-label="前の画面へ戻る" title="前の画面へ戻る">
-          <span class="v124-nav-icon">⬅️</span><span class="v124-nav-label">戻る</span>
+        <button id="v119Back" aria-label="戻る" title="戻る">
+          <span class="v124-nav-icon">⬅️</span>
+          <span class="v124-nav-label">戻る</span>
         </button>
         <button id="v119New" aria-label="新規出荷依頼" title="新規出荷依頼">
-          <span class="v124-nav-icon">➕</span><span class="v124-nav-label">新規</span>
+          <span class="v124-nav-icon">➕</span>
+          <span class="v124-nav-label">新規</span>
         </button>
         <button id="v119List" aria-label="出荷依頼履歴" title="出荷依頼履歴">
-          <span class="v124-nav-icon">🕘</span><span class="v124-nav-label">履歴</span>
+          <span class="v124-nav-icon">🕘</span>
+          <span class="v124-nav-label">履歴</span>
         </button>`;
+
       document.body.appendChild(nav);
 
       nav.querySelector('#v119Home').onclick=()=>{
@@ -5773,12 +5778,12 @@ smLogs=function(){
       };
 
       nav.querySelector('#v119Back').onclick=()=>{
-        /* 出荷依頼内では共通して「出荷依頼メニュー」へ戻る。
-           メニュー上で押した場合のみトップへ戻る。 */
         const appText=String(document.getElementById('app')?.textContent||'');
-        const onEntry=appText.includes('新規出荷依頼') &&
-                      appText.includes('出荷依頼履歴') &&
-                      !document.getElementById('v114ShipDate');
+        const onEntry =
+          appText.includes('新規出荷依頼') &&
+          appText.includes('出荷依頼履歴') &&
+          !document.getElementById('v114ShipDate') &&
+          !document.querySelector('.v159-history-card');
 
         if(onEntry){
           screenKind='menu';
@@ -6424,6 +6429,7 @@ async function v130TopBackup(){
     v76ShipmentMenu();
   }
   function shipmentHistory(){
+    try{screenKind='history';setMode('shipment','history');ensureShipmentNav();}catch(_e){}
     try{screenKind='history';setMode('shipment','history');}catch(_e){}
     const hist=load(HIST_KEY)
       .filter(it=>it.faxboxStatus!=='queued')
@@ -6474,6 +6480,49 @@ async function v130TopBackup(){
       return '<span style="display:inline-block;padding:4px 8px;border-radius:999px;background:#eef4fb;color:#173760;font-weight:800">処理中</span>';
     };
 
+    const pdfDisplayName=it=>{
+      const raw=String(it?.shipDate||'').trim();
+      let date=raw;
+      const digits=raw.replace(/\D/g,'');
+      if(digits.length>=8){
+        date=digits.slice(0,4)+'.'+digits.slice(4,6)+'.'+digits.slice(6,8);
+      }else{
+        const mm=raw.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/);
+        if(mm)date=mm[1]+'.'+String(mm[2]).padStart(2,'0')+'.'+String(mm[3]).padStart(2,'0');
+      }
+      const company=String(it?.dest?.name||it?.snapshot?.dest?.name||it?.snapshot?.destInfo?.name||'出荷先未設定')
+        .replace(/[\\/:*?"<>|]/g,'')
+        .trim()||'出荷先未設定';
+      return date+'_'+company+'_出荷指示';
+    };
+
+    const historyShipment=it=>{
+      if(it?.product==='kushiro')return (state.shipments||[]).find(x=>String(x.id)===String(it.id))||it.snapshot||null;
+      if(it?.product==='hidaka')return (hState.shipments||[]).find(x=>String(x.id)===String(it.id))||it.snapshot||null;
+      if(it?.product==='nemuro')return (nState.shipments||[]).find(x=>String(x.id)===String(it.id))||it.snapshot||null;
+      if(it?.product==='sanmae')return (smState.shipments||[]).find(x=>String(x.id)===String(it.id))||it.snapshot||null;
+      return it?.snapshot||null;
+    };
+
+    const openHistoryPdf=it=>{
+      const ship=historyShipment(it);
+      if(!ship)return alert('出荷依頼PDFの元データが見つかりません。');
+      try{
+        if(it.product==='kushiro'){
+          if((state.shipments||[]).some(x=>String(x.id)===String(it.id)) && typeof openShipmentPdfDirect==='function'){
+            return openShipmentPdfDirect(it.id);
+          }
+          return v69OpenShipmentLandscapePdf('釧路産昆布',ship,state.activeYear,v55CanvasKushiro);
+        }
+        if(it.product==='hidaka')return v69OpenShipmentLandscapePdf('日高昆布',ship,hState.activeYear,v55CanvasHidaka);
+        if(it.product==='nemuro')return v69OpenShipmentLandscapePdf('根室産昆布',ship,nState.activeYear,v55CanvasNemuro);
+        if(it.product==='sanmae')return v69OpenShipmentLandscapePdf('釧路産棹前昆布',ship,smState.activeYear,v55CanvasSanmae);
+      }catch(e){
+        console.error(e);
+        alert('出荷依頼PDFを表示できませんでした。\n'+String(e?.message||e));
+      }
+    };
+
     const getVal=(it,col)=>{
       if(col==='date')return it.shipDate||'';
       if(col==='product')return label(it.product);
@@ -6481,7 +6530,6 @@ async function v130TopBackup(){
       if(col==='dest')return it.dest?.name||'';
       if(col==='qty')return Number(it.qty||0);
       if(col==='status')return historyStatus(it);
-      if(col==='id')return it.id||'';
       return '';
     };
     const unique=(col)=>[...new Set(hist.map(it=>String(getVal(it,col))).filter(v=>v!==''))].sort((a,b)=>a.localeCompare(b,'ja',{numeric:true}));
@@ -6493,9 +6541,9 @@ async function v130TopBackup(){
       </div>
       <div class="tablewrap" style="overflow:auto">
         <table class="v159-compact-table v159-history-table">
-          <colgroup><col class="c1"><col class="c2"><col class="c3"><col class="c4"><col class="c5"><col class="c6"><col class="c7"><col class="c8"><col class="c9"></colgroup>
+          <colgroup><col class="c1"><col class="c2"><col class="c3"><col class="c4"><col class="c5"><col class="c6"><col class="c7"><col class="c8"></colgroup>
           <thead>
-            <tr><th>依頼日</th><th>昆布</th><th>出荷人</th><th>出荷先</th><th>個数</th><th>状態</th><th>送り状</th><th>開く</th><th>指示</th></tr>
+            <tr><th>依頼日</th><th>昆布</th><th>出荷人</th><th>出荷先</th><th>個数</th><th>状態</th><th>送り状</th><th>PDF</th></tr>
             <tr class="v159-filter-row">
               <th><select data-col="date">${makeOptions('date')}</select></th>
               <th><select data-col="product">${makeOptions('product')}</select></th>
@@ -6505,7 +6553,6 @@ async function v130TopBackup(){
 <th><select data-col="status">${makeOptions('status')}</select></th>
 <th></th>
 <th><select disabled><option>--</option></select></th>
-<th><select data-col="id">${makeOptions('id')}</select></th>
             </tr>
           </thead>
           <tbody id="v136HistBody"></tbody>
@@ -6553,9 +6600,8 @@ body.innerHTML=items.map(it=>`<tr data-hprod="${it.product}" data-hid="${escAttr
   <td>${fmt(it.qty||0)}</td>
   <td>${statusBadge(it)}</td>
   <td><span class="muted">未着</span></td>
-  <td><button class="mini" data-hopen="1">開く</button></td>
-  <td>${esc(it.id||'')}</td>
-</tr>`).join('')||'<tr><td colspan="9" class="empty">該当する出荷指示履歴はありません</td></tr>';
+  <td><button class="mini v215-history-pdf" data-hpdf="1" title="${escAttr(pdfDisplayName(it))}">${esc(pdfDisplayName(it))}</button></td>
+</tr>`).join('')||'<tr><td colspan="8" class="empty">該当する出荷依頼履歴はありません</td></tr>';
     }
 
     selects.forEach(sel=>sel.onchange=()=>{
@@ -6577,7 +6623,11 @@ body.innerHTML=items.map(it=>`<tr data-hprod="${it.product}" data-hid="${escAttr
 
     if(body)body.onclick=e=>{
       const tr=e.target.closest('[data-hid]');
-      if(tr&&e.target.closest('[data-hopen]'))openGlobalShipment(tr.dataset.hprod,tr.dataset.hid);
+      if(!tr)return;
+      if(e.target.closest('[data-hpdf]')){
+        const it=hist.find(x=>String(x.product)===String(tr.dataset.hprod)&&String(x.id)===String(tr.dataset.hid));
+        if(it)openHistoryPdf(it);
+      }
     };
     render();
     document.body.dataset.v119NavMode='shipment';
@@ -6670,6 +6720,32 @@ if(histChanged){
 })();
 /* ===== /v159 ===== */
 
+
+/* ===== v2.15: shipment history PDF column ===== */
+(function(){
+ const st=document.createElement('style');
+ st.textContent=`
+ .v159-history-table col.c8{width:235px!important}
+ .v215-history-pdf{
+   display:block!important;
+   width:100%!important;
+   max-width:100%!important;
+   text-align:left!important;
+   overflow:hidden!important;
+   text-overflow:ellipsis!important;
+   white-space:nowrap!important;
+   font-size:10px!important;
+   padding:6px 8px!important;
+ }
+ @media(max-width:600px){
+   .v159-history-table{min-width:820px!important}
+   .v159-history-table col.c8{width:220px!important}
+   .v215-history-pdf{font-size:9.5px!important}
+ }
+ `;
+ document.head.appendChild(st);
+})();
+/* ===== /v2.15 ===== */
 
 /* ===== v159: shipment history filters ===== */
 (function(){
