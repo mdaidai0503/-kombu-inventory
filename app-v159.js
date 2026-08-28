@@ -5854,8 +5854,17 @@ smLogs=function(){
         // 必要な4ボタンが欠けていた場合は作り直す。
         const needed=['v119Home','v119Back','v119New','v119List'];
         if(needed.some(id=>!nav.querySelector('#'+id))){
+          // v2.18: 再帰呼び出し禁止。旧ナビを1回だけ削除して作り直す。
           nav.remove();
-          return v217ForceShipmentFourNav(kind);
+          const rebuilt=ensureShipmentNav();
+          if(rebuilt){
+            rebuilt.querySelector('#v136History')?.remove();
+            rebuilt.querySelector('#v119Fax')?.remove();
+            rebuilt.style.setProperty('display','grid','important');
+            rebuilt.style.setProperty('grid-template-columns','repeat(4,1fr)','important');
+            rebuilt.style.setProperty('z-index','40200','important');
+          }
+          return;
         }
 
         nav.style.setProperty('display','grid','important');
@@ -6475,8 +6484,7 @@ async function v130TopBackup(){
     v76ShipmentMenu();
   }
   function shipmentHistory(){
-    try{screenKind='history';setMode('shipment','history');ensureShipmentNav();}catch(_e){}
-    try{screenKind='history';setMode('shipment','history');}catch(_e){}
+    try{setMode('shipment','history');ensureShipmentNav();}catch(_e){}
     const hist=load(HIST_KEY)
       .filter(it=>it.faxboxStatus!=='queued')
       .sort((a,b)=>{
@@ -6682,8 +6690,6 @@ body.innerHTML=items.map(it=>`<tr data-hprod="${it.product}" data-hid="${escAttr
     // v2.17: トップ→出荷依頼→履歴の経路でも必ず同一4ボタン。
     v217ForceShipmentFourNav('history');
     requestAnimationFrame(()=>v217ForceShipmentFourNav('history'));
-    setTimeout(()=>v217ForceShipmentFourNav('history'),50);
-    setTimeout(()=>v217ForceShipmentFourNav('history'),250);
   }
   window.v136ShipmentHistory=shipmentHistory;
 
@@ -7543,12 +7549,11 @@ if(histChanged){
     ・出荷依頼履歴 → v136ShipmentHistory()
   */
   function v161ShipmentEntryMenu(){
-    try{screenKind='entry';setMode('shipment','entry');}catch(_e){}
     currentProduct=null;
     v80InventoryMode=false;
     setHeader('出荷依頼');
     setNavVisible(false);
-    v217ForceShipmentFourNav('entry');
+    window.kombuForceShipmentFourNav?.('entry');
 
     app.innerHTML=`
       <section class="card" style="margin-top:14px;padding:16px">
@@ -7597,11 +7602,11 @@ document.getElementById('v161ShipmentHistory').onclick=function(){
       globalThis.productLanding();
     };
 
-    // 他の旧ナビ処理が後から動いても4ボタンへ戻す。
-    v217ForceShipmentFourNav('entry');
-    requestAnimationFrame(()=>v217ForceShipmentFourNav('entry'));
-    setTimeout(()=>v217ForceShipmentFourNav('entry'),50);
-    setTimeout(()=>v217ForceShipmentFourNav('entry'),250);
+    // v2.20: 画面を先に表示してから出荷依頼用4ボタンを適用。
+    // productChoicePage / setMode の古いラップ連鎖には依存しない。
+    document.body.dataset.v119NavMode='shipment';
+    window.kombuForceShipmentFourNav?.('entry');
+    requestAnimationFrame(()=>window.kombuForceShipmentFourNav?.('entry'));
   }
 
   globalThis.v161ShipmentEntryMenu=v161ShipmentEntryMenu;
@@ -8327,3 +8332,61 @@ document.getElementById('v161ShipmentHistory').onclick=function(){
   console.info('[KOMBU v161.3] 最新バージョン表示 ready');
 })();
 /* ===== /v161.3 version ===== */
+
+
+/* ===== v2.20: top shipment button direct route ===== */
+(function(){
+  'use strict';
+
+  function openShipmentEntryDirect(){
+    try{
+      // トップ用の古い固定ナビだけ除去。
+      document.body.classList.remove('v107-landing-open','v106-settings-open');
+      document.getElementById('v107LandingNav')?.remove();
+      document.querySelector('.v106-settings-nav')?.remove();
+
+      if(typeof globalThis.v161ShipmentEntryMenu!=='function'){
+        throw new Error('出荷依頼トップ画面を読み込めません。');
+      }
+
+      // productChoicePage('shipment') は通さず直接開く。
+      globalThis.v161ShipmentEntryMenu();
+    }catch(e){
+      console.error('[KOMBU v2.20] 出荷依頼を開けません',e);
+      alert('出荷依頼画面を開けませんでした。\n'+String(e?.message||e));
+    }
+  }
+
+  function bindTopShipmentButton(){
+    const btn=
+      document.getElementById('v106Shipment') ||
+      document.getElementById('v105Shipment') ||
+      document.getElementById('v73Shipment');
+
+    if(btn){
+      btn.onclick=openShipmentEntryDirect;
+      btn.dataset.v220DirectShipment='1';
+    }
+  }
+
+  // productLanding が何度描画されても最後に直接経路へ付け替える。
+  const baseLanding=globalThis.productLanding;
+  if(typeof baseLanding==='function'){
+    globalThis.productLanding=function(){
+      const r=baseLanding.apply(this,arguments);
+      bindTopShipmentButton();
+      requestAnimationFrame(bindTopShipmentButton);
+      return r;
+    };
+  }
+
+  window.kombuOpenShipmentEntryDirect=openShipmentEntryDirect;
+  window.kombuBindTopShipmentButton=bindTopShipmentButton;
+
+  bindTopShipmentButton();
+  requestAnimationFrame(bindTopShipmentButton);
+
+  console.info('[KOMBU v2.20] トップ→出荷依頼 直接経路 ready');
+})();
+/* ===== /v2.20 ===== */
+
