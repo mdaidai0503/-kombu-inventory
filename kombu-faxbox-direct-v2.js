@@ -1,5 +1,5 @@
 /* =========================================================
-   昆布在庫管理 → FAXBOX専用アプリ 完全統合 UI v2.9
+   昆布在庫管理 → FAXBOX専用アプリ 完全統合 UI v2.12
    ---------------------------------------------------------
    ・旧ローカルFAX BOXを通常操作から外す
    ・出荷指示一覧「まとめてFAXBOXへ」→ 専用FAXBOXへ直接登録
@@ -294,11 +294,7 @@
   function tuneShipmentNav(){
     const nav=document.getElementById('v119ShipmentNav');
     if(!nav)return;
-    const fax=nav.querySelector('#v119Fax');
-    if(fax)fax.style.setProperty('display','none','important');
     nav.style.setProperty('grid-template-columns','repeat(4,1fr)','important');
-    const hist=nav.querySelector('#v136History');
-    if(hist)hist.style.removeProperty('display');
   }
 
   function removeLegacyFaxEntry(){
@@ -322,5 +318,5 @@
   window.kombuSendOneShipmentToFaxbox=sendOneShipmentFromPreview;
   window.kombuCompleteNewShipmentFlow=completeNewShipmentFlow;
   window.kombuCancelPendingShipmentFlow=function(created){removePending(created);};
-  window.kombuFaxboxDirectIntegrationVersion='2.9';
+  window.kombuFaxboxDirectIntegrationVersion='2.12';
 })();

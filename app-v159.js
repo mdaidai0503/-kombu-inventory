@@ -5385,6 +5385,7 @@ smLogs=function(){
   const productOptions=p=>Object.entries(productDefs).map(([k,d])=>`<option value="${k}" ${k===p?'selected':''}>${d.label}</option>`).join('');
 
   function v114UnifiedShipmentForm(editProduct=null,editId=null,preset=null){
+    try{screenKind='form';setMode('shipment','form');}catch(_e){}
     currentProduct=null;v80InventoryMode=false;setHeader('出荷依頼');setNavVisible(true);bindNav();
     const editStores={
       kushiro:{find:id=>state.shipments.find(x=>x.id===id),save:()=>save()},
@@ -5749,29 +5750,72 @@ smLogs=function(){
     if(!nav){
       nav=document.createElement('nav');
       nav.id='v119ShipmentNav';
-      nav.setAttribute('aria-label','出荷指示固定メニュー');
-      nav.innerHTML=`<button id="v119Home" aria-label="ホーム" title="ホーム"><span class="v124-nav-icon">🏠</span><span class="v124-nav-label">ホーム</span></button><button id="v119Back" aria-label="ひとつ前に戻る" title="ひとつ前に戻る"><span class="v124-nav-icon">⬅️</span><span class="v124-nav-label">戻る</span></button><button id="v119List" aria-label="出荷依頼履歴" title="出荷依頼履歴"><span class="v124-nav-icon">🕘</span><span class="v124-nav-label">履歴</span></button><button id="v119Fax" class="v119-fax" aria-label="FAX BOX" title="FAX BOX"></button>`;
+      nav.setAttribute('aria-label','出荷依頼 共通固定メニュー');
+      nav.innerHTML=`
+        <button id="v119Home" aria-label="ホーム" title="ホーム">
+          <span class="v124-nav-icon">🏠</span><span class="v124-nav-label">ホーム</span>
+        </button>
+        <button id="v119Back" aria-label="前の画面へ戻る" title="前の画面へ戻る">
+          <span class="v124-nav-icon">⬅️</span><span class="v124-nav-label">戻る</span>
+        </button>
+        <button id="v119New" aria-label="新規出荷依頼" title="新規出荷依頼">
+          <span class="v124-nav-icon">➕</span><span class="v124-nav-label">新規</span>
+        </button>
+        <button id="v119List" aria-label="出荷依頼履歴" title="出荷依頼履歴">
+          <span class="v124-nav-icon">🕘</span><span class="v124-nav-label">履歴</span>
+        </button>`;
       document.body.appendChild(nav);
-      nav.querySelector('#v119Home').onclick=()=>{setMode('');productLanding()};
-      nav.querySelector('#v119Back').onclick=()=>{
-        /* v159: DOM上の実画面を優先して判定。screenKindが古い状態でも
-           新規出荷依頼・詳細・FAX・履歴からトップへ飛ばず、まず出荷依頼一覧へ戻す。 */
-        const onForm=!!document.getElementById('v114ShipDate')||!!document.querySelector('.v113-ship-form');
-        const onFax=!!document.querySelector('[data-v99-fax],.v99-faxbox,#v99FaxBox');
-        const onHistory=!!document.querySelector('.v159-history-card,.v159-history-card');
-        const onDetail=!!document.querySelector('[id*="ShipmentDetail"],[data-shipment-detail],.shipment-detail');
-        if(onForm||onFax||onHistory||onDetail||screenKind!=='menu'){
-          screenKind='history';setMode('shipment','history');if(typeof window.v136ShipmentHistory==='function')window.v136ShipmentHistory();return;
-        }
-        /* 出荷依頼一覧トップからのみ、ひとつ上のトップ画面へ戻る。 */
-        setMode('');productLanding();
+
+      nav.querySelector('#v119Home').onclick=()=>{
+        screenKind='menu';
+        setMode('');
+        productLanding();
       };
-      nav.querySelector('#v119List').onclick=()=>{screenKind='history';setMode('shipment','history');if(typeof window.v136ShipmentHistory==='function')window.v136ShipmentHistory();};
-      nav.querySelector('#v119Fax').onclick=()=>{screenKind='fax';setMode('shipment','fax');if(typeof window.v99FaxBoxPage==='function')window.v99FaxBoxPage()};
+
+      nav.querySelector('#v119Back').onclick=()=>{
+        /* 出荷依頼内では共通して「出荷依頼メニュー」へ戻る。
+           メニュー上で押した場合のみトップへ戻る。 */
+        const appText=String(document.getElementById('app')?.textContent||'');
+        const onEntry=appText.includes('新規出荷依頼') &&
+                      appText.includes('出荷依頼履歴') &&
+                      !document.getElementById('v114ShipDate');
+
+        if(onEntry){
+          screenKind='menu';
+          setMode('');
+          productLanding();
+          return;
+        }
+
+        screenKind='entry';
+        setMode('shipment','entry');
+        if(typeof globalThis.v161ShipmentEntryMenu==='function'){
+          globalThis.v161ShipmentEntryMenu();
+        }else{
+          productLanding();
+        }
+      };
+
+      nav.querySelector('#v119New').onclick=()=>{
+        screenKind='form';
+        setMode('shipment','form');
+        if(typeof globalThis.v114UnifiedShipmentForm==='function'){
+          globalThis.v114UnifiedShipmentForm();
+        }
+      };
+
+      nav.querySelector('#v119List').onclick=()=>{
+        screenKind='history';
+        setMode('shipment','history');
+        if(typeof window.v136ShipmentHistory==='function'){
+          window.v136ShipmentHistory();
+        }
+      };
     }
+
     nav.dataset.v124Screen=screenKind;
-    const fax=nav.querySelector('#v119Fax');if(fax)fax.innerHTML='<span class="v124-nav-icon">📥 ('+faxCount()+')</span><span class="v124-nav-label">FAX</span>';
-    nav.style.setProperty('display',mode==='shipment'?'flex':'none','important');
+    nav.style.setProperty('display',mode==='shipment'?'grid':'none','important');
+    nav.style.setProperty('grid-template-columns','repeat(4,1fr)','important');
     return nav;
   }
   function sync(){
@@ -6380,6 +6424,7 @@ async function v130TopBackup(){
     v76ShipmentMenu();
   }
   function shipmentHistory(){
+    try{screenKind='history';setMode('shipment','history');}catch(_e){}
     const hist=load(HIST_KEY)
       .filter(it=>it.faxboxStatus!=='queued')
       .sort((a,b)=>String(b.sentAt||b.archivedAt||b.shipDate||'').localeCompare(String(a.sentAt||a.archivedAt||a.shipDate||'')));
@@ -7311,6 +7356,7 @@ if(histChanged){
     ・出荷依頼履歴 → v136ShipmentHistory()
   */
   function v161ShipmentEntryMenu(){
+    try{screenKind='entry';setMode('shipment','entry');}catch(_e){}
     currentProduct=null;
     v80InventoryMode=false;
     setHeader('出荷依頼');
@@ -7460,22 +7506,6 @@ document.getElementById('v161ShipmentHistory').onclick=function(){
       </div>
     `;
     firstCard.parentNode.insertBefore(status,firstCard);
-
-    // 一覧・履歴への共通導線を詳細画面の末尾へ追加。
-    const navCard=document.createElement('section');
-    navCard.id='v161DetailNavCard';
-    navCard.className='card';
-    navCard.style.cssText='margin-top:12px;padding:12px';
-    navCard.innerHTML=`
-      <div style="display:grid;grid-template-columns:1fr;gap:10px">
-        <button class="btn secondary" id="v161DetailHistory" type="button">🕘 出荷依頼履歴</button>
-      </div>`;
-    app.appendChild(navCard);
-
-    document.getElementById('v161DetailHistory').onclick=()=>{
-      if(typeof window.v136ShipmentHistory==='function')window.v136ShipmentHistory();
-      else globalThis.v76ShipmentMenu();
-    };
 
     // 下書きの「確定・在庫反映」だけ、実行直前に最終確認を追加。
     if(s.status==='draft'){
