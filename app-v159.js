@@ -5823,6 +5823,52 @@ smLogs=function(){
     nav.style.setProperty('grid-template-columns','repeat(4,1fr)','important');
     return nav;
   }
+
+  function v217ForceShipmentFourNav(kind){
+    try{
+      mode='shipment';
+      screenKind=kind||screenKind||'entry';
+      document.body.dataset.v119NavMode='shipment';
+      document.body.classList.add('v115-shipment-mode');
+      document.body.classList.remove('v117-inventory-mode');
+
+      // 旧3ボタン/旧出荷ナビはすべて隠す。
+      const oldIds=['v115ShipmentNav','v107LandingNav','v110HomeNav','v101BackDock'];
+      oldIds.forEach(id=>{
+        const el=document.getElementById(id);
+        if(el)el.style.setProperty('display','none','important');
+      });
+      document.querySelectorAll('.v102-fixed-bottom-nav-card').forEach(el=>{
+        el.style.setProperty('display','none','important');
+      });
+
+      const std=standardNav();
+      if(std)std.style.setProperty('display','none','important');
+
+      const nav=ensureShipmentNav();
+      if(nav){
+        // 過去版の余分なボタンを除去。
+        nav.querySelector('#v136History')?.remove();
+        nav.querySelector('#v119Fax')?.remove();
+
+        // 必要な4ボタンが欠けていた場合は作り直す。
+        const needed=['v119Home','v119Back','v119New','v119List'];
+        if(needed.some(id=>!nav.querySelector('#'+id))){
+          nav.remove();
+          return v217ForceShipmentFourNav(kind);
+        }
+
+        nav.style.setProperty('display','grid','important');
+        nav.style.setProperty('grid-template-columns','repeat(4,1fr)','important');
+        nav.style.setProperty('z-index','40200','important');
+      }
+    }catch(e){
+      console.warn('[KOMBU v2.17] 4ボタンナビ確定失敗',e);
+    }
+  }
+
+  window.kombuForceShipmentFourNav=v217ForceShipmentFourNav;
+
   function sync(){
     const body=document.body;
     if(mode)body.dataset.v119NavMode=mode; else delete body.dataset.v119NavMode;
@@ -6447,6 +6493,7 @@ async function v130TopBackup(){
       });
     /* v159: 履歴画面は上部タイトル文字なし。固定ナビは維持。 */
     setHeader('出荷依頼履歴');setNavVisible(false);
+    v217ForceShipmentFourNav('history');
 
     const escAttr=v=>esc(String(v??''));
     const historyStatus=it=>{
@@ -6632,17 +6679,11 @@ body.innerHTML=items.map(it=>`<tr data-hprod="${it.product}" data-hid="${escAttr
     render();
     document.body.dataset.v119NavMode='shipment';
 
-    // v2.16: 履歴画面でも新規出荷依頼と同一の4ボタンを固定。
-    if(typeof window.v136EnsureHistoryNav==='function')window.v136EnsureHistoryNav();
-    requestAnimationFrame(()=>{
-      const nav=document.getElementById('v119ShipmentNav');
-      if(nav){
-        nav.querySelector('#v136History')?.remove();
-        nav.querySelector('#v119Fax')?.remove();
-        nav.style.setProperty('display','grid','important');
-        nav.style.setProperty('grid-template-columns','repeat(4,1fr)','important');
-      }
-    });
+    // v2.17: トップ→出荷依頼→履歴の経路でも必ず同一4ボタン。
+    v217ForceShipmentFourNav('history');
+    requestAnimationFrame(()=>v217ForceShipmentFourNav('history'));
+    setTimeout(()=>v217ForceShipmentFourNav('history'),50);
+    setTimeout(()=>v217ForceShipmentFourNav('history'),250);
   }
   window.v136ShipmentHistory=shipmentHistory;
 
@@ -7507,6 +7548,7 @@ if(histChanged){
     v80InventoryMode=false;
     setHeader('出荷依頼');
     setNavVisible(false);
+    v217ForceShipmentFourNav('entry');
 
     app.innerHTML=`
       <section class="card" style="margin-top:14px;padding:16px">
@@ -7554,6 +7596,12 @@ document.getElementById('v161ShipmentHistory').onclick=function(){
     document.getElementById('v161ShipmentHome').onclick=function(){
       globalThis.productLanding();
     };
+
+    // 他の旧ナビ処理が後から動いても4ボタンへ戻す。
+    v217ForceShipmentFourNav('entry');
+    requestAnimationFrame(()=>v217ForceShipmentFourNav('entry'));
+    setTimeout(()=>v217ForceShipmentFourNav('entry'),50);
+    setTimeout(()=>v217ForceShipmentFourNav('entry'),250);
   }
 
   globalThis.v161ShipmentEntryMenu=v161ShipmentEntryMenu;
