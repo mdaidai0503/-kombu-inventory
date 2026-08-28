@@ -6486,98 +6486,93 @@ async function v130TopBackup(){
     alert(n+'件をFAX BOXへ送りました。FAX/PDF実行後、チェックした項目だけ履歴へ移動します。');
     v76ShipmentMenu();
   }
-  function v222HistoryFourNav(){
+  function v224HistoryFourNav(){
     try{
-      // 履歴画面で残り得る旧ナビをすべて消す
-      [
-        'v115ShipmentNav',
-        'v107LandingNav',
-        'v110HomeNav',
-        'v101BackDock',
-        'v119ShipmentNav'
-      ].forEach(id=>document.getElementById(id)?.remove());
-
-      document.querySelectorAll('.v102-fixed-bottom-nav-card,.v106-settings-nav')
-        .forEach(el=>el.remove());
-
-      // body直下の旧3ボタンnavも、在庫標準ナビ以外で出荷画面中なら隠す
-      Array.from(document.body.children).forEach(el=>{
-        if(el.tagName==='NAV')el.style.setProperty('display','none','important');
+      // 履歴画面では既存の下部navをすべて非表示にする。
+      Array.from(document.querySelectorAll('nav')).forEach(el=>{
+        el.style.setProperty('display','none','important');
       });
+      document.querySelectorAll(
+        '#v115ShipmentNav,#v119ShipmentNav,#v107LandingNav,#v110HomeNav,#v101BackDock,.v102-fixed-bottom-nav-card,.v106-settings-nav'
+      ).forEach(el=>el.style.setProperty('display','none','important'));
 
-      const nav=document.createElement('nav');
-      nav.id='v119ShipmentNav';
-      nav.setAttribute('aria-label','出荷依頼 共通固定メニュー');
-      nav.style.cssText=[
-        'position:fixed!important',
-        'left:0!important',
-        'right:0!important',
-        'bottom:0!important',
-        'z-index:100500!important',
-        'background:#0b2b55!important',
-        'display:grid!important',
-        'grid-template-columns:repeat(4,1fr)!important',
-        'gap:5px!important',
-        'padding:7px 10px calc(7px + env(safe-area-inset-bottom))!important',
-        'box-sizing:border-box!important',
-        'box-shadow:0 -2px 10px rgba(0,0,0,.16)!important'
-      ].join(';');
+      document.getElementById('v224HistoryNav')?.remove();
 
-      const mk=(id,icon,label,title)=>{
+      const nav=document.createElement('div');
+      nav.id='v224HistoryNav';
+      nav.setAttribute('role','navigation');
+      nav.setAttribute('aria-label','出荷依頼 履歴共通メニュー');
+
+      nav.style.setProperty('position','fixed','important');
+      nav.style.setProperty('left','0','important');
+      nav.style.setProperty('right','0','important');
+      nav.style.setProperty('bottom','0','important');
+      nav.style.setProperty('width','100%','important');
+      nav.style.setProperty('max-width','none','important');
+      nav.style.setProperty('min-width','0','important');
+      nav.style.setProperty('margin','0','important');
+      nav.style.setProperty('padding','7px 10px calc(7px + env(safe-area-inset-bottom))','important');
+      nav.style.setProperty('display','grid','important');
+      nav.style.setProperty('grid-template-columns','repeat(4,minmax(0,1fr))','important');
+      nav.style.setProperty('gap','4px','important');
+      nav.style.setProperty('background','#0b2b55','important');
+      nav.style.setProperty('border-radius','0','important');
+      nav.style.setProperty('box-sizing','border-box','important');
+      nav.style.setProperty('transform','none','important');
+      nav.style.setProperty('z-index','2147483000','important');
+      nav.style.setProperty('box-shadow','0 -2px 10px rgba(0,0,0,.16)','important');
+
+      const makeBtn=(id,icon,label)=>{
         const b=document.createElement('button');
         b.id=id;
         b.type='button';
-        b.title=title||label;
-        b.setAttribute('aria-label',title||label);
-        b.style.cssText=[
-          'min-width:0!important',
-          'min-height:50px!important',
-          'margin:0!important',
-          'padding:5px 2px!important',
-          'border:0!important',
-          'border-radius:10px!important',
-          'background:transparent!important',
-          'color:#fff!important',
-          'box-shadow:none!important',
-          'font-size:22px!important',
-          'line-height:1!important',
-          'font-weight:800!important',
-          'white-space:nowrap!important'
-        ].join(';');
-        b.innerHTML='<span class="v124-nav-icon">'+icon+'</span><span class="v124-nav-label" style="display:block;font-size:10px;margin-top:4px">'+label+'</span>';
+        b.style.setProperty('display','flex','important');
+        b.style.setProperty('flex-direction','column','important');
+        b.style.setProperty('align-items','center','important');
+        b.style.setProperty('justify-content','center','important');
+        b.style.setProperty('width','100%','important');
+        b.style.setProperty('min-width','0','important');
+        b.style.setProperty('min-height','52px','important');
+        b.style.setProperty('margin','0','important');
+        b.style.setProperty('padding','5px 2px','important');
+        b.style.setProperty('border','0','important');
+        b.style.setProperty('border-radius','8px','important');
+        b.style.setProperty('background','transparent','important');
+        b.style.setProperty('color','#fff','important');
+        b.style.setProperty('box-shadow','none','important');
+        b.innerHTML=
+          '<span style="font-size:22px;line-height:1">'+icon+'</span>'+
+          '<span style="font-size:10px;line-height:1.2;margin-top:4px;font-weight:800">'+label+'</span>';
         return b;
       };
 
-      const home=mk('v119Home','🏠','ホーム','ホーム');
-      const back=mk('v119Back','⬅️','戻る','戻る');
-      const add=mk('v119New','➕','新規','新規出荷依頼');
-      const hist=mk('v119List','🕘','履歴','出荷依頼履歴');
+      const home=makeBtn('v224Home','🏠','ホーム');
+      const back=makeBtn('v224Back','⬅️','戻る');
+      const add=makeBtn('v224New','➕','新規');
+      const hist=makeBtn('v224History','🕘','履歴');
 
-      home.onclick=()=>{
-        if(typeof globalThis.productLanding==='function')globalThis.productLanding();
-      };
-      back.onclick=()=>{
-        if(typeof globalThis.v161ShipmentEntryMenu==='function')globalThis.v161ShipmentEntryMenu();
-        else if(typeof globalThis.productLanding==='function')globalThis.productLanding();
-      };
-      add.onclick=()=>{
-        if(typeof globalThis.v114UnifiedShipmentForm==='function')globalThis.v114UnifiedShipmentForm();
-      };
-      hist.onclick=()=>{
-        // すでに履歴画面なので再描画はしない
-      };
+      home.onclick=()=>globalThis.productLanding?.();
+      back.onclick=()=>globalThis.v161ShipmentEntryMenu?.();
+      add.onclick=()=>globalThis.v114UnifiedShipmentForm?.();
+      hist.onclick=()=>{};
 
       nav.append(home,back,add,hist);
       document.body.appendChild(nav);
-      document.body.dataset.v119NavMode='shipment';
-      document.body.classList.add('v115-shipment-mode');
+
+      requestAnimationFrame(()=>{
+        Array.from(document.querySelectorAll('nav')).forEach(el=>{
+          el.style.setProperty('display','none','important');
+        });
+        nav.style.setProperty('display','grid','important');
+      });
+
       return nav;
     }catch(e){
-      console.error('[KOMBU v2.22] 履歴4ボタン生成失敗',e);
+      console.error('[KOMBU v2.24] 履歴専用4ボタン生成失敗',e);
       return null;
     }
   }
-  window.kombuHistoryFourNav=v222HistoryFourNav;
+  window.kombuHistoryFourNav=v224HistoryFourNav;
 
   function shipmentHistory(){
     const hist=load(HIST_KEY)
@@ -6596,7 +6591,7 @@ async function v130TopBackup(){
       });
     /* v159: 履歴画面は上部タイトル文字なし。固定ナビは維持。 */
     setHeader('出荷依頼履歴');setNavVisible(false);
-    v222HistoryFourNav();
+    v224HistoryFourNav();
 
     const escAttr=v=>esc(String(v??''));
     const historyStatus=it=>{
@@ -6783,8 +6778,8 @@ body.innerHTML=items.map(it=>`<tr data-hprod="${it.product}" data-hid="${escAttr
     document.body.dataset.v119NavMode='shipment';
 
     // v2.22: 履歴画面では旧ナビ処理に依存せず4ボタンを直接確定。
-    v222HistoryFourNav();
-    requestAnimationFrame(()=>v222HistoryFourNav());
+    v224HistoryFourNav();
+    requestAnimationFrame(()=>v224HistoryFourNav());
   }
   window.v136ShipmentHistory=shipmentHistory;
 
@@ -7644,6 +7639,7 @@ if(histChanged){
     ・出荷依頼履歴 → v136ShipmentHistory()
   */
   function v161ShipmentEntryMenu(){
+    document.getElementById('v224HistoryNav')?.remove();
     currentProduct=null;
     v80InventoryMode=false;
     setHeader('出荷依頼');
@@ -8488,4 +8484,61 @@ document.getElementById('v161ShipmentHistory').onclick=function(){
   console.info('[KOMBU v2.20] トップ→出荷依頼 直接経路 ready');
 })();
 /* ===== /v2.20 ===== */
+
+
+
+/* ===== v2.23: history bottom nav full-width alignment ===== */
+(function(){
+  const st=document.createElement('style');
+  st.id='v223-history-nav-style';
+  st.textContent=`
+    body[data-v119-nav-mode="shipment"] #v119ShipmentNav{
+      position:fixed!important;
+      left:0!important;
+      right:auto!important;
+      bottom:0!important;
+      width:100vw!important;
+      min-width:100vw!important;
+      max-width:none!important;
+      margin:0!important;
+      border-radius:0!important;
+      transform:none!important;
+      grid-template-columns:repeat(4,minmax(0,1fr))!important;
+      box-sizing:border-box!important;
+    }
+    body[data-v119-nav-mode="shipment"] #v119ShipmentNav > button{
+      width:100%!important;
+      min-width:0!important;
+      max-width:none!important;
+      margin:0!important;
+      box-sizing:border-box!important;
+    }
+  `;
+  document.head.appendChild(st);
+})();
+
+
+
+/* ===== v2.24 history dedicated nav style ===== */
+(function(){
+  const st=document.createElement('style');
+  st.textContent=`
+    #v224HistoryNav{
+      position:fixed!important;
+      left:0!important;
+      right:0!important;
+      bottom:0!important;
+      width:100%!important;
+      max-width:none!important;
+      min-width:0!important;
+      margin:0!important;
+      display:grid!important;
+      grid-template-columns:repeat(4,minmax(0,1fr))!important;
+      border-radius:0!important;
+      transform:none!important;
+      box-sizing:border-box!important;
+    }
+  `;
+  document.head.appendChild(st);
+})();
 
