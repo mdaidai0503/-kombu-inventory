@@ -5401,12 +5401,60 @@ smLogs=function(){
     const source0=existingSrc||companyByName('㈱浜中運輸')||{name:'㈱浜中運輸',address:'',phone:''};
     const dest0=existingDst||{name:'',address:'',phone:''};
     const companies=Array.isArray(state.companies)?state.companies.filter(c=>c&&String(c.name||'').trim()):[];
-    const companyOptions=(selected,blankLabel='')=>{
+    const V229_PAIR_KEY='kombu_company_pairs_v162';
+    const v229LoadPairs=()=>{try{const x=JSON.parse(localStorage.getItem(V229_PAIR_KEY)||'[]');return Array.isArray(x)?x:[]}catch(_){return []}};
+    const v229Pairs=v229LoadPairs();
+    const v229MainRegions=['北海道・東北','関東','中部東海','北陸','関西','中四国九州'];
+    const v229ToyamaRegions=['高岡','呉西その他','富山','呉東その他'];
+    const v229RegionOptions=selected=>{
+      const v=String(selected||'すべて');
+      return ['すべて',...v229MainRegions,...v229ToyamaRegions].map(x=>`<option value="${esc(x)}" ${x===v?'selected':''}>${esc(x)}</option>`).join('');
+    };
+    const v229Bool=(v,def=true)=>v===undefined||v===null||v===''?def:!(v===false||String(v).toLowerCase()==='false'||String(v)==='いいえ'||String(v)==='0');
+    const v229MatchRegion=(c,region)=>{
+      if(!region||region==='すべて')return true;
+      if(v229ToyamaRegions.includes(region))return String(c?.toyamaRegion||'')===region;
+      return String(c?.region||'')===region;
+    };
+    const v229CompanyPool=(type,region='すべて')=>companies.filter(c=>{
+      if(c?.active===false)return false;
+      if(type==='source'&&!v229Bool(c?.useSource,true))return false;
+      if(type==='destination'&&!v229Bool(c?.useDestination,true))return false;
+      return v229MatchRegion(c,region);
+    });
+    const v229SortCompanies=a=>a.slice().sort((x,y)=>{
+      const xf=x?.favorite===true||x?.favorite==='はい'?0:1;
+      const yf=y?.favorite===true||y?.favorite==='はい'?0:1;
+      if(xf!==yf)return xf-yf;
+      return Number(x?.sortOrder||999999)-Number(y?.sortOrder||999999);
+    });
+    const v229SourceOptions=(selected,region='すべて')=>{
       const selectedName=String(selected||'').trim();
-      const names=[...companies.map(c=>String(c.name||'').trim()).filter(Boolean)];
-      if(selectedName&&!names.includes(selectedName))names.unshift(selectedName);
-      return (blankLabel?`<option value="">${esc(blankLabel)}</option>`:'')+
-        names.map(n=>`<option value="${esc(n)}" ${n===selectedName?'selected':''}>${esc(n)}</option>`).join('');
+      const pool=v229SortCompanies(v229CompanyPool('source',region));
+      return `<option value="">直接入力</option>`+pool.map(c=>{const n=String(c.name||'').trim();return `<option value="${esc(n)}" ${n===selectedName?'selected':''}>${esc(n)}</option>`}).join('');
+    };
+    const v229DestOptions=(selected,region='すべて',sourceName='')=>{
+      const selectedName=String(selected||'').trim();
+      const all=v229SortCompanies(v229CompanyPool('destination','すべて'));
+      const area=v229SortCompanies(v229CompanyPool('destination',region));
+      const pairRows=v229Pairs.filter(p=>String(p?.source||'').trim()===String(sourceName||'').trim()).sort((a,b)=>{
+        const af=a?.favorite===true||a?.favorite==='はい'?0:1;
+        const bf=b?.favorite===true||b?.favorite==='はい'?0:1;
+        if(af!==bf)return af-bf;
+        return Number(a?.sortOrder||999999)-Number(b?.sortOrder||999999);
+      });
+      const seen=new Set();
+      const priority=[];
+      pairRows.forEach(p=>{
+        const c=companies.find(x=>String(x?.name||'').trim()===String(p?.dest||'').trim());
+        if(c&&v229Bool(c?.useDestination,true)&&c?.active!==false&&!seen.has(c.name)){seen.add(c.name);priority.push(c)}
+      });
+      const opt=c=>{const n=String(c?.name||'').trim();return `<option value="${esc(n)}" ${n===selectedName?'selected':''}>${esc(n)}</option>`};
+      let html=`<option value="">直接入力</option>`;
+      if(priority.length)html+=`<optgroup label="この出荷人でよく使う出荷先">${priority.map(opt).join('')}</optgroup>`;
+      if(region&&region!=='すべて'&&area.length)html+=`<optgroup label="地区から探す：${esc(region)}">${area.map(opt).join('')}</optgroup>`;
+      html+=`<optgroup label="すべての会社から探す">${all.map(opt).join('')}</optgroup>`;
+      return html;
     };
 
     app.innerHTML=`<style>
@@ -5450,16 +5498,16 @@ smLogs=function(){
       <section class="card v161-s">
         <h3 class="v161-title">② 出荷人</h3>
         <div class="v161-party">
-          <div class="v161-box"><label>登録済み出荷元を選択<select id="v161SourceSelect">${companyOptions(source0.name)}</select></label><div class="small" style="margin-top:8px">会社マスターの登録内容を使用します。</div></div>
-          <div class="v161-details"><label>会社名<input id="v114SourceName" readonly value="${esc(source0.name||'')}"></label><label>住所<input id="v114SourceAddress" readonly value="${esc(source0.address||'')}"></label><label>電話<input id="v114SourcePhone" readonly value="${esc(source0.phone||'')}"></label></div>
+          <div class="v161-box"><label>地区<select id="v229SourceRegion">${v229RegionOptions(source0.toyamaRegion||source0.region||'すべて')}</select></label><label style="display:block;margin-top:10px">会社を選択<select id="v161SourceSelect">${v229SourceOptions(source0.name,source0.toyamaRegion||source0.region||'すべて')}</select></label><div class="small" style="margin-top:8px">会社マスターから選択、または右側へ直接入力できます。</div></div>
+          <div class="v161-details"><label>会社名<input id="v114SourceName" value="${esc(source0.name||'')}"></label><label>郵便番号<input id="v114SourcePostal" inputmode="numeric" placeholder="123-4567" value="${esc(source0.postal||source0.postal_code||'')}"></label><label>住所<input id="v114SourceAddress" value="${esc(source0.address||'')}"></label><label>電話<input id="v114SourcePhone" value="${esc(source0.phone||'')}"></label></div>
         </div>
       </section>
 
       <section class="card v161-s">
         <h3 class="v161-title">③ 出荷先</h3>
         <div class="v161-party">
-          <div class="v161-box"><label>登録済み出荷先を選択<select id="v161DestSelect">${companyOptions(dest0.name,'出荷先を選択')}</select></label><div class="small" style="margin-top:8px">未登録の場合は会社マスターへ登録してから選択します。</div></div>
-          <div class="v161-details"><label>会社名<input id="v114DestName" readonly value="${esc(dest0.name||'')}"></label><label>住所<input id="v114DestAddress" readonly value="${esc(dest0.address||'')}"></label><label>電話<input id="v114DestPhone" readonly value="${esc(dest0.phone||'')}"></label></div>
+          <div class="v161-box"><label>地区<select id="v229DestRegion">${v229RegionOptions(dest0.toyamaRegion||dest0.region||'すべて')}</select></label><label style="display:block;margin-top:10px">会社を選択<select id="v161DestSelect">${v229DestOptions(dest0.name,dest0.toyamaRegion||dest0.region||'すべて',source0.name)}</select></label><div class="small" style="margin-top:8px">上段にこの出荷人でよく使う出荷先を表示。地区・全会社からも選択でき、右側へ直接入力もできます。</div></div>
+          <div class="v161-details"><label>会社名<input id="v114DestName" value="${esc(dest0.name||'')}"></label><label>郵便番号<input id="v114DestPostal" inputmode="numeric" placeholder="123-4567" value="${esc(dest0.postal||dest0.postal_code||'')}"></label><label>住所<input id="v114DestAddress" value="${esc(dest0.address||'')}"></label><label>電話<input id="v114DestPhone" value="${esc(dest0.phone||'')}"></label></div>
         </div>
       </section>
 
@@ -5471,13 +5519,31 @@ smLogs=function(){
     </div>`;
 
     const byId=id=>document.getElementById(id);
-    const sn=byId('v114SourceName'),sa=byId('v114SourceAddress'),sp=byId('v114SourcePhone'),dn=byId('v114DestName'),da=byId('v114DestAddress'),dp=byId('v114DestPhone');
-    const applyCompany=(selectEl,nameEl,addressEl,phoneEl)=>{
+    const sn=byId('v114SourceName'),sx=byId('v114SourcePostal'),sa=byId('v114SourceAddress'),sp=byId('v114SourcePhone'),dn=byId('v114DestName'),dx=byId('v114DestPostal'),da=byId('v114DestAddress'),dp=byId('v114DestPhone');
+    const sourceSelect=byId('v161SourceSelect'),destSelect=byId('v161DestSelect'),sourceRegion=byId('v229SourceRegion'),destRegion=byId('v229DestRegion');
+    const v229Postal=v=>{const d=String(v||'').replace(/\D/g,'');return d.length===7?d.slice(0,3)+'-'+d.slice(3):String(v||'').trim()};
+    const applyCompany=(selectEl,nameEl,postalEl,addressEl,phoneEl)=>{
+      if(!selectEl.value)return;
       const c=companyByName(selectEl.value);
-      nameEl.value=c?.name||'';addressEl.value=c?.address||'';phoneEl.value=c?.phone||'';
+      nameEl.value=c?.name||'';postalEl.value=v229Postal(c?.postal||c?.postal_code||'');addressEl.value=c?.address||'';phoneEl.value=c?.phone||'';
     };
-    byId('v161SourceSelect').onchange=()=>applyCompany(byId('v161SourceSelect'),sn,sa,sp);
-    byId('v161DestSelect').onchange=()=>applyCompany(byId('v161DestSelect'),dn,da,dp);
+    const rebuildSource=()=>{
+      const keep=sourceSelect.value||sn.value;
+      sourceSelect.innerHTML=v229SourceOptions(keep,sourceRegion.value||'すべて');
+      if([...sourceSelect.options].some(o=>o.value===keep))sourceSelect.value=keep;
+    };
+    const rebuildDest=()=>{
+      const keep=destSelect.value||dn.value;
+      destSelect.innerHTML=v229DestOptions(keep,destRegion.value||'すべて',sn.value);
+      if([...destSelect.options].some(o=>o.value===keep))destSelect.value=keep;
+    };
+    sourceRegion.onchange=()=>rebuildSource();
+    destRegion.onchange=()=>rebuildDest();
+    sourceSelect.onchange=()=>{if(sourceSelect.value)applyCompany(sourceSelect,sn,sx,sa,sp);rebuildDest()};
+    destSelect.onchange=()=>{if(destSelect.value)applyCompany(destSelect,dn,dx,da,dp)};
+    sn.addEventListener('change',rebuildDest);
+    sx.addEventListener('blur',()=>sx.value=v229Postal(sx.value));
+    dx.addEventListener('blur',()=>dx.value=v229Postal(dx.value));
 
     function rowFields(l){
       const p=l.product||'kushiro';
@@ -5501,8 +5567,10 @@ smLogs=function(){
     byId('v114AddLine').onclick=()=>{lines.push(productDefs.kushiro.make());render()};
 
     function v161ValidateCurrent(){
-      if(!sn.value.trim())return '出荷元を選択してください。';
-      if(!dn.value.trim())return '出荷先を選択してください。';
+      if(!sn.value.trim())return '出荷元を入力してください。';
+      if(sx.value.trim()&&!/^\d{3}-\d{4}$/.test(sx.value.trim()))return '出荷元の郵便番号を123-4567形式で入力してください。';
+      if(!dn.value.trim())return '出荷先を入力してください。';
+      if(dx.value.trim()&&!/^\d{3}-\d{4}$/.test(dx.value.trim()))return '出荷先の郵便番号を123-4567形式で入力してください。';
       if(!lines.length)return '明細を1件以上追加してください。';
       for(let i=0;i<lines.length;i++){
         const l=lines[i],d=productDefs[l.product],q=Number(l.qty);
@@ -5514,8 +5582,8 @@ smLogs=function(){
     }
 
     function v25BuildDraftObjects(){
-      const source={name:sn.value.trim(),address:sa.value.trim(),phone:sp.value.trim()};
-      const dest={name:dn.value.trim(),address:da.value.trim(),phone:dp.value.trim()};
+      const source={name:sn.value.trim(),postal:v229Postal(sx.value),address:sa.value.trim(),phone:sp.value.trim()};
+      const dest={name:dn.value.trim(),postal:v229Postal(dx.value),address:da.value.trim(),phone:dp.value.trim()};
       const common={source,dest,shipDate:byId('v114ShipDate').value,arrivalDate:byId('v114ArrivalDate').value,deliveryPack:byId('v114DeliveryPack').value||'',memo:byId('v114Memo').value||'',batchId:'M'+Date.now().toString(36).toUpperCase(),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),status:'draft'};
       const groups={}; for(const l of lines)(groups[l.product]||(groups[l.product]=[])).push({...l});
       const created=[];
@@ -5608,13 +5676,13 @@ smLogs=function(){
               <div class="v161-preview-party">
                 <b>② 出荷元</b><br>
                 ${esc(sn.value||'')}<br>
-                <span class="small">${esc(sa.value||'')}</span><br>
+                <span class="small">${sx.value?'〒'+esc(sx.value)+'　':''}${esc(sa.value||'')}</span><br>
                 <span class="small">${sp.value?'TEL '+esc(sp.value):''}</span>
               </div>
               <div class="v161-preview-party">
                 <b>③ 出荷先</b><br>
                 ${esc(dn.value||'')}<br>
-                <span class="small">${esc(da.value||'')}</span><br>
+                <span class="small">${dx.value?'〒'+esc(dx.value)+'　':''}${esc(da.value||'')}</span><br>
                 <span class="small">${dp.value?'TEL '+esc(dp.value):''}</span>
               </div>
             </div>
@@ -5651,11 +5719,13 @@ smLogs=function(){
 
     const v114SaveBtn=byId('v114Save');
     if(v114SaveBtn)v114SaveBtn.onclick=()=>{
-      if(!sn.value.trim())return alert('出荷元を選択してください。');
-      if(!dn.value.trim())return alert('出荷先を選択してください。');
+      if(!sn.value.trim())return alert('出荷元を入力してください。');
+      if(sx.value.trim()&&!/^\d{3}-\d{4}$/.test(sx.value.trim()))return alert('出荷元の郵便番号を123-4567形式で入力してください。');
+      if(!dn.value.trim())return alert('出荷先を入力してください。');
+      if(dx.value.trim()&&!/^\d{3}-\d{4}$/.test(dx.value.trim()))return alert('出荷先の郵便番号を123-4567形式で入力してください。');
       if(!lines.length)return alert('明細を1件以上追加してください。');
       for(const l of lines){const d=productDefs[l.product],q=Number(l.qty);if(!q||q<=0)return alert('明細の数量を入力してください。');let av=0;try{av=d.avail(l)}catch(e){}if(q>Number(av||0))return alert(`${d.desc(l)} の出荷可能在庫は ${fmt(av)} です。`);l.qty=q}
-      const source={name:sn.value.trim(),address:sa.value.trim(),phone:sp.value.trim()},dest={name:dn.value.trim(),address:da.value.trim(),phone:dp.value.trim()};
+      const source={name:sn.value.trim(),postal:v229Postal(sx.value),address:sa.value.trim(),phone:sp.value.trim()},dest={name:dn.value.trim(),postal:v229Postal(dx.value),address:da.value.trim(),phone:dp.value.trim()};
       const common={source,dest,shipDate:byId('v114ShipDate').value,arrivalDate:byId('v114ArrivalDate').value,deliveryPack:byId('v114DeliveryPack').value||'',memo:byId('v114Memo').value||'',batchId:'M'+Date.now().toString(36).toUpperCase(),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),status:'draft'};
       if(editing){
         if(lines.some(l=>l.product!==editProduct))return alert('修正画面では昆布の種類は変更できません。');
@@ -8912,6 +8982,6 @@ document.getElementById('v161ShipmentHistory').onclick=function(){
   }
 
   try{companyMasterPage=companyMasterWithExcelImport;globalThis.companyMasterPage=companyMasterWithExcelImport;}catch(e){console.error(e)}
-  console.info('[KOMBU v2.29] 会社マスター＋出荷人×出荷先 Excel同時取込を追加（出荷仕様は未変更）');
+  console.info('[KOMBU v2.29] 会社マスター同時取込＋地区別会社選択・直接入力・出荷人別出荷先優先表示');
 })();
 /* ===== /2026-08-29 company import only ===== */
