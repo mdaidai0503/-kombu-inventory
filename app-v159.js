@@ -9361,22 +9361,30 @@ document.getElementById('v161ShipmentHistory').onclick=function(){
   function addTestTools(){
     const app=document.getElementById('app');
     if(!app || document.getElementById('v1646TestTools'))return;
-    // Only add to the top/home screen where backup controls already exist or the main landing is visible.
-    const backupBtn=[...document.querySelectorAll('button')].find(b=>(b.textContent||'').trim()==='バックアップ');
-    if(!backupBtn)return;
+
+    // v164.7: 下部ナビの表示文字やアイコンに依存せず、
+    // 「在庫管理」「出荷依頼」の2ボタンがあるトップ画面だけで必ず表示する。
+    const txt=(app.textContent||'').replace(/\s+/g,'');
+    const isTop = txt.includes('在庫管理') && txt.includes('出荷依頼');
+    if(!isTop)return;
+
     const box=document.createElement('section');
     box.id='v1646TestTools';
     box.className='card';
-    box.style.marginTop='12px';
+    box.style.cssText='margin-top:12px;padding:14px';
     box.innerHTML=`
-      <h3 style="margin-top:0">テスト準備</h3>
-      <div class="small" style="margin-bottom:10px">会社マスター・出荷人×出荷先を維持したまま、8月テスト用の準備を行います。</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn" id="v1646FullBackup" type="button">完全バックアップ</button>
-        <button class="btn secondary" id="v1646TestReset" type="button">テスト初期化</button>
+      <h3 style="margin:0 0 8px">🧪 テスト準備</h3>
+      <div class="small" style="margin-bottom:10px">
+        会社マスター・出荷人×出荷先を維持したまま、8月テスト用の準備を行います。
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn" id="v1646FullBackup" type="button">💾 完全バックアップ</button>
+        <button class="btn secondary" id="v1646TestReset" type="button">🧹 テスト初期化</button>
+      </div>
+      <div class="small" style="margin-top:8px;color:#7a4b00">
+        先に「完全バックアップ」を実行してください。確認前に「テスト初期化」は押さないでください。
       </div>`;
-    const parent=backupBtn.closest('section')?.parentElement || app;
-    parent.appendChild(box);
+    app.appendChild(box);
     document.getElementById('v1646FullBackup').onclick=fullBackup;
     document.getElementById('v1646TestReset').onclick=testResetPreview;
   }
@@ -9393,6 +9401,6 @@ document.getElementById('v161ShipmentHistory').onclick=function(){
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});
   else start();
 
-  console.info('[KOMBU v164.6] 完全バックアップ＋安全なテスト初期化');
+  console.info('[KOMBU v164.7] 完全バックアップ＋安全なテスト初期化');
 })();
  /* ===== /v164.6 ===== */
