@@ -30,7 +30,7 @@ state.records=state.records.map(r=>({...r,year:YEARS.includes(r.year)?r.year:DEF
 state.pdfImports=Array.isArray(state.pdfImports)?state.pdfImports:[];
 state.companies=Array.isArray(state.companies)?state.companies:[];
 if(!state.companies.some(c=>c&&c.name==='㈱浜中運輸'))state.companies.unshift({name:'㈱浜中運輸',address:'',phone:''});
-state.companies=state.companies.filter(c=>c&&String(c.name||'').trim()).map(c=>({name:String(c.name||'').trim(),address:String(c.address||''),phone:String(c.phone||'')}));
+state.companies=state.companies.filter(c=>c&&String(c.name||'').trim()).map(c=>({...c,name:String(c.name||'').trim(),postal:String(c.postal||c.postal_code||''),address:String(c.address||''),phone:String(c.phone||c.tel||''),region:String(c.region||''),toyamaRegion:String(c.toyamaRegion||c.toyama_region||'')}));
 const DELETED_GROUPS=new Set(["コケ","特長・特特"]);
 state.records=state.records.filter(r=>!DELETED_GROUPS.has(r.group));
 save();
@@ -277,7 +277,7 @@ function masters(){
  sm.onclick=()=>{const old=[...state.coops];document.querySelectorAll('[data-c]').forEach(x=>state.coops[+x.dataset.c]=x.value.trim());if(state.coops.some(x=>!x)||new Set(state.coops).size!==state.coops.length){state.coops=old;return alert('空欄や重複は使えません')}save();alert('漁協を保存しました')};
  addCompany.onclick=()=>{state.companies.push({name:'',address:'',phone:''});renderCompanies()};
  companyList.onclick=e=>{const i=e.target.dataset.companyDel;if(i!==undefined){state.companies.splice(+i,1);renderCompanies()}};
- saveCompanies.onclick=()=>{const arr=state.companies.map((c,i)=>{const q=f=>document.querySelector(`[data-company-i="${i}"][data-company-field="${f}"]`);return {name:(q('name')?.value||'').trim(),address:(q('address')?.value||'').trim(),phone:(q('phone')?.value||'').trim()}}).filter(c=>c.name);if(new Set(arr.map(c=>c.name)).size!==arr.length)return alert('会社名が重複しています。');state.companies=arr;save();renderCompanies();alert('会社情報を保存しました')};
+ saveCompanies.onclick=()=>{const arr=state.companies.map((c,i)=>{const q=f=>document.querySelector(`[data-company-i="${i}"][data-company-field="${f}"]`);return {...c,name:(q('name')?.value||'').trim(),address:(q('address')?.value||'').trim(),phone:(q('phone')?.value||'').trim()}}).filter(c=>c.name);if(new Set(arr.map(c=>c.name)).size!==arr.length)return alert('会社名が重複しています。');state.companies=arr;save();renderCompanies();alert('会社情報を保存しました')};
  x.onclick=home;
 }
 
@@ -1255,7 +1255,7 @@ function companyMasterPage(){
       const duplicate=state.companies.findIndex((c,i)=>i!==editIndex&&String(c?.name||'').trim()===name);
       if(duplicate>=0){alert('同じ会社名がすでに登録されています。');document.getElementById('globalCompanyName')?.focus();return;}
       if(editIndex>=0&&state.companies[editIndex]){
-        state.companies[editIndex]={name,address,phone};
+        state.companies[editIndex]={...state.companies[editIndex],name,address,phone};
         save();editIndex=-1;alert('会社情報を変更しました。');draw();
       }else{
         state.companies.push({name,address,phone});
@@ -8715,3 +8715,203 @@ document.getElementById('v161ShipmentHistory').onclick=function(){
   document.head.appendChild(st);
 })();
 
+
+
+/* ===== 2026-08-29: v2.29会社マスター Excel同時取込（既存出荷仕様は変更しない） ===== */
+(function(){
+  'use strict';
+  const PAIR_KEY='kombu_company_pairs_v162';
+  const IMPORT_MARK='v229-company-import';
+
+  const esc2=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const yes=v=>{
+    const s=String(v??'').trim().toLowerCase();
+    return v===true||s==='はい'||s==='yes'||s==='true'||s==='1'||s==='○'||s==='〇';
+  };
+  const postal=v=>{
+    const d=String(v??'').replace(/\D/g,'');
+    return d.length===7?d.slice(0,3)+'-'+d.slice(3):String(v??'').trim();
+  };
+  const val=(row,names)=>{
+    for(const n of names){
+      if(Object.prototype.hasOwnProperty.call(row,n)&&String(row[n]??'').trim()!=='')return row[n];
+    }
+    return '';
+  };
+  const loadPairs=()=>{try{const x=JSON.parse(localStorage.getItem(PAIR_KEY)||'[]');return Array.isArray(x)?x:[]}catch(_){return []}};
+  const savePairs=x=>localStorage.setItem(PAIR_KEY,JSON.stringify(x));
+
+  function loadSheetJS(){
+    if(globalThis.XLSX)return Promise.resolve(globalThis.XLSX);
+    return new Promise((resolve,reject)=>{
+      const prev=document.getElementById('v229SheetJS');
+      if(prev){prev.addEventListener('load',()=>resolve(globalThis.XLSX),{once:true});prev.addEventListener('error',()=>reject(new Error('Excel読込ライブラリを読み込めませんでした。')),{once:true});return;}
+      const s=document.createElement('script');
+      s.id='v229SheetJS';
+      s.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+      s.onload=()=>globalThis.XLSX?resolve(globalThis.XLSX):reject(new Error('Excel読込ライブラリの初期化に失敗しました。'));
+      s.onerror=()=>reject(new Error('Excel読込ライブラリを読み込めませんでした。インターネット接続を確認してください。'));
+      document.head.appendChild(s);
+    });
+  }
+
+  function parseCompany(row,i){
+    const code=String(val(row,['会社ID（任意）','会社ID','会社コード','ID'])||'').trim();
+    const name=String(val(row,['会社名【必須】','会社名','名称'])||'').trim();
+    const p=postal(val(row,['郵便番号【必須】','郵便番号','〒']));
+    const address=String(val(row,['住所【必須】','住所'])||'').trim();
+    const phone=String(val(row,['電話番号【必須】','電話番号','TEL','電話'])||'').trim();
+    const region=String(val(row,['地区【必須】','地区'])||'').trim();
+    const toyamaRegion=String(val(row,['富山地区（該当時）','富山地区'])||'').trim();
+    const useSourceRaw=val(row,['出荷人として使用']);
+    const useDestRaw=val(row,['出荷先として使用']);
+    const favRaw=val(row,['よく使う']);
+    const sortRaw=val(row,['表示順']);
+    return {
+      code,name,postal:p,address,phone,region,toyamaRegion,
+      useSource:String(useSourceRaw).trim()===''?true:yes(useSourceRaw),
+      useDestination:String(useDestRaw).trim()===''?true:yes(useDestRaw),
+      favorite:yes(favRaw),
+      sortOrder:String(sortRaw).trim()===''?i+1:Number(sortRaw)||i+1,
+      note:String(val(row,['備考'])||'').trim()
+    };
+  }
+
+  function parsePair(row,i,companyByCode,companyByName){
+    const sourceCode=String(val(row,['出荷人会社ID','出荷人ID'])||'').trim();
+    const destCode=String(val(row,['出荷先会社ID','出荷先ID'])||'').trim();
+    let source=String(val(row,['出荷人会社名【必須】','出荷人会社名','出荷人'])||'').trim();
+    let dest=String(val(row,['出荷先会社名【必須】','出荷先会社名','出荷先'])||'').trim();
+    if(!source&&sourceCode&&companyByCode.has(sourceCode))source=companyByCode.get(sourceCode).name;
+    if(!dest&&destCode&&companyByCode.has(destCode))dest=companyByCode.get(destCode).name;
+    const sortRaw=val(row,['表示順']);
+    return {
+      sourceCode,destCode,source,dest,
+      favorite:yes(val(row,['よく使う'])),
+      sortOrder:String(sortRaw).trim()===''?i+1:Number(sortRaw)||i+1,
+      note:String(val(row,['備考'])||'').trim(),
+      _sourceExists:companyByName.has(source),
+      _destExists:companyByName.has(dest)
+    };
+  }
+
+  async function importWorkbook(file,refresh){
+    if(!file)return;
+    try{
+      const XLSX=await loadSheetJS();
+      const wb=XLSX.read(await file.arrayBuffer(),{type:'array'});
+      if(!wb.SheetNames.includes('会社マスター'))throw new Error('Excelに「会社マスター」シートがありません。');
+      if(!wb.SheetNames.includes('出荷人×出荷先'))throw new Error('Excelに「出荷人×出荷先」シートがありません。');
+
+      const companyRows=XLSX.utils.sheet_to_json(wb.Sheets['会社マスター'],{defval:'',raw:false});
+      const parsed=companyRows.map(parseCompany).filter(c=>c.name||c.postal||c.address||c.phone);
+      const errors=[];
+      const seenNames=new Set();
+      parsed.forEach((c,i)=>{
+        const e=[];
+        if(!c.name)e.push('会社名');
+        if(!/^\d{3}-\d{4}$/.test(c.postal))e.push('郵便番号');
+        if(!c.address)e.push('住所');
+        if(!c.phone)e.push('電話番号');
+        if(!c.region)e.push('地区');
+        if(c.name&&seenNames.has(c.name))e.push('会社名重複');
+        if(c.name)seenNames.add(c.name);
+        if(e.length)errors.push(`会社マスター ${i+2}行目 ${c.name||'(会社名なし)'}：${e.join('、')}`);
+      });
+
+      const byCode=new Map(parsed.filter(c=>c.code).map(c=>[c.code,c]));
+      const byName=new Map(parsed.filter(c=>c.name).map(c=>[c.name,c]));
+      // 既存会社も組合せ照合対象に含める
+      (Array.isArray(state.companies)?state.companies:[]).forEach(c=>{
+        const n=String(c?.name||'').trim();
+        const code=String(c?.code||'').trim();
+        if(n&&!byName.has(n))byName.set(n,c);
+        if(code&&!byCode.has(code))byCode.set(code,c);
+      });
+
+      const pairRows=XLSX.utils.sheet_to_json(wb.Sheets['出荷人×出荷先'],{defval:'',raw:false});
+      const pairs=pairRows.map((r,i)=>parsePair(r,i,byCode,byName)).filter(p=>p.source||p.dest||p.sourceCode||p.destCode);
+      pairs.forEach((p,i)=>{
+        const e=[];
+        if(!p.source)e.push('出荷人');
+        if(!p.dest)e.push('出荷先');
+        if(p.source&&!p._sourceExists)e.push(`出荷人「${p.source}」が会社マスターにありません`);
+        if(p.dest&&!p._destExists)e.push(`出荷先「${p.dest}」が会社マスターにありません`);
+        if(e.length)errors.push(`出荷人×出荷先 ${i+2}行目：${e.join('、')}`);
+      });
+
+      const current=Array.isArray(state.companies)?state.companies:[];
+      let add=0,update=0;
+      parsed.forEach(c=>{
+        const hit=current.findIndex(x=>(c.code&&String(x?.code||'')===c.code)||String(x?.name||'').trim()===c.name);
+        if(hit>=0)update++;else add++;
+      });
+
+      const overlay=document.createElement('div');
+      overlay.style.cssText='position:fixed;inset:0;z-index:99999;background:#0008;padding:16px;overflow:auto';
+      overlay.innerHTML=`<div style="max-width:760px;margin:28px auto;background:#fff;border-radius:16px;padding:16px;box-shadow:0 20px 60px #0004">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><h2 style="margin:0">Excel取込内容の確認</h2><button class="mini" id="v229ImpClose">閉じる</button></div>
+        <div class="card" style="margin-top:12px;padding:12px;background:#f8fafc;line-height:1.8"><b>会社マスター：${parsed.length}件</b>（新規 ${add}件 / 更新 ${update}件）<br><b>出荷人×出荷先：${pairs.length}件</b><br><b>エラー：${errors.length}件</b></div>
+        <div style="max-height:42vh;overflow:auto;margin-top:10px;padding:10px;border:1px solid #dbe4ee;border-radius:10px">${errors.length?errors.slice(0,100).map(x=>`<div style="margin:4px 0;color:#a61b12">${esc2(x)}</div>`).join(''):'<div>エラーはありません。2シートを同時に取り込みます。</div>'}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn" id="v229ImpGo" ${errors.length?'disabled':''}>取込実行</button><button class="btn secondary" id="v229ImpCancel">キャンセル</button></div>
+      </div>`;
+      document.body.appendChild(overlay);
+      const close=()=>overlay.remove();
+      overlay.querySelector('#v229ImpClose').onclick=close;
+      overlay.querySelector('#v229ImpCancel').onclick=close;
+      overlay.addEventListener('click',e=>{if(e.target===overlay)close()});
+      const go=overlay.querySelector('#v229ImpGo');
+      if(go)go.onclick=()=>{
+        const base=Array.isArray(state.companies)?state.companies:[];
+        const used=new Set(),out=[];
+        parsed.forEach(c=>{
+          const hit=base.findIndex((x,j)=>!used.has(j)&&((c.code&&String(x?.code||'')===c.code)||String(x?.name||'').trim()===c.name));
+          if(hit>=0){used.add(hit);out.push({...base[hit],...c});}
+          else out.push({...c});
+        });
+        base.forEach((c,j)=>{if(!used.has(j))out.push(c)});
+        state.companies=out;
+        savePairs(pairs.map(({_sourceExists,_destExists,...p})=>p));
+        save();
+        close();
+        alert(`Excel取込が完了しました。\n会社マスター ${parsed.length}件\n出荷人×出荷先 ${pairs.length}件`);
+        refresh();
+      };
+    }catch(err){
+      console.error('[v2.29 company import]',err);
+      alert(err?.message||'Excelファイルを読み込めませんでした。');
+    }
+  }
+
+  const baseCompanyMaster=companyMasterPage;
+  function companyMasterWithExcelImport(){
+    baseCompanyMaster();
+    if(document.getElementById(IMPORT_MARK))return;
+    const card=app.querySelector('section.card');
+    if(!card)return;
+    const marker=document.createElement('div');
+    marker.id=IMPORT_MARK;
+    marker.style.cssText='margin:12px 0 14px;padding:12px;border:1px solid #dbe4ee;border-radius:12px;background:#f8fafc';
+    const pairCount=loadPairs().length;
+    marker.innerHTML=`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn" id="v229ExcelImport" type="button">📥 Excel取込</button><span class="small">「会社マスター」＋「出荷人×出荷先」を同時取込</span></div><div class="small" style="margin-top:7px">出荷人×出荷先：<b>${pairCount}件取込済み</b> ${pairCount?'<button class="mini" id="v229PairCheck" type="button">内容確認</button>':''}</div><div id="v229PairList" style="display:none;margin-top:8px;max-height:220px;overflow:auto;border:1px solid #dbe4ee;border-radius:8px;background:#fff;padding:8px"></div><input id="v229ExcelFile" type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden>`;
+    const firstH3=card.querySelector('h3');
+    if(firstH3)card.insertBefore(marker,firstH3);else card.appendChild(marker);
+    marker.querySelector('#v229ExcelImport').onclick=()=>marker.querySelector('#v229ExcelFile').click();
+    const pairCheck=marker.querySelector('#v229PairCheck');
+    if(pairCheck)pairCheck.onclick=()=>{
+      const box=marker.querySelector('#v229PairList');
+      if(box.style.display!=='none'){box.style.display='none';pairCheck.textContent='内容確認';return;}
+      const rows=loadPairs();
+      box.innerHTML=rows.map((p,i)=>`<div style="padding:5px 2px;border-bottom:1px solid #eef2f6"><b>${i+1}. ${esc2(p.source)}</b> → ${esc2(p.dest)}${p.sortOrder?` <span class="small">（表示順 ${esc2(p.sortOrder)}）</span>`:''}</div>`).join('')||'<div class="small">登録はありません。</div>';
+      box.style.display='block';pairCheck.textContent='閉じる';
+    };
+    marker.querySelector('#v229ExcelFile').onchange=e=>{
+      const f=e.target.files?.[0];
+      importWorkbook(f,companyMasterWithExcelImport).finally(()=>{e.target.value=''});
+    };
+  }
+
+  try{companyMasterPage=companyMasterWithExcelImport;globalThis.companyMasterPage=companyMasterWithExcelImport;}catch(e){console.error(e)}
+  console.info('[KOMBU v2.29] 会社マスター＋出荷人×出荷先 Excel同時取込を追加（出荷仕様は未変更）');
+})();
+/* ===== /2026-08-29 company import only ===== */
