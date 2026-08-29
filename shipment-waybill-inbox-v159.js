@@ -282,11 +282,7 @@
 
       if (cells.length !== 8) return;
 
-      // v2.16: 8列構成
-      // 0依頼日 / 1昆布 / 2出荷人 / 3出荷先 / 4個数 /
-      // 5状態 / 6送り状 / 7PDF
-      // 状態欄は絶対に上書きしない。
-      cells[6].innerHTML = makeWaybillCell(product, shipmentId);
+      cells[5].innerHTML = makeWaybillCell(product, shipmentId);
     });
 
     bindWaybillButtons(body);
@@ -764,6 +760,14 @@
             '<div style="font-size:12px;color:#627d98;margin-bottom:8px">' +
               '過去取込分です。通常運用では開く必要はありません。' +
             '</div>' +
+            (
+              groups.pending.length
+                ? '<button class="mini" id="v1601DeletePendingOnly" ' +
+                  'style="margin-bottom:10px;background:#7a3e00;color:#fff">' +
+                  '🧹 過去の未判定だけ削除（' + groups.pending.length + '件）' +
+                  '</button>'
+                : ''
+            ) +
             tableHtml(groups.pending, '未判定はありません。') +
           '</div>' +
         '</details>' +
@@ -780,6 +784,61 @@
     });
 
     bindWaybillButtons(wrap);
+
+    const deletePendingOnlyBtn =
+      document.getElementById('v1601DeletePendingOnly');
+
+    if (deletePendingOnlyBtn) {
+      deletePendingOnlyBtn.onclick = async function () {
+        const count = groups.pending.length;
+
+        if (!confirm(
+          '【過去の未判定だけ削除】\n\n' +
+          '削除対象：送り状の過去の未判定 ' + count + '件\n\n' +
+          '出荷依頼履歴・在庫・入出庫履歴・会社マスターには触れません。\n' +
+          '未判定PDFと、その未判定レコードだけを削除します。\n\n' +
+          '実行してよろしいですか？'
+        )) return;
+
+        const typed = prompt(
+          '誤操作防止のため「未判定削除」と入力してください。'
+        );
+
+        if (typed !== '未判定削除') {
+          alert('削除を中止しました。');
+          return;
+        }
+
+        deletePendingOnlyBtn.disabled = true;
+        deletePendingOnlyBtn.textContent = '削除中…';
+
+        try {
+          const data = await manualLinkApi(
+            'delete-pending',
+            {}
+          );
+
+          await refreshWaybills();
+          closeReviewModal();
+          openReviewModal();
+
+          alert(
+            '過去の未判定だけ削除しました。\n\n' +
+            '削除件数：' + Number(data.deleted || 0) + '件\n' +
+            '出荷依頼履歴は変更していません。'
+          );
+        } catch (e) {
+          deletePendingOnlyBtn.disabled = false;
+          deletePendingOnlyBtn.textContent =
+            '🧹 過去の未判定だけ削除（' + count + '件）';
+
+          alert(
+            '未判定の削除に失敗しました。\n' +
+            String(e?.message || e)
+          );
+        }
+      };
+    }
 
     // 手動紐付けボタン
     wrap.querySelectorAll('.v159-waybill-manual-link')
@@ -1002,120 +1061,3 @@
       } catch (e) {
         alert(
           'エラー一覧を取得できませんでした。\n' +
-          String(e?.message || e)
-        );
-      }
-    };
-
-    return errBtn;
-  }
-
-  function patchReviewButton() {
-    const historyCard=document.querySelector('.v159-history-card');
-    if(!historyCard)return;
-
-    let tools=document.getElementById('v159HistoryTools');
-    if(!tools){
-      tools=document.createElement('div');
-      tools.id='v159HistoryTools';
-      tools.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center';
-
-      const review=document.createElement('button');
-      review.className='btn secondary v159-waybill-review-open';
-      review.style.cssText='width:auto;padding:9px 12px';
-      review.onclick=async function(){
-        await loadWaybills();
-        openReviewModal();
-      };
-
-      let exceptionCount=0;
-      waybillCache.forEach(function(x){
-        const k=classifyWaybill(x).key;
-        if(k==='review'||k==='unmatched')exceptionCount++;
-      });
-      review.textContent=exceptionCount>0
-        ? '⚠ 送り状確認 ('+exceptionCount+')'
-        : '📎 送り状確認';
-
-      const err=makeErrorListButton();
-      err.className='btn secondary v159-error-list-open';
-      err.style.cssText='width:auto;padding:9px 12px;margin-left:0';
-
-      tools.appendChild(review);
-      tools.appendChild(err);
-      historyCard.insertBefore(tools,historyCard.firstChild);
-    }else{
-      const review=tools.querySelector('.v159-waybill-review-open');
-      if(review){
-        let exceptionCount=0;
-        waybillCache.forEach(function(x){
-          const k=classifyWaybill(x).key;
-          if(k==='review'||k==='unmatched')exceptionCount++;
-        });
-        review.textContent=exceptionCount>0
-          ? '⚠ 送り状確認 ('+exceptionCount+')'
-          : '📎 送り状確認';
-      }
-    }
-  }
-
-
-  async function refreshWaybills() {
-    if (refreshing) return;
-    refreshing = true;
-
-    try {
-      await loadWaybills();
-      patchHistoryTable();
-      patchReviewButton();
-    } finally {
-      refreshing = false;
-    }
-  }
-
-  function scheduleRefresh() {
-    clearTimeout(refreshTimer);
-
-    refreshTimer = setTimeout(function () {
-      refreshWaybills();
-    }, 150);
-  }
-
-  const observer = new MutationObserver(function (mutations) {
-    const relevant = mutations.some(function (m) {
-      return Array.from(m.addedNodes || []).some(function (node) {
-        if (!node || node.nodeType !== 1) return false;
-
-        if (
-          node.id === 'v136HistBody' ||
-          (node.querySelector && node.querySelector('#v136HistBody'))
-        ) {
-          return true;
-        }
-
-        return false;
-      });
-    });
-
-    if (relevant) scheduleRefresh();
-  });
-
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true
-  });
-
-  window.addEventListener('kombu:supabase-login', scheduleRefresh);
-  window.addEventListener('load', scheduleRefresh);
-
-  window.KOMBU_WAYBILL_UI_VERSION = '160.0';
-  window.kombuWaybillInboxRefresh = refreshWaybills;
-  window.kombuWaybillReviewOpen = async function () {
-    await loadWaybills();
-    openReviewModal();
-  };
-  window.kombuWaybillErrorListOpen = async function () {
-    await openErrorListModal();
-  };
-
-})();
