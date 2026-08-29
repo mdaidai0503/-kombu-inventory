@@ -1217,21 +1217,31 @@ function companyMasterPage(){
   let editIndex=-1;
   const draw=()=>{
     const editing=editIndex>=0&&state.companies[editIndex];
-    const draft=editing||{name:'',address:'',phone:''};
-    app.innerHTML=`<section class="card" style="margin-top:22px"><div class="row"><h2>会社マスター</h2><span class="pill">v37</span></div><p class="muted">出荷指示で使用する会社名・住所・電話番号を登録します。登録済みの会社は一覧で表示し、新しい会社は下の入力欄から続けて登録できます。</p>
+    const draft=editing||{name:'',postal:'',address:'',phone:'',region:'',toyamaRegion:'',favoriteSource:false,favoriteDestination:false};
+    const favSource=!!(draft.favoriteSource ?? draft.favorite);
+    const favDest=!!(draft.favoriteDestination ?? draft.favorite);
+    const regionOpts=['','北海道・東北','関東','中部東海','北陸','関西','中四国九州'].map(x=>`<option value="${esc(x)}" ${String(draft.region||'')===x?'selected':''}>${x||'選択してください'}</option>`).join('');
+    const toyamaOpts=['','高岡','呉西その他','富山','呉東その他'].map(x=>`<option value="${esc(x)}" ${String(draft.toyamaRegion||'')===x?'selected':''}>${x||'該当なし'}</option>`).join('');
+    app.innerHTML=`<section class="card" style="margin-top:22px"><div class="row"><h2>会社マスター</h2><span class="pill">v37</span></div><p class="muted">出荷指示で使用する会社情報を登録します。「よく使う出荷人」「よく使う出荷先」は、新規出荷依頼画面の最上部プルダウンに表示されます。</p>
     <h3>登録済み会社</h3><div id="globalCompanyList" class="master-list"></div>
     <hr><h3 id="globalCompanyFormTitle">${editing?'会社を編集':'新しい会社を登録'}</h3>
     <div class="card" style="margin:6px 0;padding:10px;background:#f8fafc"><div class="form">
       <label>会社名<input id="globalCompanyName" value="${esc(draft.name||'')}" autocomplete="organization"></label>
+      <label>郵便番号<input id="globalCompanyPostal" value="${esc(draft.postal||draft.postal_code||'')}" inputmode="numeric" placeholder="123-4567"></label>
       <label>住所<input id="globalCompanyAddress" value="${esc(draft.address||'')}" autocomplete="street-address"></label>
       <label>電話番号<input id="globalCompanyPhone" value="${esc(draft.phone||'')}" inputmode="tel" autocomplete="tel"></label>
+      <label>地区<select id="globalCompanyRegion">${regionOpts}</select></label>
+      <label>富山地区<select id="globalCompanyToyamaRegion">${toyamaOpts}</select></label>
+      <label style="display:flex;align-items:center;gap:8px"><input id="globalFavoriteSource" type="checkbox" ${favSource?'checked':''} style="width:auto">よく使う出荷人</label>
+      <label style="display:flex;align-items:center;gap:8px"><input id="globalFavoriteDestination" type="checkbox" ${favDest?'checked':''} style="width:auto">よく使う出荷先</label>
       <button class="btn" id="globalSaveCompanies" type="button">${editing?'変更を保存':'この会社を登録'}</button>
       ${editing?'<button class="btn secondary" id="globalCancelEdit" type="button">編集をやめる</button>':''}
     </div></div>
     <button class="btn secondary" id="globalMasterBack" style="margin-top:10px">← 昆布選択画面へ戻る</button></section>`;
 
     const list=document.getElementById('globalCompanyList');
-    list.innerHTML=state.companies.map((v,i)=>`<div class="card" style="margin:6px 0;padding:10px;background:#f8fafc"><div style="display:flex;gap:10px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap"><div style="min-width:0;flex:1"><b>${esc(v.name)}</b>${v.address?`<div class="small" style="margin-top:4px">${esc(v.address)}</div>`:''}${v.phone?`<div class="small" style="margin-top:2px">TEL ${esc(v.phone)}</div>`:''}</div><div style="display:flex;gap:6px"><button class="mini" data-gce="${i}" type="button">編集</button><button class="mini danger" data-gcd="${i}" type="button">削除</button></div></div></div>`).join('')||'<div class="empty">会社はまだ登録されていません。</div>';
+    list.innerHTML=state.companies.map((v,i)=>`<div class="card" style="margin:6px 0;padding:10px;background:#f8fafc"><div style="display:flex;gap:10px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap"><div style="min-width:0;flex:1"><b>${esc(v.name)}</b>${v.postal?`<div class="small" style="margin-top:4px">〒${esc(v.postal)}</div>`:''}${v.address?`<div class="small" style="margin-top:2px">${esc(v.address)}</div>`:''}${v.phone?`<div class="small" style="margin-top:2px">TEL ${esc(v.phone)}</div>`:''}<div class="small" style="margin-top:4px">${v.region?`地区：${esc(v.region)}${v.toyamaRegion?` / ${esc(v.toyamaRegion)}`:''}`:''}${(v.favoriteSource??v.favorite)?'　★よく使う出荷人':''}${(v.favoriteDestination??v.favorite)?'　★よく使う出荷先':''}</div></div><div style="display:flex;gap:6px"><button class="mini" data-gce="${i}" type="button">編集</button><button class="mini danger" data-gcd="${i}" type="button">削除</button></div></div></div>`).join('')||'<div class="empty">会社はまだ登録されていません。</div>';
+
 
     list.onclick=e=>{
       const edit=e.target.dataset.gce;
@@ -1249,16 +1259,23 @@ function companyMasterPage(){
 
     document.getElementById('globalSaveCompanies').onclick=()=>{
       const name=(document.getElementById('globalCompanyName')?.value||'').trim();
+      const postal=(document.getElementById('globalCompanyPostal')?.value||'').trim();
       const address=(document.getElementById('globalCompanyAddress')?.value||'').trim();
       const phone=(document.getElementById('globalCompanyPhone')?.value||'').trim();
+      const region=(document.getElementById('globalCompanyRegion')?.value||'').trim();
+      const toyamaRegion=(document.getElementById('globalCompanyToyamaRegion')?.value||'').trim();
+      const favoriteSource=!!document.getElementById('globalFavoriteSource')?.checked;
+      const favoriteDestination=!!document.getElementById('globalFavoriteDestination')?.checked;
       if(!name){alert('会社名を入力してください。');document.getElementById('globalCompanyName')?.focus();return;}
+      if(postal&&!/^\d{3}-\d{4}$/.test(postal)){alert('郵便番号は123-4567形式で入力してください。');document.getElementById('globalCompanyPostal')?.focus();return;}
       const duplicate=state.companies.findIndex((c,i)=>i!==editIndex&&String(c?.name||'').trim()===name);
       if(duplicate>=0){alert('同じ会社名がすでに登録されています。');document.getElementById('globalCompanyName')?.focus();return;}
+      const payload={name,postal,address,phone,region,toyamaRegion,favoriteSource,favoriteDestination};
       if(editIndex>=0&&state.companies[editIndex]){
-        state.companies[editIndex]={...state.companies[editIndex],name,address,phone};
+        state.companies[editIndex]={...state.companies[editIndex],...payload};
         save();editIndex=-1;alert('会社情報を変更しました。');draw();
       }else{
-        state.companies.push({name,address,phone});
+        state.companies.push(payload);
         save();alert('会社を登録しました。');draw();
       }
       document.getElementById('globalCompanyName')?.focus();
@@ -5443,6 +5460,12 @@ smLogs=function(){
       const pool=v229SortCompanies(v229CompanyPool('source',region));
       return `<option value="">直接入力</option>`+pool.map(c=>{const n=String(c.name||'').trim();return `<option value="${esc(n)}" ${v229NormName(n)===selectedKey?'selected':''}>${esc(n)}</option>`}).join('');
     };
+    const v229FavoriteFlag=(c,type)=>type==='source'?(c?.favoriteSource===true||c?.favoriteSource==='はい'||((c?.favoriteSource===undefined||c?.favoriteSource===null)&&(c?.favorite===true||c?.favorite==='はい'))):(c?.favoriteDestination===true||c?.favoriteDestination==='はい'||((c?.favoriteDestination===undefined||c?.favoriteDestination===null)&&(c?.favorite===true||c?.favorite==='はい')));
+    const v229FavoriteOptions=(type,selected='')=>{
+      const selectedKey=v229NormName(selected);
+      const pool=v229SortCompanies(companies.filter(c=>c?.active!==false&&v229FavoriteFlag(c,type)));
+      return `<option value="">選択してください</option>`+pool.map(c=>{const n=String(c?.name||'').trim();return `<option value="${esc(n)}" ${v229NormName(n)===selectedKey?'selected':''}>${esc(n)}</option>`}).join('');
+    };
     const v229DestOptions=(selected,region='すべて',sourceName='')=>{
       const selectedKey=v229NormName(selected);
       const all=v229SortCompanies(v229CompanyPool('destination','すべて'));
@@ -5506,7 +5529,7 @@ smLogs=function(){
       <section class="card v161-s">
         <h3 class="v161-title">① 基本情報</h3>
         <div class="v161-basic">
-          <div class="v161-box"><label>依頼日<input id="v114ShipDate" type="date" value="${existing?.shipDate||(new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10))}"></label></div>
+          <div class="v161-box"><label>依頼日<input id="v114ShipDate" type="date" value="${existing?.shipDate||new Date().toLocaleDateString('sv-SE')}"></label></div>
           <div class="v161-box"><label>着希望日<input id="v114ArrivalDate" type="date" value="${existing?.arrivalDate||''}"></label></div>
           <div class="v161-box"><label>配送・袋入等<select id="v114DeliveryPack"><option value="" ${!existing?.deliveryPack?'selected':''}>　</option><option value="ビニール袋入り" ${existing?.deliveryPack==='ビニール袋入り'?'selected':''}>ビニール袋入り</option><option value="コンテナ対応" ${existing?.deliveryPack==='コンテナ対応'?'selected':''}>コンテナ対応</option></select></label></div>
           <div class="v161-box"><label>備考<input id="v114Memo" type="text" placeholder="自由入力" value="${esc(existing?.memo||'')}"></label></div>
@@ -5516,7 +5539,7 @@ smLogs=function(){
       <section class="card v161-s">
         <h3 class="v161-title">② 出荷人</h3>
         <div class="v161-party">
-          <div class="v161-box"><label>地区<select id="v229SourceRegion">${v229RegionOptions(source0.toyamaRegion||source0.region||'すべて')}</select></label><label style="display:block;margin-top:10px">会社を選択<select id="v161SourceSelect">${v229SourceOptions(source0.name,source0.toyamaRegion||source0.region||'すべて')}</select></label><div class="small" style="margin-top:8px">会社マスターから選択、または右側へ直接入力できます。</div></div>
+          <div class="v161-box"><label>よく使う会社<select id="v229SourceFavorite"></select></label><label style="display:block;margin-top:10px">地区<select id="v229SourceRegion">${v229RegionOptions(source0.toyamaRegion||source0.region||'すべて')}</select></label><label style="display:block;margin-top:10px">会社を選択<select id="v161SourceSelect">${v229SourceOptions(source0.name,source0.toyamaRegion||source0.region||'すべて')}</select></label><div class="small" style="margin-top:8px">よく使う会社、地区別会社、または右側への直接入力ができます。</div></div>
           <div class="v161-details"><label>会社名<input id="v114SourceName" value="${esc(source0.name||'')}"></label><label>郵便番号<input id="v114SourcePostal" inputmode="numeric" placeholder="123-4567" value="${esc(source0.postal||source0.postal_code||'')}"></label><label>住所<input id="v114SourceAddress" value="${esc(source0.address||'')}"></label><label>電話<input id="v114SourcePhone" value="${esc(source0.phone||'')}"></label></div>
         </div>
       </section>
@@ -5524,7 +5547,7 @@ smLogs=function(){
       <section class="card v161-s">
         <h3 class="v161-title">③ 出荷先</h3>
         <div class="v161-party">
-          <div class="v161-box"><label>地区<select id="v229DestRegion">${v229RegionOptions(dest0.toyamaRegion||dest0.region||'すべて')}</select></label><label style="display:block;margin-top:10px">会社を選択<select id="v161DestSelect">${v229DestOptions(dest0.name,dest0.toyamaRegion||dest0.region||'すべて',source0.name)}</select></label><div class="small" style="margin-top:8px">上段にこの出荷人でよく使う出荷先を表示。地区・全会社からも選択でき、右側へ直接入力もできます。</div></div>
+          <div class="v161-box"><label>よく使う会社<select id="v229DestFavorite"></select></label><label style="display:block;margin-top:10px">地区<select id="v229DestRegion">${v229RegionOptions(dest0.toyamaRegion||dest0.region||'すべて')}</select></label><label style="display:block;margin-top:10px">会社を選択<select id="v161DestSelect">${v229DestOptions(dest0.name,dest0.toyamaRegion||dest0.region||'すべて',source0.name)}</select></label><div class="small" style="margin-top:8px">よく使う会社を最上段に表示。通常欄では出荷人×出荷先の組み合わせ・地区・全会社から選択でき、直接入力もできます。</div></div>
           <div class="v161-details"><label>会社名<input id="v114DestName" value="${esc(dest0.name||'')}"></label><label>郵便番号<input id="v114DestPostal" inputmode="numeric" placeholder="123-4567" value="${esc(dest0.postal||dest0.postal_code||'')}"></label><label>住所<input id="v114DestAddress" value="${esc(dest0.address||'')}"></label><label>電話<input id="v114DestPhone" value="${esc(dest0.phone||'')}"></label></div>
         </div>
       </section>
@@ -5538,7 +5561,9 @@ smLogs=function(){
 
     const byId=id=>document.getElementById(id);
     const sn=byId('v114SourceName'),sx=byId('v114SourcePostal'),sa=byId('v114SourceAddress'),sp=byId('v114SourcePhone'),dn=byId('v114DestName'),dx=byId('v114DestPostal'),da=byId('v114DestAddress'),dp=byId('v114DestPhone');
-    const sourceSelect=byId('v161SourceSelect'),destSelect=byId('v161DestSelect'),sourceRegion=byId('v229SourceRegion'),destRegion=byId('v229DestRegion');
+    const sourceSelect=byId('v161SourceSelect'),destSelect=byId('v161DestSelect'),sourceRegion=byId('v229SourceRegion'),destRegion=byId('v229DestRegion'),sourceFavorite=byId('v229SourceFavorite'),destFavorite=byId('v229DestFavorite');
+    sourceFavorite.innerHTML=v229FavoriteOptions('source','');
+    destFavorite.innerHTML=v229FavoriteOptions('destination','');
     const v229Postal=v=>{const d=String(v||'').replace(/\D/g,'');return d.length===7?d.slice(0,3)+'-'+d.slice(3):String(v||'').trim()};
     const applyCompany=(selectEl,nameEl,postalEl,addressEl,phoneEl)=>{
       if(!selectEl.value)return;
@@ -5557,8 +5582,10 @@ smLogs=function(){
     };
     sourceRegion.onchange=()=>rebuildSource();
     destRegion.onchange=()=>rebuildDest();
-    sourceSelect.onchange=()=>{if(sourceSelect.value)applyCompany(sourceSelect,sn,sx,sa,sp);rebuildDest()};
-    destSelect.onchange=()=>{if(destSelect.value)applyCompany(destSelect,dn,dx,da,dp)};
+    sourceFavorite.onchange=()=>{if(sourceFavorite.value){const c=v229FindCompanyByName(sourceFavorite.value);sn.value=c?.name||'';sx.value=v229Postal(c?.postal||c?.postal_code||'');sa.value=c?.address||'';sp.value=c?.phone||'';const r=c?.toyamaRegion||c?.toyama_region||c?.region||'すべて';sourceRegion.value=[...sourceRegion.options].some(o=>v229NormRegion(o.value)===v229NormRegion(r))?r:'すべて';rebuildSource();sourceSelect.value=[...sourceSelect.options].some(o=>v229NormName(o.value)===v229NormName(sourceFavorite.value))?sourceFavorite.value:'';rebuildDest();}};
+    destFavorite.onchange=()=>{if(destFavorite.value){const c=v229FindCompanyByName(destFavorite.value);dn.value=c?.name||'';dx.value=v229Postal(c?.postal||c?.postal_code||'');da.value=c?.address||'';dp.value=c?.phone||'';const r=c?.toyamaRegion||c?.toyama_region||c?.region||'すべて';destRegion.value=[...destRegion.options].some(o=>v229NormRegion(o.value)===v229NormRegion(r))?r:'すべて';rebuildDest();destSelect.value=[...destSelect.options].some(o=>v229NormName(o.value)===v229NormName(destFavorite.value))?destFavorite.value:'';}};
+    sourceSelect.onchange=()=>{if(sourceSelect.value)applyCompany(sourceSelect,sn,sx,sa,sp);sourceFavorite.value=[...sourceFavorite.options].some(o=>v229NormName(o.value)===v229NormName(sourceSelect.value))?sourceSelect.value:'';rebuildDest()};
+    destSelect.onchange=()=>{if(destSelect.value)applyCompany(destSelect,dn,dx,da,dp);destFavorite.value=[...destFavorite.options].some(o=>v229NormName(o.value)===v229NormName(destSelect.value))?destSelect.value:''};
     sn.addEventListener('change',rebuildDest);
     sx.addEventListener('blur',()=>sx.value=v229Postal(sx.value));
     dx.addEventListener('blur',()=>dx.value=v229Postal(dx.value));
@@ -8854,12 +8881,16 @@ document.getElementById('v161ShipmentHistory').onclick=function(){
     const useSourceRaw=val(row,['出荷人として使用']);
     const useDestRaw=val(row,['出荷先として使用']);
     const favRaw=val(row,['よく使う']);
+    const favSourceRaw=val(row,['よく使う出荷人','出荷人よく使う','出荷人優先']);
+    const favDestRaw=val(row,['よく使う出荷先','出荷先よく使う','出荷先優先']);
     const sortRaw=val(row,['表示順']);
     return {
       code,name,postal:p,address,phone,region,toyamaRegion,
       useSource:String(useSourceRaw).trim()===''?true:yes(useSourceRaw),
       useDestination:String(useDestRaw).trim()===''?true:yes(useDestRaw),
       favorite:yes(favRaw),
+      favoriteSource:String(favSourceRaw).trim()===''?yes(favRaw):yes(favSourceRaw),
+      favoriteDestination:String(favDestRaw).trim()===''?yes(favRaw):yes(favDestRaw),
       sortOrder:String(sortRaw).trim()===''?i+1:Number(sortRaw)||i+1,
       note:String(val(row,['備考'])||'').trim()
     };
@@ -9000,6 +9031,6 @@ document.getElementById('v161ShipmentHistory').onclick=function(){
   }
 
   try{companyMasterPage=companyMasterWithExcelImport;globalThis.companyMasterPage=companyMasterWithExcelImport;}catch(e){console.error(e)}
-  console.info('[KOMBU v2.29] 会社マスター同時取込＋地区候補欠落修正＋出荷人×出荷先照合強化');
+  console.info('[KOMBU v2.29] 会社マスター同時取込＋よく使う出荷人/出荷先＋地区/組合せ候補');
 })();
 /* ===== /2026-08-29 company import only ===== */
