@@ -9363,89 +9363,183 @@ document.getElementById('v161ShipmentHistory').onclick=function(){
     try{const x=JSON.parse(localStorage.getItem(PAIR_KEY)||'[]');return Array.isArray(x)?x:[]}catch(_){return []}
   }
   function fullBackup(){
+    const localStorageSnapshot={};
+    for(let i=0;i<localStorage.length;i++){
+      const k=localStorage.key(i);
+      if(k!==null)localStorageSnapshot[k]=localStorage.getItem(k);
+    }
+
+    const history=(()=>{
+      try{
+        const x=JSON.parse(localStorage.getItem('kombu-v136-shipment-history')||'[]');
+        return Array.isArray(x)?x:[];
+      }catch(_){return []}
+    })();
+
     const payload={
       backupType:'KOMBU_FULL_TEST_BACKUP',
-      backupVersion:1,
-      appVersion:'v164.6',
+      backupVersion:2,
+      appVersion:'v165.0',
       exportedAt:new Date().toISOString(),
-      state:JSON.parse(JSON.stringify(state)),
-      companyPairs:pairs()
+
+      // 4種類すべての実データ
+      kushiro:JSON.parse(JSON.stringify(state)),
+      hidaka:JSON.parse(JSON.stringify(hState)),
+      nemuro:JSON.parse(JSON.stringify(nState)),
+      sanmae:JSON.parse(JSON.stringify(smState)),
+
+      // 出荷履歴・会社組み合わせ
+      shipmentHistory:history,
+      companyPairs:pairs(),
+
+      // 念のためアプリのlocalStorage全体も保存
+      localStorageSnapshot
     };
-    downloadJson(`昆布在庫管理_テスト前完全バックアップ_${jpStamp()}.json`,payload);
+
+    downloadJson(`昆布在庫管理_テスト前完全バックアップ_v2_${jpStamp()}.json`,payload);
     alert(
-      `完全バックアップを作成しました。\n\n`+
+      `完全バックアップ v2 を作成しました。\n\n`+
       `会社マスター：${Array.isArray(state.companies)?state.companies.length:0}件\n`+
-      `出荷人×出荷先：${payload.companyPairs.length}件\n\n`+
-      `ダウンロードしたJSONファイルを安全な場所に保管してください。`
+      `出荷人×出荷先：${payload.companyPairs.length}件\n`+
+      `出荷依頼履歴：${history.length}件\n\n`+
+      `釧路・日高・根室・釧棹の全データとlocalStorage全体を保存しています。\n`+
+      `このJSONファイルを安全な場所に保管してください。`
     );
   }
 
   function testResetPreview(){
     const companies=Array.isArray(state.companies)?state.companies.length:0;
     const pairCount=pairs().length;
-    const records=Array.isArray(state.records)?state.records.length:0;
-    const shipments=Array.isArray(state.shipments)?state.shipments.length:0;
-    const pdfImports=Array.isArray(state.pdfImports)?state.pdfImports.length:0;
-    const faxbox=(()=>{try{const x=JSON.parse(localStorage.getItem('kombu-v99-fax-box')||'[]');return Array.isArray(x)?x.length:0}catch(_){return 0}})();
+
+    const kRecords=Array.isArray(state.records)?state.records.length:0;
+    const hRecords=Array.isArray(hState.records)?hState.records.length:0;
+    const nRecords=Array.isArray(nState.records)?nState.records.length:0;
+    const sRecords=Array.isArray(smState.records)?smState.records.length:0;
+
+    const kShips=Array.isArray(state.shipments)?state.shipments.length:0;
+    const hShips=Array.isArray(hState.shipments)?hState.shipments.length:0;
+    const nShips=Array.isArray(nState.shipments)?nState.shipments.length:0;
+    const sShips=Array.isArray(smState.shipments)?smState.shipments.length:0;
+
+    const historyCount=(()=>{
+      try{
+        const x=JSON.parse(localStorage.getItem('kombu-v136-shipment-history')||'[]');
+        return Array.isArray(x)?x.length:0;
+      }catch(_){return 0}
+    })();
 
     const ok=confirm(
-      `【テスト初期化・最終確認】\n\n`+
+      `【完全テスト初期化・最終確認】\n\n`+
       `維持するデータ\n`+
       `・会社マスター：${companies}件\n`+
       `・出荷人×出荷先：${pairCount}件\n`+
-      `・地区／よく使う会社設定：会社マスター内の設定を維持\n\n`+
+      `・地区／よく使う会社設定\n`+
+      `・漁協等のマスター設定\n\n`+
       `初期化するデータ\n`+
-      `・在庫／入出庫データ：${records}件\n`+
-      `・出荷依頼／出荷履歴：${shipments}件\n`+
-      `・PDF取込履歴：${pdfImports}件\n`+
-      `・FAXBOX：${faxbox}件\n`+
-      `・送り状の判定／未判定などテスト対象の保存データ\n\n`+
-      `先に「完全バックアップ」を保存したことを確認してください。\n`+
+      `・釧路 入出庫：${kRecords}件 / 出荷依頼：${kShips}件\n`+
+      `・日高 入出庫：${hRecords}件 / 出荷依頼：${hShips}件\n`+
+      `・根室 入出庫：${nRecords}件 / 出荷依頼：${nShips}件\n`+
+      `・釧棹 入出庫：${sRecords}件 / 出荷依頼：${sShips}件\n`+
+      `・出荷依頼履歴：${historyCount}件\n`+
+      `・FAXBOX／PDF取込履歴／送り状判定／未判定／チェック状態\n\n`+
+      `必ず先に「完全バックアップ v2」を保存してください。\n`+
       `本当にテスト用に初期化しますか？`
     );
     if(!ok)return;
 
-    const typed=prompt('誤操作防止のため「テスト初期化」と入力してください。');
-    if(typed!=='テスト初期化')return alert('初期化を中止しました。');
+    const typed=prompt('誤操作防止のため「完全テスト初期化」と入力してください。');
+    if(typed!=='完全テスト初期化')return alert('初期化を中止しました。');
 
-    // Preserve master data exactly.
+    // ---- 維持データ ----
     const keepCompanies=JSON.parse(JSON.stringify(Array.isArray(state.companies)?state.companies:[]));
     const keepCoops=JSON.parse(JSON.stringify(Array.isArray(state.coops)?state.coops:[]));
     const keepPairs=pairs();
-    const keepYear=state.activeYear;
 
-    // Clear only operational/test data.
+    const keepYears={
+      k:state.activeYear,
+      h:hState.activeYear,
+      n:nState.activeYear,
+      s:smState.activeYear
+    };
+
+    // ---- 4種類すべての在庫・入出庫・出荷依頼・PDF履歴を初期化 ----
     state.records=[];
     state.shipments=[];
     state.shipmentSeq=1;
     state.pdfImports=[];
     state.companies=keepCompanies;
     state.coops=keepCoops;
-    state.activeYear=keepYear;
+    state.activeYear=keepYears.k;
+
+    hState.records=[];
+    hState.shipments=[];
+    hState.shipmentSeq=1;
+    hState.pdfImports=[];
+    hState.activeYear=keepYears.h;
+
+    nState.records=[];
+    nState.shipments=[];
+    nState.shipmentSeq=1;
+    nState.pdfImports=[];
+    nState.activeYear=keepYears.n;
+
+    smState.records=[];
+    smState.shipments=[];
+    smState.shipmentSeq=1;
+    smState.pdfImports=[];
+    smState.activeYear=keepYears.s;
+
+    // 会社組み合わせは必ず維持
     localStorage.setItem(PAIR_KEY,JSON.stringify(keepPairs));
 
-    // Known operational caches / queues. Do NOT touch company master or pair key.
+    // 4種類の状態を保存
+    save();
+    hSave();
+    nSave();
+    smSave();
+
+    // ---- 出荷履歴などの別保存領域を明示的に削除 ----
     [
+      'kombu-v136-shipment-history',
       'kombu-v99-fax-box',
+      'kombu-v76-shipment-checks',
+      'kombu-v136-autosave-snapshot',
+      'kombu-v136-form-drafts',
       'kombu_shipment_history_month_open_v1645'
     ].forEach(k=>localStorage.removeItem(k));
 
-    // Remove only keys whose names clearly indicate shipping-label judgement/unmatched caches.
-    const protectedKeys=new Set([PAIR_KEY,'kombu_local_only_v2']);
+    // ---- 送り状・判定・未判定系の保存キーを削除 ----
+    // 会社マスター・組み合わせ・4種類本体・接続設定は保護
+    const protectedKeys=new Set([
+      PAIR_KEY,
+      'kombu_local_only_v2',
+      'kombu_local_only_v3',
+      'kombu_hidaka_local_v1',
+      'kombu_nemuro_local_v1',
+      'kombu_kushiro_sanmae_local_v1'
+    ]);
+
     const remove=[];
     for(let i=0;i<localStorage.length;i++){
       const k=localStorage.key(i)||'';
       if(protectedKeys.has(k))continue;
-      if(/(送り状|waybill|label.*(judge|match|unmatch|pending)|shipment.*(judge|match|unmatch|pending)|pdf.*(judge|match|unmatch|pending))/i.test(k))remove.push(k);
+      if(
+        /(waybill|送り状|unmatched|未判定|judg|match|shipment.*history|fax.*history|pdf.*history|inbox.*shipment|shipment.*inbox)/i.test(k)
+      ){
+        remove.push(k);
+      }
     }
     remove.forEach(k=>localStorage.removeItem(k));
 
-    save();
+    // 組み合わせが削除されていないことを最後に再保証
+    localStorage.setItem(PAIR_KEY,JSON.stringify(keepPairs));
+
     alert(
-      `テスト初期化が完了しました。\n\n`+
-      `会社マスター：${keepCompanies.length}件 維持\n`+
-      `出荷人×出荷先：${keepPairs.length}件 維持\n\n`+
-      `在庫・入出庫・出荷履歴・テスト対象PDF/送り状データを初期化しました。`
+      `完全テスト初期化が完了しました。\n\n`+
+      `維持：会社マスター ${keepCompanies.length}件\n`+
+      `維持：出荷人×出荷先 ${keepPairs.length}件\n\n`+
+      `釧路・日高・根室・釧棹の在庫／入出庫／出荷依頼、\n`+
+      `出荷依頼履歴、FAXBOX、PDF・送り状判定／未判定を初期化しました。`
     );
     home();
   }
@@ -9470,11 +9564,11 @@ document.getElementById('v161ShipmentHistory').onclick=function(){
         会社マスター・出荷人×出荷先を維持したまま、8月テスト用の準備を行います。
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <button class="btn" id="v1646FullBackup" type="button">💾 完全バックアップ</button>
-        <button class="btn secondary" id="v1646TestReset" type="button">🧹 テスト初期化</button>
+        <button class="btn" id="v1646FullBackup" type="button">💾 完全バックアップ v2</button>
+        <button class="btn secondary" id="v1646TestReset" type="button">🧹 完全テスト初期化</button>
       </div>
       <div class="small" style="margin-top:8px;color:#7a4b00">
-        先に「完全バックアップ」を実行してください。確認前に「テスト初期化」は押さないでください。
+        先に「完全バックアップ v2」を実行してください。確認前に「完全テスト初期化」は押さないでください。
       </div>`;
     app.appendChild(box);
     document.getElementById('v1646FullBackup').onclick=fullBackup;
