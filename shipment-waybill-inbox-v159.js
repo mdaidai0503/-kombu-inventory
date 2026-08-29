@@ -668,6 +668,56 @@
     );
   }
 
+  async function deletePendingWaybills() {
+    const pendingItems = waybillCache.filter(function (w) {
+      return classifyWaybill(w).key === 'pending';
+    });
+
+    if (!pendingItems.length) {
+      alert('削除する過去の未判定はありません。');
+      return;
+    }
+
+    if (!window.confirm(
+      '過去の未判定 ' + pendingItems.length + '件だけを削除します。\n' +
+      '出荷依頼履歴・在庫・入出庫履歴・会社マスターは削除しません。\n\n' +
+      'よろしいですか？'
+    )) {
+      return;
+    }
+
+    const sb = client();
+    if (!sb) {
+      alert('Supabaseへ接続できません。');
+      return;
+    }
+
+    const ids = pendingItems.map(function (w) {
+      return w.id;
+    });
+
+    const result = await sb
+      .from(TABLE_NAME)
+      .delete()
+      .in('id', ids);
+
+    if (result.error) {
+      console.error('過去の未判定削除エラー:', result.error);
+      alert(
+        '過去の未判定を削除できませんでした。\n' +
+        String(result.error.message || result.error)
+      );
+      return;
+    }
+
+    await refreshWaybills();
+    closeReviewModal();
+    openReviewModal();
+
+    alert('過去の未判定 ' + pendingItems.length + '件を削除しました。');
+  }
+
+
   function openReviewModal() {
     closeReviewModal();
 
@@ -764,6 +814,16 @@
             '<div style="font-size:12px;color:#627d98;margin-bottom:8px">' +
               '過去取込分です。通常運用では開く必要はありません。' +
             '</div>' +
+            (
+              groups.pending.length
+                ? '<div style="margin-bottom:10px">' +
+                  '<button class="btn secondary" id="v159DeletePendingWaybills" ' +
+                  'style="width:auto;padding:8px 12px">' +
+                  '🧹 過去の未判定だけ削除（' + groups.pending.length + '件）' +
+                  '</button>' +
+                  '</div>'
+                : ''
+            ) +
             tableHtml(groups.pending, '未判定はありません。') +
           '</div>' +
         '</details>' +
@@ -778,6 +838,20 @@
     wrap.addEventListener('click', function (e) {
       if (e.target === wrap) closeReviewModal();
     });
+
+    const deletePendingButton =
+      document.getElementById('v159DeletePendingWaybills');
+
+    if (deletePendingButton) {
+      deletePendingButton.onclick = async function () {
+        deletePendingButton.disabled = true;
+        try {
+          await deletePendingWaybills();
+        } finally {
+          deletePendingButton.disabled = false;
+        }
+      };
+    }
 
     bindWaybillButtons(wrap);
 
