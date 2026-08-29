@@ -5468,8 +5468,8 @@ smLogs=function(){
     };
     const v229DestOptions=(selected,region='すべて',sourceName='')=>{
       const selectedKey=v229NormName(selected);
-      const all=v229SortCompanies(v229CompanyPool('destination','すべて'));
-      const area=v229SortCompanies(v229CompanyPool('destination',region));
+      const targetRegion=String(region||'すべて');
+      const area=v229SortCompanies(v229CompanyPool('destination',targetRegion));
       const sourceCompany=v229FindCompanyByName(sourceName);
       const sourceCode=String(sourceCompany?.code||'').trim();
       const sourceKey=v229NormName(sourceName);
@@ -5488,13 +5488,16 @@ smLogs=function(){
       pairRows.forEach(p=>{
         const c=v229FindCompanyForPair(p);
         const key=v229NormName(c?.name||'');
-        if(c&&c?.active!==false&&key&&!seen.has(key)){seen.add(key);priority.push(c)}
+        if(c&&c?.active!==false&&v229MatchRegion(c,targetRegion)&&key&&!seen.has(key)){seen.add(key);priority.push(c)}
       });
       const opt=c=>{const n=String(c?.name||'').trim();return `<option value="${esc(n)}" ${v229NormName(n)===selectedKey?'selected':''}>${esc(n)}</option>`};
       let html=`<option value="">直接入力</option>`;
       if(priority.length)html+=`<optgroup label="この出荷人でよく使う出荷先（${priority.length}件）">${priority.map(opt).join('')}</optgroup>`;
-      if(region&&region!=='すべて'&&area.length)html+=`<optgroup label="地区から探す：${esc(region)}（${area.length}件）">${area.map(opt).join('')}</optgroup>`;
-      html+=`<optgroup label="すべての会社から探す（${all.length}件）">${all.map(opt).join('')}</optgroup>`;
+      if(targetRegion!=='すべて'){
+        if(area.length)html+=`<optgroup label="地区から探す：${esc(targetRegion)}（${area.length}件）">${area.map(opt).join('')}</optgroup>`;
+      }else if(area.length){
+        html+=`<optgroup label="すべての会社から探す（${area.length}件）">${area.map(opt).join('')}</optgroup>`;
+      }
       return html;
     };
 
@@ -5529,7 +5532,7 @@ smLogs=function(){
       <section class="card v161-s">
         <h3 class="v161-title">① 基本情報</h3>
         <div class="v161-basic">
-          <div class="v161-box"><label>依頼日<input id="v114ShipDate" type="date" value="${existing?.shipDate||new Date().toLocaleDateString('sv-SE')}"></label></div>
+          <div class="v161-box"><label>依頼日<input id="v114ShipDate" type="date" value="${existing?.shipDate||(()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')})()}"></label></div>
           <div class="v161-box"><label>着希望日<input id="v114ArrivalDate" type="date" value="${existing?.arrivalDate||''}"></label></div>
           <div class="v161-box"><label>配送・袋入等<select id="v114DeliveryPack"><option value="" ${!existing?.deliveryPack?'selected':''}>　</option><option value="ビニール袋入り" ${existing?.deliveryPack==='ビニール袋入り'?'selected':''}>ビニール袋入り</option><option value="コンテナ対応" ${existing?.deliveryPack==='コンテナ対応'?'selected':''}>コンテナ対応</option></select></label></div>
           <div class="v161-box"><label>備考<input id="v114Memo" type="text" placeholder="自由入力" value="${esc(existing?.memo||'')}"></label></div>
@@ -5575,16 +5578,23 @@ smLogs=function(){
       sourceSelect.innerHTML=v229SourceOptions(keep,sourceRegion.value||'すべて');
       if([...sourceSelect.options].some(o=>o.value===keep))sourceSelect.value=keep;
     };
-    const rebuildDest=()=>{
-      const keep=destSelect.value||dn.value;
+    const rebuildDest=(resetToTop=false)=>{
+      const keep=resetToTop?'':(destSelect.value||dn.value);
       destSelect.innerHTML=v229DestOptions(keep,destRegion.value||'すべて',sn.value);
-      if([...destSelect.options].some(o=>o.value===keep))destSelect.value=keep;
+      if(resetToTop){
+        destSelect.selectedIndex=0;
+        destSelect.value='';
+      }else if([...destSelect.options].some(o=>o.value===keep)){
+        destSelect.value=keep;
+      }else{
+        destSelect.selectedIndex=0;
+      }
     };
     sourceRegion.onchange=()=>rebuildSource();
-    destRegion.onchange=()=>rebuildDest();
-    sourceFavorite.onchange=()=>{if(sourceFavorite.value){const c=v229FindCompanyByName(sourceFavorite.value);sn.value=c?.name||'';sx.value=v229Postal(c?.postal||c?.postal_code||'');sa.value=c?.address||'';sp.value=c?.phone||'';const r=c?.toyamaRegion||c?.toyama_region||c?.region||'すべて';sourceRegion.value=[...sourceRegion.options].some(o=>v229NormRegion(o.value)===v229NormRegion(r))?r:'すべて';rebuildSource();sourceSelect.value=[...sourceSelect.options].some(o=>v229NormName(o.value)===v229NormName(sourceFavorite.value))?sourceFavorite.value:'';rebuildDest();}};
+    destRegion.onchange=()=>rebuildDest(true);
+    sourceFavorite.onchange=()=>{if(sourceFavorite.value){const c=v229FindCompanyByName(sourceFavorite.value);sn.value=c?.name||'';sx.value=v229Postal(c?.postal||c?.postal_code||'');sa.value=c?.address||'';sp.value=c?.phone||'';const r=c?.toyamaRegion||c?.toyama_region||c?.region||'すべて';sourceRegion.value=[...sourceRegion.options].some(o=>v229NormRegion(o.value)===v229NormRegion(r))?r:'すべて';rebuildSource();sourceSelect.value=[...sourceSelect.options].some(o=>v229NormName(o.value)===v229NormName(sourceFavorite.value))?sourceFavorite.value:'';destFavorite.value='';rebuildDest(true);}};
     destFavorite.onchange=()=>{if(destFavorite.value){const c=v229FindCompanyByName(destFavorite.value);dn.value=c?.name||'';dx.value=v229Postal(c?.postal||c?.postal_code||'');da.value=c?.address||'';dp.value=c?.phone||'';const r=c?.toyamaRegion||c?.toyama_region||c?.region||'すべて';destRegion.value=[...destRegion.options].some(o=>v229NormRegion(o.value)===v229NormRegion(r))?r:'すべて';rebuildDest();destSelect.value=[...destSelect.options].some(o=>v229NormName(o.value)===v229NormName(destFavorite.value))?destFavorite.value:'';}};
-    sourceSelect.onchange=()=>{if(sourceSelect.value)applyCompany(sourceSelect,sn,sx,sa,sp);sourceFavorite.value=[...sourceFavorite.options].some(o=>v229NormName(o.value)===v229NormName(sourceSelect.value))?sourceSelect.value:'';rebuildDest()};
+    sourceSelect.onchange=()=>{if(sourceSelect.value)applyCompany(sourceSelect,sn,sx,sa,sp);sourceFavorite.value=[...sourceFavorite.options].some(o=>v229NormName(o.value)===v229NormName(sourceSelect.value))?sourceSelect.value:'';destFavorite.value='';rebuildDest(true)};
     destSelect.onchange=()=>{if(destSelect.value)applyCompany(destSelect,dn,dx,da,dp);destFavorite.value=[...destFavorite.options].some(o=>v229NormName(o.value)===v229NormName(destSelect.value))?destSelect.value:''};
     sn.addEventListener('change',rebuildDest);
     sx.addEventListener('blur',()=>sx.value=v229Postal(sx.value));
