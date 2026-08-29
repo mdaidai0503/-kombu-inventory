@@ -5526,7 +5526,7 @@ smLogs=function(){
     </style>
     <div class="v161-step2">
       <section class="card">
-        <div class="row"><div><h2 class="v159-form-title" style="margin:0">📦 ${editing?'出荷依頼修正':'新規出荷依頼'}</h2><div class="muted" style="margin-top:5px">① 基本情報 → ② 出荷元 → ③ 出荷先 → ④ 出荷明細</div></div><span class="pill">${editing?'修正':'下書き'}</span></div>
+        <div class="row"><div><h2 class="v159-form-title" style="margin:0">📦 ${editing?'出荷依頼修正':'新規出荷依頼'}</h2><div class="muted" style="margin-top:5px">① 基本情報 → ② 出荷元 → ③ 出荷先 → ④ 出荷明細</div></div>${editing?'<span class="pill">修正</span>':''}</div>
       </section>
 
       <section class="card v161-s">
@@ -7834,12 +7834,6 @@ if(histChanged){
           </button>
 
         </div>
-      </section>
-
-      <section class="card" style="margin-top:12px;padding:12px">
-        <button class="btn secondary" id="v161ShipmentHome" type="button">
-          🏠 ホームへ戻る
-        </button>
       </section>
     `;
 
