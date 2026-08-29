@@ -9404,3 +9404,126 @@ document.getElementById('v161ShipmentHistory').onclick=function(){
   console.info('[KOMBU v164.7] 完全バックアップ＋安全なテスト初期化');
 })();
  /* ===== /v164.6 ===== */
+
+
+/* ===== v164.8 テストFAX完了（実FAX送信なし／本番完了処理を共用） ===== */
+(function(){
+  'use strict';
+
+  function getShipment(product,id){
+    if(product==='kushiro')return (state.shipments||[]).find(x=>String(x.id)===String(id))||null;
+    if(product==='hidaka')return (hState.shipments||[]).find(x=>String(x.id)===String(id))||null;
+    if(product==='nemuro')return (nState.shipments||[]).find(x=>String(x.id)===String(id))||null;
+    if(product==='sanmae')return (smState.shipments||[]).find(x=>String(x.id)===String(id))||null;
+    return null;
+  }
+
+  function addTestFaxButton(product,id){
+    const s=getShipment(product,id);
+    if(!s||!window.app)return;
+    if(document.getElementById('v1648TestFaxDone'))return;
+    if(s.status==='shipped'||s.status==='cancelled')return;
+
+    const btn=document.createElement('button');
+    btn.id='v1648TestFaxDone';
+    btn.type='button';
+    btn.className='btn';
+    btn.style.cssText='margin-top:10px;background:#7a3e00;color:#fff';
+    btn.textContent='🧪 テストFAX完了（送信しない）';
+
+    const note=document.createElement('div');
+    note.id='v1648TestFaxNote';
+    note.className='note';
+    note.style.marginTop='8px';
+    note.textContent='テスト専用：実際のFAXは送信せず、本番のFAX送信完了と同じ在庫・履歴処理だけを実行します。';
+
+    const flow=document.getElementById('v161Step5Flow');
+    const actions=document.getElementById('v161Step5Actions');
+    if(actions)actions.appendChild(btn);
+    else if(flow)flow.appendChild(btn);
+    else{
+      const first=app.querySelector('section.card');
+      if(first)first.appendChild(btn);else app.appendChild(btn);
+    }
+    btn.insertAdjacentElement('afterend',note);
+
+    btn.onclick=()=>{
+      const latest=getShipment(product,id);
+      if(!latest)return alert('出荷依頼が見つかりません。');
+      if(latest.status==='cancelled')return alert('取消済みの出荷依頼です。');
+      if(latest.status==='shipped')return alert('すでにFAX完了／出荷済みです。');
+
+      const qty=(latest.lines||[]).reduce((n,l)=>n+Number(l.qty||0),0);
+      const src=latest?.source?.name||'';
+      const dst=(product==='kushiro'
+        ? (latest?.destInfo?.name||latest?.dest||'')
+        : (latest?.dest?.name||latest?.destInfo?.name||''));
+
+      if(!confirm(
+        '【テストFAX完了】\n\n'+
+        '実際のFAXは送信しません。\n'+
+        '本番のFAX送信完了と同じ後処理を実行します。\n\n'+
+        '出荷人：'+src+'\n'+
+        '出荷先：'+dst+'\n'+
+        '出荷日：'+(latest.shipDate||'')+'\n'+
+        '数量：'+qty+'\n\n'+
+        '在庫差引・入出庫履歴・出荷依頼履歴へ反映してよろしいですか？'
+      ))return;
+
+      btn.disabled=true;
+      btn.textContent='テスト完了処理中…';
+      try{
+        // If still draft, use the existing FAXBOX confirmation path first.
+        // This performs the same stock-availability validation as production.
+        if(latest.status==='draft' && typeof window.kombuApplyFaxboxInventory==='function'){
+          window.kombuApplyFaxboxInventory(product,id,'confirm',{
+            jobId:'TEST-'+Date.now()
+          });
+        }
+        if(typeof window.kombuFinalizeFaxboxShipment!=='function'){
+          throw new Error('本番FAX完了処理が見つかりません。');
+        }
+        // IMPORTANT: call the production finalizer itself; do not duplicate its inventory/history logic.
+        window.kombuFinalizeFaxboxShipment(product,id,{
+          jobId:'TEST-'+Date.now(),
+          sentAt:new Date().toISOString(),
+          testMode:true
+        });
+        alert('テストFAX完了処理が完了しました。\n実際のFAXは送信していません。\n在庫・入出庫履歴・出荷依頼履歴を確認してください。');
+        if(typeof globalThis.openGlobalShipment==='function')globalThis.openGlobalShipment(product,id);
+      }catch(err){
+        console.error('[v164.8 test fax]',err);
+        btn.disabled=false;
+        btn.textContent='🧪 テストFAX完了（送信しない）';
+        alert('テストFAX完了処理に失敗しました。\n'+String(err?.message||err));
+      }
+    };
+  }
+
+  const baseOpen=globalThis.openGlobalShipment;
+  if(typeof baseOpen==='function'){
+    globalThis.openGlobalShipment=function(product,id){
+      const r=baseOpen.apply(this,arguments);
+      setTimeout(()=>addTestFaxButton(product,id),0);
+      return r;
+    };
+  }
+
+  [
+    ['shipmentDetail','kushiro'],
+    ['hShipDetail','hidaka'],
+    ['nShipDetail','nemuro'],
+    ['smShipDetail','sanmae']
+  ].forEach(([name,product])=>{
+    const fn=globalThis[name];
+    if(typeof fn!=='function')return;
+    globalThis[name]=function(id){
+      const r=fn.apply(this,arguments);
+      setTimeout(()=>addTestFaxButton(product,id),0);
+      return r;
+    };
+  });
+
+  console.info('[KOMBU v164.8] テストFAX完了を有効化（実送信なし）');
+})();
+ /* ===== /v164.8 ===== */
