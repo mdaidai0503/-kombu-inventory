@@ -9245,3 +9245,154 @@ document.getElementById('v161ShipmentHistory').onclick=function(){
   console.info('[KOMBU v164.5] 出荷依頼履歴 月別締め・折りたたみ');
 })();
  /* ===== /v164.5 ===== */
+
+
+/* ===== v164.6 テスト準備：完全バックアップ＋安全なテスト初期化 ===== */
+(function(){
+  'use strict';
+  const PAIR_KEY='kombu_company_pairs_v162';
+
+  function downloadJson(name,obj){
+    const blob=new Blob([JSON.stringify(obj,null,2)],{type:'application/json;charset=utf-8'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob); a.download=name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  }
+  function jpStamp(){
+    const p=new Intl.DateTimeFormat('ja-JP',{
+      timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit',
+      hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false
+    }).formatToParts(new Date());
+    const o={};p.forEach(x=>{if(x.type!=='literal')o[x.type]=x.value});
+    return `${o.year}${o.month}${o.day}_${o.hour}${o.minute}${o.second}`;
+  }
+  function pairs(){
+    try{const x=JSON.parse(localStorage.getItem(PAIR_KEY)||'[]');return Array.isArray(x)?x:[]}catch(_){return []}
+  }
+  function fullBackup(){
+    const payload={
+      backupType:'KOMBU_FULL_TEST_BACKUP',
+      backupVersion:1,
+      appVersion:'v164.6',
+      exportedAt:new Date().toISOString(),
+      state:JSON.parse(JSON.stringify(state)),
+      companyPairs:pairs()
+    };
+    downloadJson(`昆布在庫管理_テスト前完全バックアップ_${jpStamp()}.json`,payload);
+    alert(
+      `完全バックアップを作成しました。\n\n`+
+      `会社マスター：${Array.isArray(state.companies)?state.companies.length:0}件\n`+
+      `出荷人×出荷先：${payload.companyPairs.length}件\n\n`+
+      `ダウンロードしたJSONファイルを安全な場所に保管してください。`
+    );
+  }
+
+  function testResetPreview(){
+    const companies=Array.isArray(state.companies)?state.companies.length:0;
+    const pairCount=pairs().length;
+    const records=Array.isArray(state.records)?state.records.length:0;
+    const shipments=Array.isArray(state.shipments)?state.shipments.length:0;
+    const pdfImports=Array.isArray(state.pdfImports)?state.pdfImports.length:0;
+    const faxbox=(()=>{try{const x=JSON.parse(localStorage.getItem('kombu-v99-fax-box')||'[]');return Array.isArray(x)?x.length:0}catch(_){return 0}})();
+
+    const ok=confirm(
+      `【テスト初期化・最終確認】\n\n`+
+      `維持するデータ\n`+
+      `・会社マスター：${companies}件\n`+
+      `・出荷人×出荷先：${pairCount}件\n`+
+      `・地区／よく使う会社設定：会社マスター内の設定を維持\n\n`+
+      `初期化するデータ\n`+
+      `・在庫／入出庫データ：${records}件\n`+
+      `・出荷依頼／出荷履歴：${shipments}件\n`+
+      `・PDF取込履歴：${pdfImports}件\n`+
+      `・FAXBOX：${faxbox}件\n`+
+      `・送り状の判定／未判定などテスト対象の保存データ\n\n`+
+      `先に「完全バックアップ」を保存したことを確認してください。\n`+
+      `本当にテスト用に初期化しますか？`
+    );
+    if(!ok)return;
+
+    const typed=prompt('誤操作防止のため「テスト初期化」と入力してください。');
+    if(typed!=='テスト初期化')return alert('初期化を中止しました。');
+
+    // Preserve master data exactly.
+    const keepCompanies=JSON.parse(JSON.stringify(Array.isArray(state.companies)?state.companies:[]));
+    const keepCoops=JSON.parse(JSON.stringify(Array.isArray(state.coops)?state.coops:[]));
+    const keepPairs=pairs();
+    const keepYear=state.activeYear;
+
+    // Clear only operational/test data.
+    state.records=[];
+    state.shipments=[];
+    state.shipmentSeq=1;
+    state.pdfImports=[];
+    state.companies=keepCompanies;
+    state.coops=keepCoops;
+    state.activeYear=keepYear;
+    localStorage.setItem(PAIR_KEY,JSON.stringify(keepPairs));
+
+    // Known operational caches / queues. Do NOT touch company master or pair key.
+    [
+      'kombu-v99-fax-box',
+      'kombu_shipment_history_month_open_v1645'
+    ].forEach(k=>localStorage.removeItem(k));
+
+    // Remove only keys whose names clearly indicate shipping-label judgement/unmatched caches.
+    const protectedKeys=new Set([PAIR_KEY,'kombu_local_only_v2']);
+    const remove=[];
+    for(let i=0;i<localStorage.length;i++){
+      const k=localStorage.key(i)||'';
+      if(protectedKeys.has(k))continue;
+      if(/(送り状|waybill|label.*(judge|match|unmatch|pending)|shipment.*(judge|match|unmatch|pending)|pdf.*(judge|match|unmatch|pending))/i.test(k))remove.push(k);
+    }
+    remove.forEach(k=>localStorage.removeItem(k));
+
+    save();
+    alert(
+      `テスト初期化が完了しました。\n\n`+
+      `会社マスター：${keepCompanies.length}件 維持\n`+
+      `出荷人×出荷先：${keepPairs.length}件 維持\n\n`+
+      `在庫・入出庫・出荷履歴・テスト対象PDF/送り状データを初期化しました。`
+    );
+    home();
+  }
+
+  function addTestTools(){
+    const app=document.getElementById('app');
+    if(!app || document.getElementById('v1646TestTools'))return;
+    // Only add to the top/home screen where backup controls already exist or the main landing is visible.
+    const backupBtn=[...document.querySelectorAll('button')].find(b=>(b.textContent||'').trim()==='バックアップ');
+    if(!backupBtn)return;
+    const box=document.createElement('section');
+    box.id='v1646TestTools';
+    box.className='card';
+    box.style.marginTop='12px';
+    box.innerHTML=`
+      <h3 style="margin-top:0">テスト準備</h3>
+      <div class="small" style="margin-bottom:10px">会社マスター・出荷人×出荷先を維持したまま、8月テスト用の準備を行います。</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" id="v1646FullBackup" type="button">完全バックアップ</button>
+        <button class="btn secondary" id="v1646TestReset" type="button">テスト初期化</button>
+      </div>`;
+    const parent=backupBtn.closest('section')?.parentElement || app;
+    parent.appendChild(box);
+    document.getElementById('v1646FullBackup').onclick=fullBackup;
+    document.getElementById('v1646TestReset').onclick=testResetPreview;
+  }
+
+  const obs=new MutationObserver(()=>{
+    clearTimeout(window.__v1646Timer);
+    window.__v1646Timer=setTimeout(addTestTools,40);
+  });
+  const start=()=>{
+    const app=document.getElementById('app');
+    if(app)obs.observe(app,{childList:true,subtree:true});
+    setTimeout(addTestTools,100);
+  };
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});
+  else start();
+
+  console.info('[KOMBU v164.6] 完全バックアップ＋安全なテスト初期化');
+})();
+ /* ===== /v164.6 ===== */
