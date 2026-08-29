@@ -686,35 +686,33 @@
       return;
     }
 
-    const sb = client();
-    if (!sb) {
-      alert('Supabaseへ接続できません。');
+    const typed = window.prompt(
+      '誤操作防止のため「未判定削除」と入力してください。'
+    );
+    if (typed !== '未判定削除') {
+      alert('削除を中止しました。');
       return;
     }
 
-    const ids = pendingItems.map(function (w) {
-      return w.id;
-    });
+    try {
+      const data = await manualLinkApi('delete-pending', {});
 
-    const result = await sb
-      .from(TABLE_NAME)
-      .delete()
-      .in('id', ids);
+      await refreshWaybills();
+      closeReviewModal();
+      openReviewModal();
 
-    if (result.error) {
-      console.error('過去の未判定削除エラー:', result.error);
       alert(
-        '過去の未判定を削除できませんでした。\n' +
-        String(result.error.message || result.error)
+        '過去の未判定だけ削除しました。\n\n' +
+        '削除件数：' + Number(data.deleted || 0) + '件\n' +
+        '出荷依頼履歴は変更していません。'
       );
-      return;
+    } catch (e) {
+      alert(
+        '過去の未判定を削除できませんでした。\n\n' +
+        String(e?.message || e)
+      );
+      throw e;
     }
-
-    await refreshWaybills();
-    closeReviewModal();
-    openReviewModal();
-
-    alert('過去の未判定 ' + pendingItems.length + '件を削除しました。');
   }
 
 
@@ -817,7 +815,7 @@
             (
               groups.pending.length
                 ? '<div style="margin-bottom:10px">' +
-                  '<button class="btn secondary" id="v159DeletePendingWaybills" ' +
+                  '<button class="btn secondary" id="v1602DeletePendingWaybills" ' +
                   'style="width:auto;padding:8px 12px">' +
                   '🧹 過去の未判定だけ削除（' + groups.pending.length + '件）' +
                   '</button>' +
@@ -840,15 +838,20 @@
     });
 
     const deletePendingButton =
-      document.getElementById('v159DeletePendingWaybills');
+      document.getElementById('v1602DeletePendingWaybills');
 
     if (deletePendingButton) {
       deletePendingButton.onclick = async function () {
+        const oldText = deletePendingButton.textContent;
         deletePendingButton.disabled = true;
+        deletePendingButton.textContent = '削除中…';
+
         try {
           await deletePendingWaybills();
-        } finally {
+        } catch (e) {
+          // エラー時はボタンを戻す。画面は閉じない。
           deletePendingButton.disabled = false;
+          deletePendingButton.textContent = oldText;
         }
       };
     }
@@ -1182,7 +1185,7 @@
   window.addEventListener('kombu:supabase-login', scheduleRefresh);
   window.addEventListener('load', scheduleRefresh);
 
-  window.KOMBU_WAYBILL_UI_VERSION = '160.0';
+  window.KOMBU_WAYBILL_UI_VERSION = '160.2';
   window.kombuWaybillInboxRefresh = refreshWaybills;
   window.kombuWaybillReviewOpen = async function () {
     await loadWaybills();
