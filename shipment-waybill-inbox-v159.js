@@ -668,50 +668,55 @@
     );
   }
 
-  async function deletePendingWaybills() {
+  async function deletePendingWaybillsV1603(buttonEl, statusEl) {
     const pendingItems = waybillCache.filter(function (w) {
       return classifyWaybill(w).key === 'pending';
     });
-
     if (!pendingItems.length) {
-      alert('削除する過去の未判定はありません。');
+      if (statusEl) statusEl.textContent = '過去の未判定は0件です。';
       return;
     }
 
     if (!window.confirm(
       '過去の未判定 ' + pendingItems.length + '件だけを削除します。\n' +
-      '出荷依頼履歴・在庫・入出庫履歴・会社マスターは削除しません。\n\n' +
+      '出荷依頼履歴・FAX済データ・在庫・入出庫履歴・会社マスターは削除しません。\n\n' +
       'よろしいですか？'
-    )) {
+    )) return;
+
+    const typed = window.prompt('確認のため「未判定削除」と入力してください。');
+    if (typed !== '未判定削除') {
+      if (statusEl) statusEl.textContent = '削除を中止しました。';
       return;
     }
 
-    const typed = window.prompt(
-      '誤操作防止のため「未判定削除」と入力してください。'
-    );
-    if (typed !== '未判定削除') {
-      alert('削除を中止しました。');
-      return;
-    }
+    const oldText = buttonEl.textContent;
+    buttonEl.disabled = true;
+    buttonEl.textContent = '削除中…';
+    if (statusEl) statusEl.textContent = '削除処理中です…';
 
     try {
       const data = await manualLinkApi('delete-pending', {});
-
       await refreshWaybills();
+
+      const remaining = waybillCache.filter(function (w) {
+        return classifyWaybill(w).key === 'pending';
+      }).length;
+
+      if (remaining !== 0) {
+        throw new Error('削除処理後も未判定が ' + remaining + '件残っています。');
+      }
+
       closeReviewModal();
       openReviewModal();
-
-      alert(
-        '過去の未判定だけ削除しました。\n\n' +
-        '削除件数：' + Number(data.deleted || 0) + '件\n' +
-        '出荷依頼履歴は変更していません。'
-      );
+      alert('過去の未判定だけを削除しました。\n現在の未判定：0件');
     } catch (e) {
-      alert(
-        '過去の未判定を削除できませんでした。\n\n' +
-        String(e?.message || e)
-      );
-      throw e;
+      console.error('[waybill pending delete]', e);
+      buttonEl.disabled = false;
+      buttonEl.textContent = oldText;
+      if (statusEl) statusEl.textContent =
+        '削除できませんでした：' + String(e?.message || e);
+      alert('削除できませんでした。\n\n' + String(e?.message || e) +
+            '\n\nボタンはそのまま残します。');
     }
   }
 
@@ -804,24 +809,24 @@
           '</div>' +
         '</details>' +
 
-        '<details style="margin-top:12px;border-top:1px solid #e5eaf0;padding-top:12px">' +
+        '<details id="v1603PendingDetails" style="margin-top:12px;border-top:1px solid #e5eaf0;padding-top:12px">' +
           '<summary style="cursor:pointer;font-weight:700;color:#627d98">' +
-            '… 過去の未判定を表示（' + groups.pending.length + '件）' +
+            '<span>… 過去の未判定を表示（' + groups.pending.length + '件）</span>' +
+            (
+              groups.pending.length
+                ? '<button type="button" id="v1603DeletePending" ' +
+                  'style="margin-left:12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;' +
+                  'padding:5px 9px;font-weight:700;cursor:pointer;color:#334e68">' +
+                  '🧹 未判定だけ削除（' + groups.pending.length + '件）' +
+                  '</button>'
+                : ''
+            ) +
           '</summary>' +
+          '<div id="v1603PendingDeleteStatus" style="min-height:18px;margin:6px 0;font-size:12px;font-weight:700;color:#b91c1c"></div>' +
           '<div style="margin-top:10px">' +
             '<div style="font-size:12px;color:#627d98;margin-bottom:8px">' +
               '過去取込分です。通常運用では開く必要はありません。' +
             '</div>' +
-            (
-              groups.pending.length
-                ? '<div style="margin-bottom:10px">' +
-                  '<button class="btn secondary" id="v1602DeletePendingWaybills" ' +
-                  'style="width:auto;padding:8px 12px">' +
-                  '🧹 過去の未判定だけ削除（' + groups.pending.length + '件）' +
-                  '</button>' +
-                  '</div>'
-                : ''
-            ) +
             tableHtml(groups.pending, '未判定はありません。') +
           '</div>' +
         '</details>' +
@@ -837,22 +842,14 @@
       if (e.target === wrap) closeReviewModal();
     });
 
-    const deletePendingButton =
-      document.getElementById('v1602DeletePendingWaybills');
-
-    if (deletePendingButton) {
-      deletePendingButton.onclick = async function () {
-        const oldText = deletePendingButton.textContent;
-        deletePendingButton.disabled = true;
-        deletePendingButton.textContent = '削除中…';
-
-        try {
-          await deletePendingWaybills();
-        } catch (e) {
-          // エラー時はボタンを戻す。画面は閉じない。
-          deletePendingButton.disabled = false;
-          deletePendingButton.textContent = oldText;
-        }
+    const pendingDeleteBtn = document.getElementById('v1603DeletePending');
+    const pendingDeleteStatus = document.getElementById('v1603PendingDeleteStatus');
+    if (pendingDeleteBtn) {
+      pendingDeleteBtn.onclick = async function (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        await deletePendingWaybillsV1603(pendingDeleteBtn, pendingDeleteStatus);
+        return false;
       };
     }
 
@@ -1185,7 +1182,7 @@
   window.addEventListener('kombu:supabase-login', scheduleRefresh);
   window.addEventListener('load', scheduleRefresh);
 
-  window.KOMBU_WAYBILL_UI_VERSION = '160.2';
+  window.KOMBU_WAYBILL_UI_VERSION = '160.3';
   window.kombuWaybillInboxRefresh = refreshWaybills;
   window.kombuWaybillReviewOpen = async function () {
     await loadWaybills();
