@@ -9052,3 +9052,96 @@ document.getElementById('v161ShipmentHistory').onclick=function(){
   console.info('[KOMBU v2.29] 会社マスター同時取込＋よく使う出荷人/出荷先＋地区/組合せ候補');
 })();
 /* ===== /2026-08-29 company import only ===== */
+
+
+/* ===== v164.1 新規出荷依頼 初期状態固定（その他仕様変更なし） ===== */
+(function(){
+  function tokyoToday(){
+    try{
+      const parts = new Intl.DateTimeFormat('en-CA',{
+        timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'
+      }).formatToParts(new Date());
+      const o={}; parts.forEach(p=>{ if(p.type!=='literal') o[p.type]=p.value; });
+      return `${o.year}-${o.month}-${o.day}`;
+    }catch(e){
+      const d=new Date(Date.now()+9*60*60*1000);
+      return d.toISOString().slice(0,10);
+    }
+  }
+
+  function setSelectByTextOrValue(el, wanted){
+    if(!el) return;
+    const opts=[...el.options];
+    const hit=opts.find(o=>o.value===wanted || (o.textContent||'').trim()===wanted);
+    if(hit) el.value=hit.value;
+  }
+
+  function applyNewShipmentDefaults(){
+    // 新規画面だけに限定。編集画面の保存済み値は変更しない。
+    const app=document.getElementById('app');
+    if(!app) return;
+
+    const date =
+      app.querySelector('#requestDate') ||
+      app.querySelector('#shipRequestDate') ||
+      app.querySelector('input[name="requestDate"]') ||
+      [...app.querySelectorAll('input[type="date"]')].find(x=>{
+        const label=x.closest('label,.field,.form-group')?.textContent||'';
+        return label.includes('依頼日');
+      });
+    if(!date) return; // 新規出荷依頼フォームでない場合は何もしない
+
+    // 編集画面らしい場合は触らない
+    const editing = !!(
+      app.querySelector('[data-editing="true"]') ||
+      app.querySelector('#shipmentEditId')?.value ||
+      app.querySelector('input[name="shipmentId"]')?.value
+    );
+    if(editing) return;
+
+    date.value=tokyoToday();
+    date.defaultValue=date.value;
+
+    const ids = {
+      sourceFavorite:['v229SourceFavorite','sourceFavorite'],
+      sourceRegion:['v229SourceRegion','sourceRegion'],
+      sourceSelect:['v229SourceSelect','sourceSelect'],
+      sourceName:['v229SourceName','sourceName'],
+      sourcePostal:['v229SourcePostal','sourcePostal'],
+      sourceAddress:['v229SourceAddress','sourceAddress'],
+      sourcePhone:['v229SourcePhone','sourcePhone'],
+      destFavorite:['v229DestFavorite','destFavorite'],
+      destRegion:['v229DestRegion','destRegion'],
+      destSelect:['v229DestSelect','destSelect'],
+      destName:['v229DestName','destName'],
+      destPostal:['v229DestPostal','destPostal'],
+      destAddress:['v229DestAddress','destAddress'],
+      destPhone:['v229DestPhone','destPhone']
+    };
+    const get=(keys)=>keys.map(id=>document.getElementById(id)).find(Boolean);
+
+    setSelectByTextOrValue(get(ids.sourceFavorite),'選択してください');
+    setSelectByTextOrValue(get(ids.sourceRegion),'すべて');
+    setSelectByTextOrValue(get(ids.sourceSelect),'直接入力');
+    setSelectByTextOrValue(get(ids.destFavorite),'選択してください');
+    setSelectByTextOrValue(get(ids.destRegion),'すべて');
+    setSelectByTextOrValue(get(ids.destSelect),'直接入力');
+
+    [ids.sourceName,ids.sourcePostal,ids.sourceAddress,ids.sourcePhone,
+     ids.destName,ids.destPostal,ids.destAddress,ids.destPhone]
+      .map(get).filter(Boolean).forEach(el=>{ el.value=''; el.defaultValue=''; });
+  }
+
+  // 既存の画面描画処理が終わった後に一度だけ初期値を確定
+  const obs=new MutationObserver(()=>{
+    clearTimeout(window.__v1641NewShipTimer);
+    window.__v1641NewShipTimer=setTimeout(applyNewShipmentDefaults,0);
+  });
+  const start=()=>{
+    const app=document.getElementById('app');
+    if(app) obs.observe(app,{childList:true,subtree:true});
+  };
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',start,{once:true});
+  else start();
+})();
+ /* ===== /v164.1 ===== */
