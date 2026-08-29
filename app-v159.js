@@ -9079,3 +9079,169 @@ document.getElementById('v161ShipmentHistory').onclick=function(){
 /* ===== /2026-08-29 company import only ===== */
 
 
+
+
+/* ===== v164.5 出荷依頼履歴 月別締め・折りたたみ ===== */
+(function(){
+  const MONTH_OPEN_KEY='kombu_shipment_history_month_open_v1645';
+
+  function monthKeyFromShipment(s){
+    const raw = s?.shipDate || s?.createdAt || s?.updatedAt || '';
+    if(!raw) return '';
+    const d = String(raw).slice(0,10).replace(/\//g,'-');
+    const m = d.match(/^(\d{4})-(\d{2})/);
+    return m ? `${m[1]}-${m[2]}` : '';
+  }
+  function currentMonthKey(){
+    const parts=new Intl.DateTimeFormat('en-CA',{
+      timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit'
+    }).formatToParts(new Date());
+    const o={}; parts.forEach(p=>{if(p.type!=='literal')o[p.type]=p.value});
+    return `${o.year}-${o.month}`;
+  }
+  function monthLabel(k){
+    const m=String(k||'').match(/^(\d{4})-(\d{2})$/);
+    return m?`${Number(m[1])}年${Number(m[2])}月分`:k;
+  }
+  function loadOpen(){
+    try{const x=JSON.parse(localStorage.getItem(MONTH_OPEN_KEY)||'{}');return x&&typeof x==='object'?x:{}}catch(_){return {}}
+  }
+  function saveOpen(x){localStorage.setItem(MONTH_OPEN_KEY,JSON.stringify(x||{}))}
+
+  function getAllHistoryRows(){
+    try{
+      if(typeof globalShipmentRows==='function'){
+        const rows=globalShipmentRows();
+        return Array.isArray(rows)?rows:[];
+      }
+    }catch(e){console.warn('[v164.5] globalShipmentRows failed',e)}
+    return [];
+  }
+
+  function renderMonthlyArchive(){
+    const tbody=document.getElementById('gShipTbody') || document.querySelector('#gShipTable tbody');
+    if(!tbody) return false;
+
+    const rows=getAllHistoryRows();
+    if(!rows.length) return false;
+
+    const nowMonth=currentMonthKey();
+    const current=[];
+    const archives=new Map();
+
+    rows.forEach(r=>{
+      const s=r.shipment||r;
+      const mk=monthKeyFromShipment(s);
+      if(!mk || mk===nowMonth) current.push(r);
+      else{
+        if(!archives.has(mk))archives.set(mk,[]);
+        archives.get(mk).push(r);
+      }
+    });
+
+    if(!archives.size) return false;
+
+    const open=loadOpen();
+    const monthKeys=[...archives.keys()].sort((a,b)=>b.localeCompare(a));
+
+    // Current month rows are already rendered by existing screen.
+    // Append archive controls to the end only.
+    monthKeys.forEach(mk=>{
+      const items=archives.get(mk);
+      const tr=document.createElement('tr');
+      tr.className='v1645-month-row';
+      tr.innerHTML=`<td colspan="12" style="padding:0">
+        <button type="button" data-v1645-month="${mk}" style="width:100%;text-align:left;padding:12px 14px;border:0;background:#eef4fb;font-weight:900;cursor:pointer">
+          <span data-v1645-arrow>${open[mk]?'▼':'▶'}</span>
+          ${monthLabel(mk)}（${items.length}件）
+        </button>
+      </td>`;
+      tbody.appendChild(tr);
+
+      const detail=document.createElement('tr');
+      detail.className='v1645-month-detail';
+      detail.dataset.month=mk;
+      detail.style.display=open[mk]?'table-row':'none';
+      detail.innerHTML=`<td colspan="12" style="padding:0;background:#fafcff">
+        <div style="padding:10px 12px">
+          <table style="width:100%;min-width:0">
+            <thead><tr>
+              <th>状態</th><th>出荷人</th><th>出荷先</th><th>出荷日</th><th>希望着日</th><th>数量</th><th>PDF</th><th>操作</th>
+            </tr></thead>
+            <tbody>
+              ${items.map(r=>{
+                const s=r.shipment||r;
+                const product=r.product||'';
+                const status=(typeof shipmentStatusJa==='function'?shipmentStatusJa(s.status):s.status||'');
+                let src='',dst='';
+                try{
+                  src=product==='kushiro'?shipmentSource(s).name:(s?.source?.name||'');
+                  dst=product==='kushiro'?shipmentDest(s).name:(s?.dest?.name||s?.destInfo?.name||'');
+                }catch(_){}
+                const qty=(s?.lines||[]).reduce((a,l)=>a+Number(l.qty||0),0);
+                const openFn=`window.openGlobalShipment&&window.openGlobalShipment('${String(product).replace(/'/g,"\\'")}','${String(s.id||'').replace(/'/g,"\\'")}')`;
+                return `<tr>
+                  <td>${status}</td><td>${src}</td><td>${dst}</td>
+                  <td>${s.shipDate||''}</td><td>${s.arrivalDate||''}</td><td>${qty}</td>
+                  <td>${s.id?`<button class="mini" type="button" onclick="${openFn}">PDF/詳細</button>`:''}</td>
+                  <td>${s.id?`<button class="mini" type="button" onclick="${openFn}">開く</button>`:''}</td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </td>`;
+      tbody.appendChild(detail);
+
+      const btn=tr.querySelector('[data-v1645-month]');
+      btn.onclick=()=>{
+        const show=detail.style.display==='none';
+        detail.style.display=show?'table-row':'none';
+        open[mk]=show;
+        saveOpen(open);
+        btn.querySelector('[data-v1645-arrow]').textContent=show?'▼':'▶';
+      };
+    });
+    return true;
+  }
+
+  function stripPastMonthRowsFromMain(){
+    const tbody=document.getElementById('gShipTbody') || document.querySelector('#gShipTable tbody');
+    if(!tbody) return;
+    const nowMonth=currentMonthKey();
+    [...tbody.querySelectorAll('tr')].forEach(tr=>{
+      if(tr.classList.contains('v1645-month-row')||tr.classList.contains('v1645-month-detail'))return;
+      const txt=tr.textContent||'';
+      const m=txt.match(/(\d{4})[\/-](\d{2})[\/-]\d{2}/);
+      if(m){
+        const mk=`${m[1]}-${m[2]}`;
+        if(mk!==nowMonth)tr.remove();
+      }
+    });
+  }
+
+  function enhanceHistory(){
+    const hasHistory =
+      document.getElementById('gShipTbody') ||
+      document.querySelector('#gShipTable tbody') ||
+      document.getElementById('gShipSearch');
+    if(!hasHistory) return;
+    stripPastMonthRowsFromMain();
+    renderMonthlyArchive();
+  }
+
+  const obs=new MutationObserver(()=>{
+    clearTimeout(window.__v1645HistTimer);
+    window.__v1645HistTimer=setTimeout(enhanceHistory,30);
+  });
+  const start=()=>{
+    const app=document.getElementById('app');
+    if(app)obs.observe(app,{childList:true,subtree:true});
+    setTimeout(enhanceHistory,100);
+  };
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});
+  else start();
+
+  console.info('[KOMBU v164.5] 出荷依頼履歴 月別締め・折りたたみ');
+})();
+ /* ===== /v164.5 ===== */
