@@ -28,41 +28,23 @@ state.records=Array.isArray(state.records)?state.records:[];
 state.activeYear=YEARS.includes(state.activeYear)?state.activeYear:DEFAULT_YEAR;
 state.records=state.records.map(r=>({...r,year:YEARS.includes(r.year)?r.year:DEFAULT_YEAR}));
 state.pdfImports=Array.isArray(state.pdfImports)?state.pdfImports:[];
-// v162: 会社マスター拡張項目（郵便番号・地区・用途など）を保持する。
-// Supabase互換キャッシュの companyMaster しかない場合は companies へ変換して引き継ぐ。
-if(!Array.isArray(state.companies)||!state.companies.length){
- const cm=Array.isArray(state.companyMaster)?state.companyMaster:[];
- state.companies=cm.map((c,i)=>({
-  code:String(c.company_code||c.code||''),
-  name:String(c.company_name||c.name||'').trim(),
-  postal:String(c.postal_code||c.postal||''),
-  address:String(c.address||''),
-  phone:String(c.tel||c.phone||''),
-  region:String(c.region||''),
-  toyamaRegion:String(c.toyama_region||c.toyamaRegion||''),
-  useSource:c.use_source!==undefined?!!c.use_source:(c.useSource!==undefined?!!c.useSource:true),
-  useDestination:c.use_destination!==undefined?!!c.use_destination:(c.useDestination!==undefined?!!c.useDestination:true),
-  favorite:c.favorite!==undefined?!!c.favorite:false,
-  sortOrder:Number(c.sort_order||c.sortOrder||i+1),
-  note:String(c.note||''),
-  active:c.active!==false
- })).filter(c=>c.name);
-}
-if(!state.companies.some(c=>c&&c.name==='㈱浜中運輸'))state.companies.unshift({name:'㈱浜中運輸',postal:'',address:'',phone:'',region:'',toyamaRegion:'',useSource:true,useDestination:false,favorite:false,sortOrder:0,note:'',active:true});
-state.companies=state.companies.filter(c=>c&&String(c.name||'').trim()).map((c,i)=>({
- code:String(c.code||c.company_code||''),
+state.companies=Array.isArray(state.companies)?state.companies:[];
+if(!state.companies.some(c=>c&&c.name==='㈱浜中運輸'))state.companies.unshift({name:'㈱浜中運輸',postal:'',address:'',phone:'',region:'',toyamaRegion:'',useSource:true,useDestination:false,favorite:true,sortOrder:1,active:true});
+// v162.4: 会社マスター拡張項目を保持（v161.3の他機能は変更しない）
+state.companies=state.companies.filter(c=>c&&String(c.name||c.company_name||'').trim()).map((c,i)=>({
  name:String(c.name||c.company_name||'').trim(),
+ code:String(c.code||c.companyCode||''),
  postal:String(c.postal||c.postal_code||''),
  address:String(c.address||''),
  phone:String(c.phone||c.tel||''),
  region:String(c.region||''),
  toyamaRegion:String(c.toyamaRegion||c.toyama_region||''),
- useSource:c.useSource!==undefined?!!c.useSource:(c.use_source!==undefined?!!c.use_source:true),
- useDestination:c.useDestination!==undefined?!!c.useDestination:(c.use_destination!==undefined?!!c.use_destination:true),
- favorite:c.favorite===true||c.favorite==='はい',
+ useSource:c.useSource===undefined?true:c.useSource!==false,
+ useDestination:c.useDestination===undefined?true:c.useDestination!==false,
+ favorite:c.favorite===true,
  sortOrder:Number(c.sortOrder||c.sort_order||i+1),
  note:String(c.note||''),
- active:c.active!==false
+ active:c.active===undefined?true:c.active!==false
 }));
 const DELETED_GROUPS=new Set(["コケ","特長・特特"]);
 state.records=state.records.filter(r=>!DELETED_GROUPS.has(r.group));
@@ -441,7 +423,7 @@ function shipmentDetail(id){
  const statusName={draft:'下書き',confirmed:'確定・在庫反映済',shipped:'出荷済',cancelled:'取消'}[s.status]||s.status;
  const totalQ=s.lines.reduce((a,l)=>a+Number(l.qty||0),0),src=shipmentSource(s),dst=shipmentDest(s);
  const shipmentYears=[...new Set(s.lines.map(l=>l.year||s.baseYear||DEFAULT_YEAR))].sort((a,b)=>YEARS.indexOf(a)-YEARS.indexOf(b));
- app.innerHTML=`<section class="card"><div class="row"><h2>📦 出荷指示書 ${esc(s.id)}</h2><span class="pill">${statusName}</span></div><div class="subgrid"><div class="card" style="margin:0;padding:10px;background:#f8fafc"><b>出荷元</b><br>${esc(src.name)}<br><span class="small">${esc(src.address||'')} ${src.phone?'／ TEL '+esc(src.phone):''}</span></div><div class="card" style="margin:0;padding:10px;background:#f8fafc"><b>出荷先</b><br>${esc(dst.name)}<br><span class="small">${esc(dst.address||'')} ${dst.phone?'／ TEL '+esc(dst.phone):''}</span></div></div><p><b>出荷日：</b>${esc(s.shipDate||'')}　　<b>希望着日：</b>${esc(s.arrivalDate||'未指定')}</p><p><b>生産年度：</b>${esc(shipmentYears.map(y=>y+'年産').join('・'))}　　<b>合計：</b>${fmt(totalQ)}</p><div class="tablewrap"><table style="min-width:900px"><tr><th>生産年度</th><th>漁協</th><th>季節</th><th>大分類</th><th>細分類</th><th>数量</th><th>備考</th></tr>${s.lines.map(l=>`<tr><td>${esc(l.year||DEFAULT_YEAR)}年産</td><td>${esc(l.coop)}</td><td>${esc(l.season)}</td><td>${esc(l.group)}</td><td>${esc(l.item)}</td><td>${fmt(l.qty)}</td><td>${esc(l.memo||'')}</td></tr>`).join('')}</table></div><p class="muted">備考：${esc(s.memo||'')}</p><div class="note">下書きでは在庫は変わりません。「出荷指示を確定して在庫反映」を押すと在庫表から即時差し引き、取消時は自動で在庫へ戻します。出荷済みにすると入出庫履歴へ正式な出庫記録を作成します。</div><div class="toolbar v161-kushiro-detail-toolbar"><button class="btn v161-proxy-btn" id="pdf" type="button" aria-hidden="true" tabindex="-1">📄 PDF・FAX用</button>${s.status==='draft'?'<button class="btn" id="confirmShipmentBtn">出荷指示を確定して在庫反映</button>':''}${s.status==='confirmed'?'<button class="btn v161-proxy-btn" id="shippedShipmentBtn" type="button" aria-hidden="true" tabindex="-1">出荷済にする</button>':''}${s.status==='draft'?'<button class="btn secondary" id="editShipmentBtn">修正</button>':''}${s.status!=='shipped'&&s.status!=='cancelled'?'<button class="btn danger" id="cancelShipmentBtn">取消</button>':''}<button class="btn secondary v161-proxy-btn" id="backShipmentBtn" type="button" aria-hidden="true" tabindex="-1">一覧へ</button></div></section>`;
+ app.innerHTML=`<section class="card"><div class="row"><h2>📦 出荷指示書 ${esc(s.id)}</h2><span class="pill">${statusName}</span></div><div class="subgrid"><div class="card" style="margin:0;padding:10px;background:#f8fafc"><b>出荷元</b><br>${esc(src.name)}<br><span class="small">${esc(src.address||'')} ${src.phone?'／ TEL '+esc(src.phone):''}</span></div><div class="card" style="margin:0;padding:10px;background:#f8fafc"><b>出荷先</b><br>${esc(dst.name)}<br><span class="small">${esc(dst.address||'')} ${dst.phone?'／ TEL '+esc(dst.phone):''}</span></div></div><p><b>出荷日：</b>${esc(s.shipDate||'')}　　<b>希望着日：</b>${esc(s.arrivalDate||'未指定')}</p><p><b>生産年度：</b>${esc(shipmentYears.map(y=>y+'年産').join('・'))}　　<b>合計：</b>${fmt(totalQ)}</p><div class="tablewrap"><table style="min-width:900px"><tr><th>生産年度</th><th>漁協</th><th>季節</th><th>大分類</th><th>細分類</th><th>数量</th><th>備考</th></tr>${s.lines.map(l=>`<tr><td>${esc(l.year||DEFAULT_YEAR)}年産</td><td>${esc(l.coop)}</td><td>${esc(l.season)}</td><td>${esc(l.group)}</td><td>${esc(l.item)}</td><td>${fmt(l.qty)}</td><td>${esc(l.memo||'')}</td></tr>`).join('')}</table></div><p class="muted">備考：${esc(s.memo||'')}</p><div class="note">下書きでは在庫は変わりません。「出荷指示を確定して在庫反映」を押すと在庫表から即時差し引き、取消時は自動で在庫へ戻します。出荷済みにすると入出庫履歴へ正式な出庫記録を作成します。</div><div class="toolbar"><button class="btn" id="pdf">📄 PDF・FAX用</button>${s.status==='draft'?'<button class="btn" id="confirmShipmentBtn">出荷指示を確定して在庫反映</button>':''}${s.status==='confirmed'?'<button class="btn" id="shippedShipmentBtn">出荷済にする</button>':''}${s.status==='draft'?'<button class="btn secondary" id="editShipmentBtn">修正</button>':''}${s.status!=='shipped'&&s.status!=='cancelled'?'<button class="btn danger" id="cancelShipmentBtn">取消</button>':''}<button class="btn secondary" id="backShipmentBtn">一覧へ</button></div></section>`;
  const pdfBtn=document.getElementById('pdf');if(pdfBtn)pdfBtn.onclick=()=>openShipmentPdfDirect(s.id);
 if(s.status==='draft'){
   const confirmBtn=document.getElementById('confirmShipmentBtn');
@@ -664,9 +646,9 @@ function hLogs(){const a=hState.records.slice().reverse();app.innerHTML=`<sectio
 function hShipId(){return 'H'+String(hState.shipmentSeq++).padStart(5,'0')}
 function hShipments(){app.innerHTML=`<section class="card"><div class="row"><h2>日高昆布 出荷指示</h2><button class="mini" id="hnew">＋新規</button></div><div class="tablewrap"><table><tr><th>番号</th><th>出荷元</th><th>出荷先</th><th>出荷日</th><th>数量</th><th>状態</th><th></th></tr>${hState.shipments.slice().reverse().map(s=>`<tr><td>${s.id}</td><td>${esc(s.source?.name||'')}</td><td>${esc(s.dest?.name||'')}</td><td>${s.shipDate||''}</td><td>${fmt((s.lines||[]).reduce((a,l)=>a+Number(l.qty||0),0))}</td><td>${s.status}</td><td><button class="mini" data-hs="${s.id}">開く</button></td></tr>`).join('')}</table></div><button class="btn secondary" id="hsb">戻る</button></section>`;hnew.onclick=()=>hShipForm();app.querySelectorAll('[data-hs]').forEach(b=>b.onclick=()=>hShipDetail(b.dataset.hs));hsb.onclick=hHome}
 function hShipForm(id=null){const s=id?hState.shipments.find(x=>x.id===id):null;let lines=s?.lines?.map(x=>({...x}))||[];app.innerHTML=`<section class="card"><h2>日高昆布 ${s?'出荷指示修正':'新規出荷指示'}</h2><div class="form"><label>出荷元 会社名<input id="hsrc" value="${esc(s?.source?.name||'㈱浜中運輸')}"></label><label>出荷元 住所<input id="hsrca" value="${esc(s?.source?.address||'')}"></label><label>出荷元 電話<input id="hsrcp" value="${esc(s?.source?.phone||'')}"></label><label>出荷先 会社名<input id="hdst" value="${esc(s?.dest?.name||'')}"></label><label>出荷先 住所<input id="hdsta" value="${esc(s?.dest?.address||'')}"></label><label>出荷先 電話<input id="hdstp" value="${esc(s?.dest?.phone||'')}"></label><div class="subgrid"><label>出荷日<input id="hsd" type="date" value="${s?.shipDate||today()}"></label><label>希望着日<input id="had" type="date" value="${s?.arrivalDate||''}"></label></div><div id="hsl"></div><button class="btn secondary" id="hala">＋明細追加</button><button class="btn" id="hssv">保存</button><button class="btn secondary" id="hsfb">戻る</button></div></section>`;function rend(){hsl.innerHTML=lines.map((l,i)=>`<div class="card" style="background:#f8fafc"><label>年度<select data-hi="${i}" data-hf="year">${hYearOptions(l.year)}</select></label><label>産地<select data-hi="${i}" data-hf="location">${H_LOCATIONS.map(x=>`<option ${x===l.location?'selected':''}>${x}</option>`).join('')}</select></label><label>区分・等級<select data-hi="${i}" data-hf="sg">${hGradeOptions(l.section,l.grade)}</select></label><label>数量<input type="number" value="${esc(l.qty||'')}" data-hi="${i}" data-hf="qty"></label><button class="mini danger" data-hr="${i}">削除</button></div>`).join('');hsl.querySelectorAll('[data-hf]').forEach(e=>e.onchange=()=>{const i=+e.dataset.hi;if(e.dataset.hf==='sg'){[lines[i].section,lines[i].grade]=e.value.split('|')}else lines[i][e.dataset.hf]=e.value});hsl.querySelectorAll('[data-hr]').forEach(e=>e.onclick=()=>{lines.splice(+e.dataset.hr,1);rend()})}hala.onclick=()=>{lines.push({year:hState.activeYear,location:H_LOCATIONS[0],section:'走り',grade:'1等',qty:''});rend()};hssv.onclick=()=>{if(!hdst.value.trim()||!lines.length)return alert('出荷先と明細を入力してください。');for(const l of lines){l.qty=Number(l.qty);if(!l.qty||l.qty>hAvail(l.year,l.location,l.section,l.grade,s?.id))return alert(`${l.location} ${l.section} ${l.grade} の在庫が不足しています。`)}const o=s||{id:hShipId(),status:'draft',createdAt:new Date().toISOString()};Object.assign(o,{source:{name:hsrc.value,address:hsrca.value,phone:hsrcp.value},dest:{name:hdst.value,address:hdsta.value,phone:hdstp.value},shipDate:hsd.value,arrivalDate:had.value,lines});if(!s)hState.shipments.push(o);hSave();hShipDetail(o.id)};hsfb.onclick=hShipments;rend()}
-function hShipDetail(id){const s=hState.shipments.find(x=>x.id===id);if(!s)return hShipments();app.innerHTML=`<section class="card"><div class="row"><h2>日高昆布 出荷指示 ${s.id}</h2><span class="pill">${s.status}</span></div><p><b>出荷先：</b>${esc(s.dest?.name||'')}　<b>出荷元：</b>${esc(s.source?.name||'')}</p><p><b>出荷日：</b>${s.shipDate||''}　<b>合計：</b>${fmt((s.lines||[]).reduce((a,l)=>a+Number(l.qty||0),0))}</p><div class="toolbar v161-detail-toolbar v161-hidaka-detail-toolbar"><button class="btn v161-proxy-btn" id="hpdfs" type="button" aria-hidden="true" tabindex="-1">PDF・FAX用</button>${s.status==='draft'?'<button class="btn" id="hconf">確定・在庫反映</button><button class="btn secondary" id="hedit">修正</button>':''}${s.status==='confirmed'?'<button class="btn v161-proxy-btn" id="hshipped" type="button" aria-hidden="true" tabindex="-1">出荷済</button>':''}
+function hShipDetail(id){const s=hState.shipments.find(x=>x.id===id);if(!s)return hShipments();app.innerHTML=`<section class="card"><div class="row"><h2>日高昆布 出荷指示 ${s.id}</h2><span class="pill">${s.status}</span></div><p><b>出荷先：</b>${esc(s.dest?.name||'')}　<b>出荷元：</b>${esc(s.source?.name||'')}</p><p><b>出荷日：</b>${s.shipDate||''}　<b>合計：</b>${fmt((s.lines||[]).reduce((a,l)=>a+Number(l.qty||0),0))}</p><div class="toolbar"><button class="btn" id="hpdfs">PDF・FAX用</button>${s.status==='draft'?'<button class="btn" id="hconf">確定・在庫反映</button><button class="btn secondary" id="hedit">修正</button>':''}${s.status==='confirmed'?'<button class="btn" id="hshipped">出荷済</button>':''}
 ${s.status!=='shipped'&&s.status!=='cancelled'?'<button class="btn danger" id="hcancel">取消</button>':''}
-<button class="btn secondary v161-proxy-btn" id="hback" type="button" aria-hidden="true" tabindex="-1">一覧へ</button></div></section>`;const pdf=document.getElementById('hpdfs');if(pdf)pdf.onclick=()=>hOpenShipPdf(s);if(s.status==='draft'){const c=document.getElementById('hconf');if(c)c.onclick=()=>{for(const l of s.lines)if(Number(l.qty)>hAvail(l.year,l.location,l.section,l.grade,s.id))return alert('在庫不足があります。');s.status='confirmed';s.confirmedAt=new Date().toISOString();hSave();alert('出荷指示を確定し、在庫表へ反映しました。');hShipDetail(id)};const e=document.getElementById('hedit');if(e)e.onclick=()=>v114UnifiedShipmentForm('hidaka',id)}if(s.status==='confirmed'){
+<button class="btn secondary" id="hback">一覧へ</button></div></section>`;const pdf=document.getElementById('hpdfs');if(pdf)pdf.onclick=()=>hOpenShipPdf(s);if(s.status==='draft'){const c=document.getElementById('hconf');if(c)c.onclick=()=>{for(const l of s.lines)if(Number(l.qty)>hAvail(l.year,l.location,l.section,l.grade,s.id))return alert('在庫不足があります。');s.status='confirmed';s.confirmedAt=new Date().toISOString();hSave();alert('出荷指示を確定し、在庫表へ反映しました。');hShipDetail(id)};const e=document.getElementById('hedit');if(e)e.onclick=()=>v114UnifiedShipmentForm('hidaka',id)}if(s.status==='confirmed'){
   const sh=document.getElementById('hshipped');
 
   if(sh)sh.onclick=()=>{
@@ -785,9 +767,9 @@ function nLogs(){const a=nState.records.slice().reverse();app.innerHTML=`<sectio
 function nShipId(){return 'N'+String(nState.shipmentSeq++).padStart(5,'0')}
 function nShipments(){app.innerHTML=`<section class="card"><div class="row"><h2>根室産昆布 出荷指示</h2><button class="mini" id="nnew">＋新規</button></div><div class="tablewrap"><table><tr><th>番号</th><th>出荷元</th><th>出荷先</th><th>出荷日</th><th>数量</th><th>状態</th><th></th></tr>${nState.shipments.slice().reverse().map(s=>`<tr><td>${s.id}</td><td>${esc(s.source?.name||'')}</td><td>${esc(s.dest?.name||'')}</td><td>${s.shipDate||''}</td><td>${fmt((s.lines||[]).reduce((a,l)=>a+Number(l.qty||0),0))}</td><td>${s.status}</td><td><button class="mini" data-ns="${s.id}">開く</button></td></tr>`).join('')}</table></div><button class="btn secondary" id="nsb">戻る</button></section>`;nnew.onclick=()=>nShipForm();app.querySelectorAll('[data-ns]').forEach(b=>b.onclick=()=>nShipDetail(b.dataset.ns));nsb.onclick=nHome}
 function nShipForm(id=null){const s=id?nState.shipments.find(x=>x.id===id):null;let lines=s?.lines?.map(x=>({...x}))||[];app.innerHTML=`<section class="card"><h2>根室産昆布 ${s?'出荷指示修正':'新規出荷指示'}</h2><div class="form"><label>出荷元 会社名<input id="nsrc" value="${esc(s?.source?.name||'㈱浜中運輸')}"></label><label>出荷元 住所<input id="nsrca" value="${esc(s?.source?.address||'')}"></label><label>出荷元 電話<input id="nsrcp" value="${esc(s?.source?.phone||'')}"></label><label>出荷先 会社名<input id="ndst" value="${esc(s?.dest?.name||'')}"></label><label>出荷先 住所<input id="ndsta" value="${esc(s?.dest?.address||'')}"></label><label>出荷先 電話<input id="ndstp" value="${esc(s?.dest?.phone||'')}"></label><div class="subgrid"><label>出荷日<input id="nsd" type="date" value="${s?.shipDate||today()}"></label><label>希望着日<input id="nad" type="date" value="${s?.arrivalDate||''}"></label></div><div id="nsl"></div><button class="btn secondary" id="nala">＋明細追加</button><button class="btn" id="nssv">保存</button><button class="btn secondary" id="nsfb">戻る</button></div></section>`;function rend(){nsl.innerHTML=lines.map((l,i)=>`<div class="card" style="background:#f8fafc"><label>年度<select data-ni="${i}" data-nf="year">${nYearOptions(l.year)}</select></label><label>漁協<select data-ni="${i}" data-nf="coop">${N_COOPS.map(x=>`<option ${x===l.coop?'selected':''}>${x}</option>`).join('')}</select></label><label>区分<select data-ni="${i}" data-nf="season">${N_SEASONS.map(x=>`<option ${x===l.season?'selected':''}>${x}</option>`).join('')}</select></label><label>分類<select data-ni="${i}" data-nf="gi">${nItemOptions(l.group,l.item)}</select></label><label>数量<input type="number" value="${esc(l.qty||'')}" data-ni="${i}" data-nf="qty"></label><button class="mini danger" data-nr="${i}">削除</button></div>`).join('');nsl.querySelectorAll('[data-nf]').forEach(e=>e.onchange=()=>{const i=+e.dataset.ni;if(e.dataset.nf==='gi'){[lines[i].group,lines[i].item]=e.value.split('|')}else lines[i][e.dataset.nf]=e.value});nsl.querySelectorAll('[data-nr]').forEach(e=>e.onclick=()=>{lines.splice(+e.dataset.nr,1);rend()})}nala.onclick=()=>{lines.push({year:nState.activeYear,coop:N_COOPS[0],season:'夏',group:N_GROUPS[0].name,item:N_GROUPS[0].items[0],qty:''});rend()};nssv.onclick=()=>{if(!ndst.value.trim()||!lines.length)return alert('出荷先と明細を入力してください。');for(const l of lines){l.qty=Number(l.qty);if(!l.qty||l.qty>nAvail(l.year,l.coop,l.season,l.group,l.item,s?.id))return alert(`${l.coop} ${l.season} ${l.group} ${l.item} の在庫が不足しています。`)}const o=s||{id:nShipId(),status:'draft',createdAt:new Date().toISOString()};Object.assign(o,{source:{name:nsrc.value,address:nsrca.value,phone:nsrcp.value},dest:{name:ndst.value,address:ndsta.value,phone:ndstp.value},shipDate:nsd.value,arrivalDate:nad.value,lines});if(!s)nState.shipments.push(o);nSave();nShipDetail(o.id)};nsfb.onclick=nShipments;rend()}
-function nShipDetail(id){const s=nState.shipments.find(x=>x.id===id);if(!s)return nShipments();app.innerHTML=`<section class="card"><div class="row"><h2>根室産昆布 出荷指示 ${s.id}</h2><span class="pill">${s.status}</span></div><p><b>出荷先：</b>${esc(s.dest?.name||'')}　<b>出荷元：</b>${esc(s.source?.name||'')}</p><p><b>出荷日：</b>${s.shipDate||''}　<b>合計：</b>${fmt((s.lines||[]).reduce((a,l)=>a+Number(l.qty||0),0))}</p><div class="toolbar v161-detail-toolbar v161-nemuro-detail-toolbar"><button class="btn v161-proxy-btn" id="npdfs" type="button" aria-hidden="true" tabindex="-1">帳票表示・PDF/FAX</button>${s.status==='draft'?'<button class="btn" id="nconf">確定・在庫反映</button><button class="btn secondary" id="nedit">修正</button>':''}${s.status==='confirmed'?'<button class="btn v161-proxy-btn" id="nshipped" type="button" aria-hidden="true" tabindex="-1">出荷済</button>':''}
+function nShipDetail(id){const s=nState.shipments.find(x=>x.id===id);if(!s)return nShipments();app.innerHTML=`<section class="card"><div class="row"><h2>根室産昆布 出荷指示 ${s.id}</h2><span class="pill">${s.status}</span></div><p><b>出荷先：</b>${esc(s.dest?.name||'')}　<b>出荷元：</b>${esc(s.source?.name||'')}</p><p><b>出荷日：</b>${s.shipDate||''}　<b>合計：</b>${fmt((s.lines||[]).reduce((a,l)=>a+Number(l.qty||0),0))}</p><div class="toolbar"><button class="btn" id="npdfs">帳票表示・PDF/FAX</button>${s.status==='draft'?'<button class="btn" id="nconf">確定・在庫反映</button><button class="btn secondary" id="nedit">修正</button>':''}${s.status==='confirmed'?'<button class="btn" id="nshipped">出荷済</button>':''}
 ${s.status!=='shipped'&&s.status!=='cancelled'?'<button class="btn danger" id="ncancel">取消</button>':''}
-<button class="btn secondary v161-proxy-btn" id="nback" type="button" aria-hidden="true" tabindex="-1">一覧へ</button></div></section>`;const pdf=document.getElementById('npdfs');if(pdf)pdf.onclick=()=>nOpenShipPdf(s);if(s.status==='draft'){
+<button class="btn secondary" id="nback">一覧へ</button></div></section>`;const pdf=document.getElementById('npdfs');if(pdf)pdf.onclick=()=>nOpenShipPdf(s);if(s.status==='draft'){
   const c=document.getElementById('nconf');
 
   if(c)c.onclick=()=>{
@@ -949,9 +931,11 @@ function smLogs(){const a=smState.records.slice().reverse();app.innerHTML=`<sect
 function smShipId(){return 'S'+String(smState.shipmentSeq++).padStart(5,'0')}
 function smShipments(){app.innerHTML=`<section class="card"><div class="row"><h2>釧路産棹前昆布 出荷指示</h2><button class="mini" id="nnew">＋新規</button></div><div class="tablewrap"><table><tr><th>番号</th><th>出荷元</th><th>出荷先</th><th>出荷日</th><th>数量</th><th>状態</th><th></th></tr>${smState.shipments.slice().reverse().map(s=>`<tr><td>${s.id}</td><td>${esc(s.source?.name||'')}</td><td>${esc(s.dest?.name||'')}</td><td>${s.shipDate||''}</td><td>${fmt((s.lines||[]).reduce((a,l)=>a+Number(l.qty||0),0))}</td><td>${s.status}</td><td><button class="mini" data-ns="${s.id}">開く</button></td></tr>`).join('')}</table></div><button class="btn secondary" id="nsb">戻る</button></section>`;nnew.onclick=()=>smShipForm();app.querySelectorAll('[data-ns]').forEach(b=>b.onclick=()=>smShipDetail(b.dataset.ns));nsb.onclick=smHome}
 function smShipForm(id=null){const s=id?smState.shipments.find(x=>x.id===id):null;let lines=s?.lines?.map(x=>({...x}))||[];app.innerHTML=`<section class="card"><h2>釧路産棹前昆布 ${s?'出荷指示修正':'新規出荷指示'}</h2><div class="form"><label>出荷元 会社名<input id="nsrc" value="${esc(s?.source?.name||'㈱浜中運輸')}"></label><label>出荷元 住所<input id="nsrca" value="${esc(s?.source?.address||'')}"></label><label>出荷元 電話<input id="nsrcp" value="${esc(s?.source?.phone||'')}"></label><label>出荷先 会社名<input id="ndst" value="${esc(s?.dest?.name||'')}"></label><label>出荷先 住所<input id="ndsta" value="${esc(s?.dest?.address||'')}"></label><label>出荷先 電話<input id="ndstp" value="${esc(s?.dest?.phone||'')}"></label><div class="subgrid"><label>出荷日<input id="nsd" type="date" value="${s?.shipDate||today()}"></label><label>希望着日<input id="nad" type="date" value="${s?.arrivalDate||''}"></label></div><div id="nsl"></div><button class="btn secondary" id="nala">＋明細追加</button><button class="btn" id="nssv">保存</button><button class="btn secondary" id="nsfb">戻る</button></div></section>`;function rend(){nsl.innerHTML=lines.map((l,i)=>`<div class="card" style="background:#f8fafc"><label>年度<select data-ni="${i}" data-nf="year">${smYearOptions(l.year)}</select></label><label>漁協<select data-ni="${i}" data-nf="coop">${S_COOPS.map(x=>`<option ${x===l.coop?'selected':''}>${x}</option>`).join('')}</select></label><label>区分<select data-ni="${i}" data-nf="season">${S_SEASONS.map(x=>`<option ${x===l.season?'selected':''}>${x}</option>`).join('')}</select></label><label>分類<select data-ni="${i}" data-nf="gi">${smItemOptions(l.group,l.item)}</select></label><label>数量<input type="number" value="${esc(l.qty||'')}" data-ni="${i}" data-nf="qty"></label><button class="mini danger" data-nr="${i}">削除</button></div>`).join('');nsl.querySelectorAll('[data-nf]').forEach(e=>e.onchange=()=>{const i=+e.dataset.ni;if(e.dataset.nf==='gi'){[lines[i].group,lines[i].item]=e.value.split('|')}else lines[i][e.dataset.nf]=e.value});nsl.querySelectorAll('[data-nr]').forEach(e=>e.onclick=()=>{lines.splice(+e.dataset.nr,1);rend()})}nala.onclick=()=>{lines.push({year:smState.activeYear,coop:S_COOPS[0],season:'採り',group:S_GROUPS[0].name,item:S_GROUPS[0].items[0],qty:''});rend()};nssv.onclick=()=>{if(!ndst.value.trim()||!lines.length)return alert('出荷先と明細を入力してください。');for(const l of lines){l.qty=Number(l.qty);if(!l.qty||l.qty>smAvail(l.year,l.coop,l.season,l.group,l.item,s?.id))return alert(`${l.coop} ${l.season} ${l.group} ${l.item} の在庫が不足しています。`)}const o=s||{id:smShipId(),status:'draft',createdAt:new Date().toISOString()};Object.assign(o,{source:{name:nsrc.value,address:nsrca.value,phone:nsrcp.value},dest:{name:ndst.value,address:ndsta.value,phone:ndstp.value},shipDate:nsd.value,arrivalDate:nad.value,lines});if(!s)smState.shipments.push(o);smSave();smShipDetail(o.id)};nsfb.onclick=smShipments;rend()}
-function smShipDetail(id){const s=smState.shipments.find(x=>x.id===id);if(!s)return smShipments();app.innerHTML=`<section class="card"><div class="row"><h2>釧路産棹前昆布 出荷指示 ${s.id}</h2><span class="pill">${s.status}</span></div><p><b>出荷先：</b>${esc(s.dest?.name||'')}　<b>出荷元：</b>${esc(s.source?.name||'')}</p><p><b>出荷日：</b>${s.shipDate||''}　<b>合計：</b>${fmt((s.lines||[]).reduce((a,l)=>a+Number(l.qty||0),0))}</p><div class="toolbar v161-detail-toolbar v161-sanmae-detail-toolbar"><button class="btn v161-proxy-btn" id="smpdfs" type="button" aria-hidden="true" tabindex="-1">帳票表示・PDF/FAX</button>${s.status==='draft'?'<button class="btn" id="smconf">確定・在庫反映</button><button class="btn secondary" id="smedit">修正</button>':''}${s.status==='confirmed'?'<button class="btn v161-proxy-btn" id="smshipped" type="button" aria-hidden="true" tabindex="-1">出荷済</button>':''}
+function smShipDetail(id){const s=smState.shipments.find(x=>x.id===id);if(!s)return smShipments();app.innerHTML=`<section class="card"><div class="row"><h2>釧路産棹前昆布 出荷指示 ${s.id}</h2><span class="pill">${s.status}</span></div><p><b>出荷先：</b>${esc(s.dest?.name||'')}　<b>出荷元：</b>${esc(s.source?.name||'')}</p><p><b>出荷日：</b>${s.shipDate||''}　<b>合計：</b>${fmt((s.lines||[]).reduce((a,l)=>a+Number(l.qty||0),0))}</p><div class="toolbar"><button class="btn" id="smpdfs">帳票表示・PDF/FAX</button>${s.status==='draft'?'<button class="btn" id="smconf">確定・在庫反映</button><button class="btn secondary" id="smedit">修正</button>':''}${s.status==='confirmed'?'<button class="btn" id="smshipped">出荷済</button>':''}
 ${s.status!=='shipped'&&s.status!=='cancelled'?'<button class="btn danger" id="smcancel">取消</button>':''}
-<button class="btn secondary v161-proxy-btn" id="smback" type="button" aria-hidden="true" tabindex="-1">一覧へ</button></div></section>`;const pdf=document.getElementById('smpdfs');if(pdf)pdf.onclick=()=>smOpenShipPdf(s);if(s.status==='draft'){const c=document.getElementById('smconf');if(c)c.onclick=()=>{for(const l of s.lines)if(Number(l.qty)>v160AvailableForShipmentLine('sanmae',l,s.id))return alert('在庫不足があります。');s.status='confirmed';s.confirmedAt=new Date().toISOString();smSave();alert('出荷指示を確定し、在庫表へ反映しました。');smShipDetail(id)};const e=document.getElementById('smedit');if(e)e.onclick=()=>v114UnifiedShipmentForm('sanmae',id)}if(s.status==='confirmed'){
+<button class="btn secondary" id="smback">一覧へ</button>${s.status==='confirmed'?'<button class="btn" id="smshipped">出荷済</button>':''}
+${s.status!=='shipped'&&s.status!=='cancelled'?'<button class="btn danger" id="smcancel">取消</button>':''}
+<button class="btn secondary" id="smback">一覧へ</button></div></section>`;const pdf=document.getElementById('smpdfs');if(pdf)pdf.onclick=()=>smOpenShipPdf(s);if(s.status==='draft'){const c=document.getElementById('smconf');if(c)c.onclick=()=>{for(const l of s.lines)if(Number(l.qty)>v160AvailableForShipmentLine('sanmae',l,s.id))return alert('在庫不足があります。');s.status='confirmed';s.confirmedAt=new Date().toISOString();smSave();alert('出荷指示を確定し、在庫表へ反映しました。');smShipDetail(id)};const e=document.getElementById('smedit');if(e)e.onclick=()=>v114UnifiedShipmentForm('sanmae',id)}if(s.status==='confirmed'){
   const sh=document.getElementById('smshipped');
 
   if(sh)sh.onclick=()=>{
@@ -1127,13 +1111,58 @@ bindNav=function(){
 
 function companyMasterPage(){
   currentProduct=null; setHeader('会社マスター'); setNavVisible(false);
+  let editIndex=-1;
   const draw=()=>{
-    app.innerHTML=`<section class="card" style="margin-top:22px"><div class="row"><h2>会社マスター</h2><span class="pill">v37</span></div><p class="muted">出荷指示で使用する会社名・住所・電話番号を登録します。釧路産昆布では会社名を選ぶと住所・電話番号を自動入力できます。</p><div id="globalCompanyList" class="master-list"></div><button class="btn secondary" id="globalAddCompany" style="margin-top:10px">＋ 会社を追加</button><button class="btn" id="globalSaveCompanies" style="margin-top:10px">会社マスターを保存</button><button class="btn secondary" id="globalMasterBack" style="margin-top:10px">← 昆布選択画面へ戻る</button></section>`;
+    const editing=editIndex>=0&&state.companies[editIndex];
+    const draft=editing||{name:'',address:'',phone:''};
+    app.innerHTML=`<section class="card" style="margin-top:22px"><div class="row"><h2>会社マスター</h2><span class="pill">v37</span></div><p class="muted">出荷指示で使用する会社名・住所・電話番号を登録します。登録済みの会社は一覧で表示し、新しい会社は下の入力欄から続けて登録できます。</p>
+    <h3>登録済み会社</h3><div id="globalCompanyList" class="master-list"></div>
+    <hr><h3 id="globalCompanyFormTitle">${editing?'会社を編集':'新しい会社を登録'}</h3>
+    <div class="card" style="margin:6px 0;padding:10px;background:#f8fafc"><div class="form">
+      <label>会社名<input id="globalCompanyName" value="${esc(draft.name||'')}" autocomplete="organization"></label>
+      <label>住所<input id="globalCompanyAddress" value="${esc(draft.address||'')}" autocomplete="street-address"></label>
+      <label>電話番号<input id="globalCompanyPhone" value="${esc(draft.phone||'')}" inputmode="tel" autocomplete="tel"></label>
+      <button class="btn" id="globalSaveCompanies" type="button">${editing?'変更を保存':'この会社を登録'}</button>
+      ${editing?'<button class="btn secondary" id="globalCancelEdit" type="button">編集をやめる</button>':''}
+    </div></div>
+    <button class="btn secondary" id="globalMasterBack" style="margin-top:10px">← 昆布選択画面へ戻る</button></section>`;
+
     const list=document.getElementById('globalCompanyList');
-    list.innerHTML=state.companies.map((v,i)=>`<div class="card" style="margin:6px 0;padding:10px;background:#f8fafc"><div class="form"><label>会社名<input value="${esc(v.name)}" data-gcf="name" data-gci="${i}"></label><label>住所<input value="${esc(v.address||'')}" data-gcf="address" data-gci="${i}"></label><label>電話番号<input value="${esc(v.phone||'')}" data-gcf="phone" data-gci="${i}" inputmode="tel"></label><button class="mini danger" data-gcd="${i}" type="button">削除</button></div></div>`).join('')||'<div class="empty">会社はまだ登録されていません。</div>';
-    list.onclick=e=>{const i=e.target.dataset.gcd;if(i!==undefined){state.companies.splice(+i,1);save();draw()}};
-    document.getElementById('globalAddCompany').onclick=()=>{state.companies.push({name:'',address:'',phone:''});save();draw()};
-    document.getElementById('globalSaveCompanies').onclick=()=>{const arr=state.companies.map((c,i)=>{const q=f=>document.querySelector(`[data-gci="${i}"][data-gcf="${f}"]`);return {name:(q('name')?.value||'').trim(),address:(q('address')?.value||'').trim(),phone:(q('phone')?.value||'').trim()}}).filter(c=>c.name);if(new Set(arr.map(c=>c.name)).size!==arr.length)return alert('会社名が重複しています。');state.companies=arr;save();alert('会社マスターを保存しました。');draw()};
+    list.innerHTML=state.companies.map((v,i)=>`<div class="card" style="margin:6px 0;padding:10px;background:#f8fafc"><div style="display:flex;gap:10px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap"><div style="min-width:0;flex:1"><b>${esc(v.name)}</b>${v.address?`<div class="small" style="margin-top:4px">${esc(v.address)}</div>`:''}${v.phone?`<div class="small" style="margin-top:2px">TEL ${esc(v.phone)}</div>`:''}</div><div style="display:flex;gap:6px"><button class="mini" data-gce="${i}" type="button">編集</button><button class="mini danger" data-gcd="${i}" type="button">削除</button></div></div></div>`).join('')||'<div class="empty">会社はまだ登録されていません。</div>';
+
+    list.onclick=e=>{
+      const edit=e.target.dataset.gce;
+      if(edit!==undefined){editIndex=+edit;draw();document.getElementById('globalCompanyName')?.focus();return;}
+      const del=e.target.dataset.gcd;
+      if(del!==undefined){
+        const i=+del, c=state.companies[i];
+        if(!c)return;
+        if(!confirm(`「${c.name}」を会社マスターから削除しますか？`))return;
+        state.companies.splice(i,1);
+        if(editIndex===i)editIndex=-1; else if(editIndex>i)editIndex--;
+        save();draw();
+      }
+    };
+
+    document.getElementById('globalSaveCompanies').onclick=()=>{
+      const name=(document.getElementById('globalCompanyName')?.value||'').trim();
+      const address=(document.getElementById('globalCompanyAddress')?.value||'').trim();
+      const phone=(document.getElementById('globalCompanyPhone')?.value||'').trim();
+      if(!name){alert('会社名を入力してください。');document.getElementById('globalCompanyName')?.focus();return;}
+      const duplicate=state.companies.findIndex((c,i)=>i!==editIndex&&String(c?.name||'').trim()===name);
+      if(duplicate>=0){alert('同じ会社名がすでに登録されています。');document.getElementById('globalCompanyName')?.focus();return;}
+      if(editIndex>=0&&state.companies[editIndex]){
+        state.companies[editIndex]={name,address,phone};
+        save();editIndex=-1;alert('会社情報を変更しました。');draw();
+      }else{
+        state.companies.push({name,address,phone});
+        save();alert('会社を登録しました。');draw();
+      }
+      document.getElementById('globalCompanyName')?.focus();
+    };
+
+    const cancel=document.getElementById('globalCancelEdit');
+    if(cancel)cancel.onclick=()=>{editIndex=-1;draw();document.getElementById('globalCompanyName')?.focus();};
     document.getElementById('globalMasterBack').onclick=productLanding;
   }; draw();
 }
@@ -1987,6 +2016,13 @@ function v57ShipmentParty(s, side){
   return {name:'',address:'',phone:''};
 }
 
+
+/* ===== v161.3: 会社情報右揃え + PDFタイトル中央 + 最新版表示 ===== */
+const V161_YAMASAN_LOGO_DATA='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGIAAABZCAAAAADgc668AAAB1UlEQVR42u2Z25IDIQhEbSr//8u9D8kmmdFBWrD2UvEpt/EIDQoGbLvHTfo1WtOXZAoAd8o2BPC0RBtg3EevwR1WwHlXg8DkfRqB54ykzjDJBL5kAAoROKpM1VmmEnRnCanH7lXMWbO8wDgVIGSIacHazYwsog/WBYat2HAUHQkEgnsSlhEzAoMMS9jAwQ6jICJeYotALKUDI4pYTun3YIaEiBJOzhIQAiHAsCxhzrA0YRpYlifMAssuj2mlknEZFnpMrUo9BBYJdBiW99KMYeNvdC/xUg8rIjiaY1SxsERonqyoIFxUKVZIuGBYJWHMsFJCx8ADUUjoJkBrYIaAi1kPTHCZAGfl6333VVvG07pP3wb3JcgafH/+pgXj80m7vw2q7uIxbmHQCs2w2hMve82yrsX0gMkRnHYSzkT9KcOljhVVFQn1jnjXfdSviKgfRNxSXg7JtKqFcFUoIyDvOHEE1nI7iEBm/3DkxicvdjRirE89xtXyIgrB1SKRF+u3/fG8QEWh8DkvPoia65XiiIKXmcwtMZD/GHU3zB0WdBE15xD3RxQ8BDcw/mfq8U9a0acepLQK/G6Q3Rg8MKnB3Z4N9J9Y+VOfwu0BF9wOzrUoLAzu4wueJ5iNTB1zTgAAAABJRU5ErkJggg==';
+const V161_YAMASAN_LOGO_IMG=new Image();
+V161_YAMASAN_LOGO_IMG.src=V161_YAMASAN_LOGO_DATA;
+/* ===== /v161.3 ===== */
+
 v55RetitleStockCanvas=function(sourceCanvas, title, year, shipment, tableY, tableX){
   const W=sourceCanvas.width,H=sourceCanvas.height;
   tableY=Number(tableY)||70; tableX=Number(tableX)||35;
@@ -2014,20 +2050,50 @@ v55RetitleStockCanvas=function(sourceCanvas, title, year, shipment, tableY, tabl
   else if(rawProduct.includes('根室産昆布'))productName='根室昆布';
   else if(rawProduct.includes('日高昆布'))productName='日高昆布';
   const mainTitle='出荷依頼書';
-  /* v141: タイトル・昆布名・年産をすべて同一42px。
-     「出荷依頼書(○○昆布)」は隙間なしの1組としてページ中央へ配置。 */
+  /* v161.1: 右上に山三商事の会社情報を配置。
+     ロゴは「山三商事ロゴ住所.pdf」から切り出した原本マークを使用。
+     事業者番号は表示しない。郵便番号と住所、TELとFAXはそれぞれ横並び。 */
   const productLabel=productName?`(${productName})`:'';
   const titleSize=42;
-  x.font=font(titleSize,true);const mainW=x.measureText(mainTitle).width;
-  x.font=font(titleSize,true);const productW=x.measureText(productLabel).width;
-  const titleStart=(W-mainW-productW)/2;
-  text(mainTitle,titleStart,30,titleSize,'left',true);
-  if(productLabel)text(productLabel,titleStart+mainW,30,titleSize,'left',true);
-  text(`(${year}年産)`,W/2,76,titleSize,'center',true);
-  /* v141: 全昆布の出荷依頼書を日高と同じ日付レイアウトへ統一。
-     左上＝依頼日（大）、右上＝依頼番号のみ。 */
-  text(`依頼日：${shipment?.shipDate||''}`,tableX,30,32,'left',true);
-  text(`依頼番号：${shipment?.id||''}`,W-tableX,18,12,'right',false);
+  const companyRight=W-tableX;
+  const companyBlockW=Math.min(620,Math.round(W*0.34));
+  const companyLeft=companyRight-companyBlockW;
+  /* v161.2: ロゴは会社名の文字高とほぼ同じ見た目サイズへ縮小 */
+  const logoSize=42;
+  const logoX=companyLeft;
+  const logoY=11;
+  const companyTextX=logoX+logoSize+14;
+
+  /* v161.3: 出荷依頼書タイトルをページ全体の中央へ配置 */
+  const titleCenter=W/2;
+  const titleSizeCentered=38;
+  x.font=font(titleSizeCentered,true);const mainW=x.measureText(mainTitle).width;
+  x.font=font(titleSizeCentered,true);const productW=x.measureText(productLabel).width;
+  const titleStart=titleCenter-(mainW+productW)/2;
+  text(mainTitle,titleStart,30,titleSizeCentered,'left',true);
+  if(productLabel)text(productLabel,titleStart+mainW,30,titleSizeCentered,'left',true);
+  text(`(${year}年産)`,titleCenter,76,titleSizeCentered,'center',true);
+
+  text(`依頼日：${shipment?.shipDate||''}`,tableX,26,30,'left',true);
+  text(`依頼番号：${shipment?.id||''}`,tableX,72,18,'left',false);
+
+  if(V161_YAMASAN_LOGO_IMG.complete&&V161_YAMASAN_LOGO_IMG.naturalWidth){
+    x.drawImage(V161_YAMASAN_LOGO_IMG,logoX,logoY,logoSize,logoSize*89/98);
+  }
+  /* v161.3: 会社名・住所・TEL/FAXはすべて右端を同じ位置へ揃える */
+  const companyName='山三商事株式会社';
+  x.font=font(36,true);
+  const companyNameW=x.measureText(companyName).width;
+  const alignedLogoX=companyRight-companyNameW-logoSize-14;
+  if(V161_YAMASAN_LOGO_IMG.complete&&V161_YAMASAN_LOGO_IMG.naturalWidth){
+    /* 先に描いた旧位置ロゴを白で消し、新しい位置へ原本ロゴを再描画 */
+    x.fillStyle='#fff';
+    x.fillRect(logoX-2,logoY-2,logoSize+5,logoSize*89/98+5);
+    x.drawImage(V161_YAMASAN_LOGO_IMG,alignedLogoX,logoY,logoSize,logoSize*89/98);
+  }
+  text(companyName,companyRight,31,36,'right',true);
+  text('〒933-0804　富山県高岡市問屋町90',companyRight,72,19,'right',false);
+  text('TEL 0766-24-3660　　FAX 0766-24-3661',companyRight,96,19,'right',false);
 
   const boxY=108,boxH=145,boxW=(W-tableX*2)/2;
   x.strokeStyle='#111';x.lineWidth=1.5;
@@ -5270,7 +5336,7 @@ smLogs=function(){
       <section class="card v161-s">
         <h3 class="v161-title">① 基本情報</h3>
         <div class="v161-basic">
-          <div class="v161-box"><label>依頼日<input id="v114ShipDate" type="date" value="${existing?.shipDate||today()}"></label></div>
+          <div class="v161-box"><label>依頼日<input id="v114ShipDate" type="date" value="${existing?.shipDate||(new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10))}"></label></div>
           <div class="v161-box"><label>着希望日<input id="v114ArrivalDate" type="date" value="${existing?.arrivalDate||''}"></label></div>
           <div class="v161-box"><label>配送・袋入等<select id="v114DeliveryPack"><option value="" ${!existing?.deliveryPack?'selected':''}>　</option><option value="ビニール袋入り" ${existing?.deliveryPack==='ビニール袋入り'?'selected':''}>ビニール袋入り</option><option value="コンテナ対応" ${existing?.deliveryPack==='コンテナ対応'?'selected':''}>コンテナ対応</option></select></label></div>
           <div class="v161-box"><label>備考<input id="v114Memo" type="text" placeholder="自由入力" value="${esc(existing?.memo||'')}"></label></div>
@@ -5280,7 +5346,7 @@ smLogs=function(){
       <section class="card v161-s">
         <h3 class="v161-title">② 出荷元</h3>
         <div class="v161-party">
-          <div class="v161-box"><label>登録済み出荷元を選択<select id="v161SourceSelect">${companyOptions(source0.name,'直接入力または選択')}</select></label><div class="small" style="margin-top:8px">地区で絞り込み可能。マスターにない場合は右側へ直接入力できます。</div></div>
+          <div class="v161-box"><label>登録済み出荷元を選択<select id="v161SourceSelect">${companyOptions(source0.name,'直接入力または選択')}</select></label><div class="small" style="margin-top:8px">地区で絞り込みできます。未登録の場合は右側へ直接入力できます。</div></div>
           <div class="v161-details"><label>会社名<input id="v114SourceName" value="${esc(source0.name||'')}" placeholder="プルダウン選択または直接入力"></label><label>郵便番号<input id="v114SourcePostal" value="${esc(source0.postal||source0.postal_code||'')}" inputmode="numeric" placeholder="123-4567"></label><label>住所<input id="v114SourceAddress" value="${esc(source0.address||'')}" placeholder="直接入力可"></label><label>電話<input id="v114SourcePhone" value="${esc(source0.phone||source0.tel||'')}" inputmode="tel" placeholder="直接入力可"></label></div>
         </div>
       </section>
@@ -5288,7 +5354,7 @@ smLogs=function(){
       <section class="card v161-s">
         <h3 class="v161-title">③ 出荷先</h3>
         <div class="v161-party">
-          <div class="v161-box"><label>登録済み出荷先を選択<select id="v161DestSelect">${companyOptions(dest0.name,'出荷先を選択')}</select></label><div class="small" style="margin-top:8px">マスターにない場合は右側へ直接入力できます。</div></div>
+          <div class="v161-box"><label>登録済み出荷先を選択<select id="v161DestSelect">${companyOptions(dest0.name,'直接入力または選択')}</select></label><div class="small" style="margin-top:8px">出荷人に応じた候補を優先表示します。未登録の場合は右側へ直接入力できます。</div></div>
           <div class="v161-details"><label>会社名<input id="v114DestName" value="${esc(dest0.name||'')}" placeholder="プルダウン選択または直接入力"></label><label>郵便番号<input id="v114DestPostal" value="${esc(dest0.postal||dest0.postal_code||'')}" inputmode="numeric" placeholder="123-4567"></label><label>住所<input id="v114DestAddress" value="${esc(dest0.address||'')}" placeholder="直接入力可"></label><label>電話<input id="v114DestPhone" value="${esc(dest0.phone||dest0.tel||'')}" inputmode="tel" placeholder="直接入力可"></label></div>
         </div>
       </section>
@@ -5304,7 +5370,6 @@ smLogs=function(){
     const sn=byId('v114SourceName'),sx=byId('v114SourcePostal'),sa=byId('v114SourceAddress'),sp=byId('v114SourcePhone'),dn=byId('v114DestName'),dx=byId('v114DestPostal'),da=byId('v114DestAddress'),dp=byId('v114DestPhone');
     const applyCompany=(selectEl,nameEl,postalEl,addressEl,phoneEl)=>{
       const c=companyByName(selectEl.value);
-      if(!c)return;
       nameEl.value=c?.name||'';postalEl.value=c?.postal||c?.postal_code||'';addressEl.value=c?.address||'';phoneEl.value=c?.phone||c?.tel||'';
     };
     const regionList=['すべて','北海道・東北','関東','中部東海','北陸','関西','中四国九州'];
@@ -5349,6 +5414,8 @@ smLogs=function(){
     if(sourceRegion)sourceRegion.onchange=()=>rebuildSelect(sourceSelect,'source',sourceRegion.value,sourceSelect.value||sn.value,'');
     if(destRegion)destRegion.onchange=refreshDest;
     sn.addEventListener('change',refreshDest);
+    const normalizePostalInput=el=>el&&el.addEventListener('blur',()=>{const d=String(el.value||'').replace(/\D/g,'');if(d.length===7)el.value=d.slice(0,3)+'-'+d.slice(3)});
+    normalizePostalInput(sx);normalizePostalInput(dx);
 
     function rowFields(l){
       const p=l.product||'kushiro';
@@ -5373,9 +5440,9 @@ smLogs=function(){
 
     function v161ValidateCurrent(){
       if(!sn.value.trim())return '出荷元を入力してください。';
-      if(sx.value.trim()&&!/^\\d{3}-\\d{4}$/.test(sx.value.trim()))return '出荷元の郵便番号を123-4567形式で入力してください。';
+      if(sx.value.trim()&&!/^\d{3}-\d{4}$/.test(sx.value.trim()))return '出荷元の郵便番号を123-4567形式で入力してください。';
       if(!dn.value.trim())return '出荷先を入力してください。';
-      if(dx.value.trim()&&!/^\\d{3}-\\d{4}$/.test(dx.value.trim()))return '出荷先の郵便番号を123-4567形式で入力してください。';
+      if(dx.value.trim()&&!/^\d{3}-\d{4}$/.test(dx.value.trim()))return '出荷先の郵便番号を123-4567形式で入力してください。';
       if(!lines.length)return '明細を1件以上追加してください。';
       for(let i=0;i<lines.length;i++){
         const l=lines[i],d=productDefs[l.product],q=Number(l.qty);
@@ -5472,9 +5539,9 @@ smLogs=function(){
 
     byId('v114Save').onclick=()=>{
       if(!sn.value.trim())return alert('出荷元を入力してください。');
-      if(sx.value.trim()&&!/^\\d{3}-\\d{4}$/.test(sx.value.trim()))return alert('出荷元の郵便番号を123-4567形式で入力してください。');
+      if(sx.value.trim()&&!/^\d{3}-\d{4}$/.test(sx.value.trim()))return alert('出荷元の郵便番号を123-4567形式で入力してください。');
       if(!dn.value.trim())return alert('出荷先を入力してください。');
-      if(dx.value.trim()&&!/^\\d{3}-\\d{4}$/.test(dx.value.trim()))return alert('出荷先の郵便番号を123-4567形式で入力してください。');
+      if(dx.value.trim()&&!/^\d{3}-\d{4}$/.test(dx.value.trim()))return alert('出荷先の郵便番号を123-4567形式で入力してください。');
       if(!lines.length)return alert('明細を1件以上追加してください。');
       for(const l of lines){const d=productDefs[l.product],q=Number(l.qty);if(!q||q<=0)return alert('明細の数量を入力してください。');let av=0;try{av=d.avail(l)}catch(e){}if(q>Number(av||0))return alert(`${d.desc(l)} の出荷可能在庫は ${fmt(av)} です。`);l.qty=q}
       const source={name:sn.value.trim(),postal:sx.value.trim(),address:sa.value.trim(),phone:sp.value.trim()},dest={name:dn.value.trim(),postal:dx.value.trim(),address:da.value.trim(),phone:dp.value.trim()};
@@ -6335,11 +6402,7 @@ document.querySelectorAll('#v76ShipBody tr[data-gprod][data-gid]').forEach(tr=>{
     histChanged=true;
   }
 
-  /* v161 Step5.6:
-     過去履歴/FAXBOXに同じ番号が残っていても、
-     現在の下書き・確定済み出荷依頼は一覧から消さない。
-     shipped/cancelled は元の一覧生成時点で除外済み。 */
-  if(x && (x.status==='shipped'||x.status==='cancelled')){
+  if(archived.has(k)||inFax.has(k)){
     tr.remove();
   }
 });
@@ -7134,17 +7197,23 @@ if(histChanged){
       <section class="card" style="margin-top:14px;padding:16px">
         <h2 style="margin:0 0 6px;font-size:20px">📦 出荷依頼</h2>
         <div class="muted" style="font-size:12px">
-          新規作成または過去の出荷依頼履歴を選択します。
+          新規作成・現在の出荷依頼・過去の履歴をここから選択します。
         </div>
       </section>
 
       <section class="card" style="margin-top:12px;padding:14px">
-        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px" class="v162-shipment-menu-buttons">
+        <div style="display:grid;grid-template-columns:1fr;gap:12px">
 
           <button class="action green" id="v161NewShipment" type="button"
             style="text-align:left;padding:18px">
             ＋ 新規出荷依頼
             <small>4種類の昆布を共通フォームから入力</small>
+          </button>
+
+          <button class="action blue" id="v161ShipmentList" type="button"
+            style="text-align:left;padding:18px">
+            📋 出荷依頼一覧
+            <small>現在の出荷依頼を新しい順に確認</small>
           </button>
 
           <button class="action purple" id="v161ShipmentHistory" type="button"
@@ -7154,7 +7223,6 @@ if(histChanged){
           </button>
 
         </div>
-        <style>@media(max-width:700px){.v162-shipment-menu-buttons{grid-template-columns:1fr!important}}</style>
       </section>
 
       <section class="card" style="margin-top:12px;padding:12px">
@@ -7166,6 +7234,10 @@ if(histChanged){
 
     document.getElementById('v161NewShipment').onclick=function(){
       globalThis.v114UnifiedShipmentForm();
+    };
+
+    document.getElementById('v161ShipmentList').onclick=function(){
+      globalThis.v76ShipmentMenu();
     };
 
     document.getElementById('v161ShipmentHistory').onclick=function(){
@@ -7808,22 +7880,8 @@ if(histChanged){
     allShipments().forEach(({product,s})=>{
       if(!s||!(s.status==='shipped'||s.status==='cancelled'))return;
 
-      const baseKey=product+'::'+String(s.id||'');
-      let k=baseKey;
-      let old=map.get(k);
-
-      /* 同じ指示番号が過去履歴と再利用されていた場合は、
-         createdAtを付けて別履歴として保持する。 */
-      if(
-        old &&
-        old.snapshot &&
-        old.snapshot.createdAt &&
-        s.createdAt &&
-        String(old.snapshot.createdAt)!==String(s.createdAt)
-      ){
-        k=baseKey+'::'+String(s.createdAt);
-        old=map.get(k);
-      }
+      const k=product+'::'+String(s.id||'');
+      const old=map.get(k);
 
       const item={
         key:k,
@@ -7910,355 +7968,37 @@ if(histChanged){
   console.info('[KOMBU v161 Step5.3] 出荷履歴自動反映 ready');
 })();
 /* ===== /v161 Step5.3 ===== */
-/* ===== v161 Step5.5: 4種類共通 詳細画面安全整理 ===== */
+/* ===== v161.3: トップ画面のバージョン表示を最新版へ統一 ===== */
 (function(){
   'use strict';
-  if(document.getElementById('v161Step54Style'))return;
-  const st=document.createElement('style');
-  st.id='v161Step54Style';
-  st.textContent=`
-    .v161-kushiro-detail-toolbar .v161-proxy-btn,
-    .v161-detail-toolbar .v161-proxy-btn{display:none!important}
-    .v161-kushiro-detail-toolbar #v99FaxAdd,
-    .v161-detail-toolbar #v99FaxAdd{display:none!important}
-    .v161-kushiro-detail-toolbar,
-    .v161-detail-toolbar{
-      grid-template-columns:repeat(2,minmax(0,1fr));
-      gap:10px;
-    }
-    @media(max-width:700px){
-      .v161-kushiro-detail-toolbar,
-      .v161-detail-toolbar{grid-template-columns:1fr}
-    }
-  `;
-  document.head.appendChild(st);
-  console.info('[KOMBU v161 Step5.5] 4種類共通 詳細画面整理 ready');
+  const CURRENT_VERSION='v161.3';
+
+  function setLatestVersion(){
+    if(!window.app)return;
+    const el=app.querySelector('.v106-version,.pill');
+    if(el)el.textContent=CURRENT_VERSION;
+  }
+
+  const baseLanding=productLanding;
+  productLanding=function(){
+    const r=baseLanding.apply(this,arguments);
+    setLatestVersion();
+    requestAnimationFrame(setLatestVersion);
+    return r;
+  };
+  try{globalThis.productLanding=productLanding}catch(_e){}
+
+  /* 現在トップ画面が表示中の場合も、その場で最新版へ更新 */
+  setLatestVersion();
+
+  console.info('[KOMBU v161.3] 最新バージョン表示 ready');
 })();
-/* ===== /v161 Step5.5 ===== */
-/* ===== v161 Step5.6: 出荷依頼の消失防止・番号重複防止 ===== */
-(function(){
-  'use strict';
-
-  function hist(){
-    try{
-      const a=JSON.parse(localStorage.getItem('kombu-v136-shipment-history')||'[]');
-      return Array.isArray(a)?a:[];
-    }catch(_e){
-      return [];
-    }
-  }
-
-  function maxNo(prefix, product, shipments){
-    let max=0;
-    (shipments||[]).forEach(s=>{
-      const m=String(s?.id||'').match(new RegExp('^'+prefix+'(\\d+)$'));
-      if(m)max=Math.max(max,Number(m[1]||0));
-    });
-    hist().forEach(h=>{
-      if(h?.product!==product)return;
-      const m=String(h?.id||'').match(new RegExp('^'+prefix+'(\\d+)$'));
-      if(m)max=Math.max(max,Number(m[1]||0));
-    });
-    return max;
-  }
-
-  /* 次回採番を「現在データ＋履歴」の最大番号より必ず後ろへ進める。 */
-  const kMax=maxNo('S','kushiro',state.shipments);
-  state.shipmentSeq=Math.max(Number(state.shipmentSeq||1),kMax+1);
-
-  const hMax=maxNo('H','hidaka',hState.shipments);
-  hState.shipmentSeq=Math.max(Number(hState.shipmentSeq||1),hMax+1);
-
-  const nMax=maxNo('N','nemuro',nState.shipments);
-  nState.shipmentSeq=Math.max(Number(nState.shipmentSeq||1),nMax+1);
-
-  const smMax=maxNo('S','sanmae',smState.shipments);
-  smState.shipmentSeq=Math.max(Number(smState.shipmentSeq||1),smMax+1);
-
-  save();
-  hSave();
-  nSave();
-  smSave();
-
-  console.info(
-    '[KOMBU v161 Step5.6] 採番補正',
-    {
-      kushiro:state.shipmentSeq,
-      hidaka:hState.shipmentSeq,
-      nemuro:nState.shipmentSeq,
-      sanmae:smState.shipmentSeq
-    }
-  );
-})();
-/* ===== /v161 Step5.6 ===== */
-/* ===== v161 Step5.7: 出荷依頼ナビゲーション統一 + 依頼日当日固定 ===== */
-(function(){
-  'use strict';
-
-  /*
-    出荷依頼内だけで使う簡単な画面位置。
-    menu / form / list / history / detail
-  */
-  let navPlace='menu';
-  let detailReturn='list';
-
-  function menu(){
-    navPlace='menu';
-    return globalThis.v161ShipmentEntryMenu();
-  }
-
-  function list(){
-    navPlace='list';
-    return globalThis.v76ShipmentMenu();
-  }
-
-  function history(){
-    navPlace='history';
-    if(typeof window.v136ShipmentHistory==='function'){
-      return window.v136ShipmentHistory();
-    }
-    return list();
-  }
-
-  function home(){
-    navPlace='menu';
-    return globalThis.productLanding();
-  }
-
-  function removeOldStep57Nav(){
-    document.querySelectorAll('[data-v161-step57-nav="1"]').forEach(x=>x.remove());
-  }
-
-  function addBackCard(label,handler){
-    removeOldStep57Nav();
-    const card=document.createElement('section');
-    card.className='card';
-    card.dataset.v161Step57Nav='1';
-    card.style.cssText='margin-top:12px;padding:12px';
-    card.innerHTML=`<button class="btn secondary" type="button" id="v161Step57Back">${label}</button>`;
-    app.appendChild(card);
-    document.getElementById('v161Step57Back').onclick=handler;
-  }
-
-  /* ---------------------------------------------------------
-     1. 出荷依頼メニュー
-     --------------------------------------------------------- */
-  const baseEntry=globalThis.v161ShipmentEntryMenu;
-  if(typeof baseEntry==='function'){
-    globalThis.v161ShipmentEntryMenu=function(){
-      navPlace='menu';
-      const r=baseEntry.apply(this,arguments);
-
-      const n=document.getElementById('v161NewShipment');
-      const l=document.getElementById('v161ShipmentList');
-      const h=document.getElementById('v161ShipmentHistory');
-      const hm=document.getElementById('v161ShipmentHome');
-
-      if(n)n.onclick=()=>{
-        navPlace='form';
-        globalThis.v114UnifiedShipmentForm();
-      };
-      if(l)l.onclick=list;
-      if(h)h.onclick=history;
-      if(hm)hm.onclick=home;
-
-      return r;
-    };
-  }
-
-  /* ---------------------------------------------------------
-     2. 新規・修正フォーム
-     新規作成時の依頼日は毎回「当日」を明示的にセット。
-     --------------------------------------------------------- */
-  const baseForm=globalThis.v114UnifiedShipmentForm;
-  if(typeof baseForm==='function'){
-    globalThis.v114UnifiedShipmentForm=function(editProduct=null,editId=null,preset=null){
-      navPlace='form';
-      const r=baseForm.apply(this,arguments);
-
-      const date=document.getElementById('v114ShipDate');
-
-      /*
-        新規作成だけ必ず本日。
-        修正画面では保存済みの日付を維持。
-      */
-      if(date&&!editProduct&&!editId){
-        date.value=today();
-      }
-
-      const card=document.createElement('section');
-      card.className='card';
-      card.dataset.v161Step57Nav='1';
-      card.style.cssText='margin-top:12px;padding:12px';
-
-      const backLabel=(editProduct&&editId)
-        ?'← 出荷依頼詳細へ戻る'
-        :'← 出荷依頼メニューへ戻る';
-
-      card.innerHTML=`<button class="btn secondary" type="button" id="v161Step57FormBack">${backLabel}</button>`;
-      app.appendChild(card);
-
-      const b=document.getElementById('v161Step57FormBack');
-      if(b)b.onclick=()=>{
-        if(editProduct&&editId){
-          detailReturn='list';
-          navPlace='detail';
-          globalThis.openGlobalShipment(editProduct,editId);
-        }else{
-          menu();
-        }
-      };
-
-      return r;
-    };
-  }
-
-  /* ---------------------------------------------------------
-     3. 出荷依頼一覧
-     戻る先を必ず「出荷依頼メニュー」に統一。
-     --------------------------------------------------------- */
-  const baseList=globalThis.v76ShipmentMenu;
-  if(typeof baseList==='function'){
-    globalThis.v76ShipmentMenu=function(){
-      navPlace='list';
-      const r=baseList.apply(this,arguments);
-
-      const oldHome=document.getElementById('v76Home');
-      const oldBack=document.getElementById('v76Back');
-
-      if(oldHome)oldHome.onclick=home;
-      if(oldBack)oldBack.onclick=menu;
-
-      addBackCard('← 出荷依頼メニューへ戻る',menu);
-      return r;
-    };
-  }
-
-  /* ---------------------------------------------------------
-     4. 出荷依頼履歴
-     戻る先を必ず「出荷依頼メニュー」に統一。
-     --------------------------------------------------------- */
-  const baseHistory=window.v136ShipmentHistory;
-  if(typeof baseHistory==='function'){
-    window.v136ShipmentHistory=function(){
-      navPlace='history';
-      const r=baseHistory.apply(this,arguments);
-      addBackCard('← 出荷依頼メニューへ戻る',menu);
-      return r;
-    };
-  }
-
-  /* ---------------------------------------------------------
-     5. 詳細画面
-     「一覧から開いた」か「履歴から開いた」かを記録。
-     --------------------------------------------------------- */
-  function addDetailBack(){
-    removeOldStep57Nav();
-
-    const card=document.createElement('section');
-    card.className='card';
-    card.dataset.v161Step57Nav='1';
-    card.style.cssText='margin-top:12px;padding:12px';
-
-    const fromHistory=detailReturn==='history';
-    card.innerHTML=`
-      <button class="btn secondary" type="button" id="v161Step57DetailBack">
-        ${fromHistory?'← 出荷依頼履歴へ戻る':'← 出荷依頼一覧へ戻る'}
-      </button>`;
-
-    app.appendChild(card);
-
-    const b=document.getElementById('v161Step57DetailBack');
-    if(b)b.onclick=fromHistory?history:list;
-  }
-
-  const baseOpen=globalThis.openGlobalShipment;
-  if(typeof baseOpen==='function'){
-    globalThis.openGlobalShipment=function(product,id){
-      /*
-        新規保存後はフォームから詳細が開くため一覧へ戻す。
-        履歴から開いた時だけ履歴へ戻す。
-      */
-      detailReturn=(navPlace==='history')?'history':'list';
-      navPlace='detail';
-
-      const r=baseOpen.apply(this,arguments);
-      addDetailBack();
-      return r;
-    };
-  }
-
-  /*
-    確定・出荷済・取消などで詳細画面自身が再描画された場合も
-    戻る先を失わない。
-  */
-  [
-    'shipmentDetail',
-    'hShipDetail',
-    'nShipDetail',
-    'smShipDetail'
-  ].forEach(name=>{
-    const fn=globalThis[name];
-    if(typeof fn!=='function')return;
-
-    globalThis[name]=function(){
-      const r=fn.apply(this,arguments);
-      navPlace='detail';
-      addDetailBack();
-      return r;
-    };
-  });
-
-  /* ---------------------------------------------------------
-     6. 古い全昆布一覧が呼ばれた場合も、新メニューへ戻す。
-     --------------------------------------------------------- */
-  const baseAll=globalThis.allShipmentHistory;
-  if(typeof baseAll==='function'){
-    globalThis.allShipmentHistory=function(){
-      navPlace='list';
-      const r=baseAll.apply(this,arguments);
-      const old=document.getElementById('gShipBack');
-      if(old)old.onclick=menu;
-      addBackCard('← 出荷依頼メニューへ戻る',menu);
-      return r;
-    };
-  }
-
-  /* 入口を productChoicePage('shipment') から呼ばれた場合も統一 */
-  const baseChoice=globalThis.productChoicePage;
-  if(typeof baseChoice==='function'){
-    globalThis.productChoicePage=function(mode){
-      if(mode==='shipment')return menu();
-      return baseChoice.apply(this,arguments);
-    };
-  }
-
-  if(!document.getElementById('v161Step57Style')){
-    const st=document.createElement('style');
-    st.id='v161Step57Style';
-    st.textContent=`
-      [data-v161-step57-nav="1"] .btn{
-        min-height:46px;
-      }
-      @media(max-width:700px){
-        [data-v161-step57-nav="1"] .btn{
-          min-height:52px;
-          font-size:16px;
-        }
-      }`;
-    document.head.appendChild(st);
-  }
-
-  console.info('[KOMBU v161 Step5.7] 出荷依頼ナビゲーション統一 ready');
-})();
-/* ===== /v161 Step5.7 ===== */
-
-
+/* ===== /v161.3 version ===== */
 
 /* ===== v162: 出荷依頼 会社マスター Excel取込・編集・地区別選択・直接入力 ===== */
 (function(){
   'use strict';
-  const V='v162';
+  const V='v162.3';
   const PAIR_KEY='kombu_company_pairs_v162';
   const REGIONS=['北海道・東北','関東','中部東海','北陸','関西','中四国九州'];
   const TOYAMA=['高岡','呉西その他','富山','呉東その他'];
@@ -8482,22 +8222,102 @@ if(histChanged){
         const XLSX=await loadSheetJS();
         const buf=await file.arrayBuffer();
         const wb=XLSX.read(buf,{type:'array'});
+
+        // ① 会社マスター
         const sn=wb.SheetNames.includes('会社マスター')?'会社マスター':wb.SheetNames[0];
         const rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{defval:'',raw:false});
         const parsed=rows.map((r,i)=>parsedRow(r,i)).filter(c=>c.name||c.address||c.postal||c.phone);
         const errors=[];
-        parsed.forEach((c,i)=>{const es=validateCompany(c);if(es.length)errors.push({row:i+2,name:c.name,err:es.join('、')})});
+        parsed.forEach((c,i)=>{
+          const es=validateCompany(c);
+          if(es.length)errors.push({kind:'会社',row:i+2,name:c.name,err:es.join('、')});
+        });
+
         const cur=companies();
         let add=0,upd=0;
         parsed.forEach(c=>{
           const hit=cur.findIndex(x=>(c.code&&x.code===c.code)||(!c.code&&x.name===c.name&&x.address===c.address));
           if(hit>=0)upd++;else add++;
         });
+
+        // ② 出荷人×出荷先
+        const pairSheetName=wb.SheetNames.includes('出荷人×出荷先')
+          ?'出荷人×出荷先'
+          :(wb.SheetNames.includes('出荷人×出荷先設定')?'出荷人×出荷先設定':'');
+        const pairRows=pairSheetName
+          ?XLSX.utils.sheet_to_json(wb.Sheets[pairSheetName],{defval:'',raw:false})
+          :[];
+
+        // 会社ID→会社名を、Excel取込データと現在マスターの両方から解決
+        const resolvePool=[...parsed,...cur];
+        const nameByCode=new Map();
+        resolvePool.forEach(c=>{
+          const code=String(c?.code||'').trim();
+          const name=String(c?.name||'').trim();
+          if(code&&name&&!nameByCode.has(code))nameByCode.set(code,name);
+        });
+
+        const pairParsed=[];
+        pairRows.forEach((r,i)=>{
+          const sourceCode=String(rowValue(r,['出荷人会社ID','出荷人ID','出荷元会社ID'])||'').trim();
+          const destCode=String(rowValue(r,['出荷先会社ID','出荷先ID'])||'').trim();
+          let source=String(rowValue(r,['出荷人会社名','出荷人会社名【必須】','出荷人','出荷元会社名'])||'').trim();
+          let dest=String(rowValue(r,['出荷先会社名','出荷先会社名【必須】','出荷先'])||'').trim();
+          if(!source&&sourceCode)source=nameByCode.get(sourceCode)||'';
+          if(!dest&&destCode)dest=nameByCode.get(destCode)||'';
+
+          const rawOrder=rowValue(r,['表示順','順番']);
+          const sortOrder=Number(rawOrder||i+1)||i+1;
+          const favorite=yes(rowValue(r,['よく使う']));
+          const note=String(rowValue(r,['備考'])||'').trim();
+
+          // 完全空行は無視
+          if(!source&&!dest&&!sourceCode&&!destCode)return;
+
+          if(!source||!dest){
+            errors.push({
+              kind:'組合せ',
+              row:i+2,
+              name:`${source||sourceCode||'（出荷人未入力）'} → ${dest||destCode||'（出荷先未入力）'}`,
+              err:'出荷人会社名または出荷先会社名を確認してください'
+            });
+            return;
+          }
+          pairParsed.push({source,dest,sortOrder,favorite,note});
+        });
+
+        // 会社名が会社マスターに存在するか確認
+        const importedNames=new Set([...cur,...parsed].map(c=>String(c?.name||'').trim()).filter(Boolean));
+        pairParsed.forEach((p,i)=>{
+          const miss=[];
+          if(!importedNames.has(p.source))miss.push('出荷人が会社マスターにありません');
+          if(!importedNames.has(p.dest))miss.push('出荷先が会社マスターにありません');
+          if(miss.length){
+            errors.push({kind:'組合せ',row:i+2,name:`${p.source} → ${p.dest}`,err:miss.join('、')});
+          }
+        });
+
+        // 重複組合せは先に出た行を採用
+        const pairSeen=new Set();
+        const uniquePairs=pairParsed.filter(p=>{
+          const k=`${p.source}\u0001${p.dest}`;
+          if(pairSeen.has(k))return false;
+          pairSeen.add(k);return true;
+        });
+
         const ov=document.createElement('div');ov.className='v162-modal';
         ov.innerHTML=`<div class="v162-panel">
           <div class="row"><h2 style="margin:0">Excel取込内容の確認</h2><button class="mini" id="impClose">閉じる</button></div>
-          <div class="card" style="margin-top:10px"><b>読込 ${parsed.length}件　新規 ${add}件　更新 ${upd}件　エラー ${errors.length}件</b></div>
-          <div class="v162-preview" style="margin-top:10px">${errors.length?errors.slice(0,100).map(e=>`<div>${e.row}行目 ${h(e.name)}：${h(e.err)}</div>`).join(''):'<div>エラーはありません。会社ID一致は更新、未登録は新規追加します。</div>'}</div>
+          <div class="card" style="margin-top:10px">
+            <b>会社：読込 ${parsed.length}件　新規 ${add}件　更新 ${upd}件</b><br>
+            <b>出荷人×出荷先：${pairSheetName?`${uniquePairs.length}件`:'シートなし'}</b><br>
+            <b>エラー ${errors.length}件</b>
+          </div>
+          <div class="v162-preview" style="margin-top:10px">${
+            errors.length
+              ?errors.slice(0,100).map(e=>`<div>${h(e.kind)} ${e.row}行目 ${h(e.name)}：${h(e.err)}</div>`).join('')
+              :'<div>エラーはありません。会社マスターと出荷人×出荷先を同時に取り込みます。</div>'
+          }</div>
           <div class="toolbar" style="margin-top:12px"><button class="btn" id="impGo" ${errors.length?'disabled':''}>取込実行</button><button class="btn secondary" id="impCancel">キャンセル</button></div>
         </div>`;
         document.body.appendChild(ov);
@@ -8522,7 +8342,19 @@ if(histChanged){
           });
           base.forEach((c,j)=>{if(!used.has(j))ordered.push({...c,sortOrder:Math.max(Number(c.sortOrder||0),ordered.length+1)})});
           storeCompanies(ordered);
-          ov.remove();alert(`会社マスターを取り込みました。\n新規 ${add}件 / 更新 ${upd}件`);draw();
+
+          // Excelに出荷人×出荷先シートがある時だけ組合せマスターを更新。
+          // シートがないExcel取込では、現在の組合せ設定を消さない。
+          if(pairSheetName){
+            savePairs(uniquePairs);
+          }
+
+          ov.remove();
+          alert(
+            `会社マスターを取り込みました。\n新規 ${add}件 / 更新 ${upd}件`+
+            (pairSheetName?`\n出荷人×出荷先 ${uniquePairs.length}件を取り込みました。`:'')
+          );
+          draw();
         };
       }catch(e){console.error(e);alert(e?.message||'Excelファイルを読み込めませんでした。')}
       finally{document.getElementById('v162File').value=''}
@@ -8569,6 +8401,33 @@ if(histChanged){
   try{companyMasterPage=companyMasterV162}catch(e){console.error('[v162] companyMasterPage override failed',e)}
   globalThis.companyMasterPage=companyMasterV162;
 
-  console.info('[KOMBU v162] 会社マスターExcel取込・編集・地区別選択・直接入力を有効化');
+  console.info('[KOMBU v162.4] 会社マスターExcel取込・編集・地区別選択・直接入力を有効化');
 })();
 /* ===== /v162 ===== */
+
+
+/* ===== v162.4: 出荷依頼入口は直近仕様の2ボタンだけ ===== */
+(function(){
+  'use strict';
+  function shipmentEntryTwoButtons(){
+    currentProduct=null;v80InventoryMode=false;setHeader('出荷依頼');setNavVisible(false);
+    app.innerHTML=`
+      <section class="card" style="margin-top:14px;padding:16px">
+        <h2 style="margin:0 0 6px;font-size:20px">📦 出荷依頼</h2>
+      </section>
+      <section class="card" style="margin-top:12px;padding:14px">
+        <div style="display:grid;grid-template-columns:1fr;gap:12px">
+          <button class="action green" id="v1624NewShipment" type="button" style="text-align:left;padding:18px">＋ 新規出荷依頼<small>新しい出荷依頼を作成</small></button>
+          <button class="action purple" id="v1624ShipmentHistory" type="button" style="text-align:left;padding:18px">🕘 出荷依頼履歴<small>保存済み・完了済みの出荷依頼を確認</small></button>
+        </div>
+      </section>`;
+    document.getElementById('v1624NewShipment').onclick=()=>globalThis.v114UnifiedShipmentForm();
+    document.getElementById('v1624ShipmentHistory').onclick=()=>{
+      if(typeof window.v136ShipmentHistory==='function')window.v136ShipmentHistory();
+      else if(typeof globalThis.v76ShipmentMenu==='function')globalThis.v76ShipmentMenu();
+    };
+  }
+  globalThis.v161ShipmentEntryMenu=shipmentEntryTwoButtons;
+})();
+/* ===== /v162.4 two-button entry ===== */
+
