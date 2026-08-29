@@ -5557,7 +5557,7 @@ smLogs=function(){
 
       <section class="card v161-s">
         <div class="v161-headrow"><h3 class="v161-title" style="margin:0">④ 出荷明細</h3><div class="v161-total">合計数量：<span id="v161ShipmentTotal">0</span></div></div>
-        <div class="v113-lines-wrap" style="margin-top:12px"><div id="v114Lines"></div><button class="btn secondary" id="v114AddLine">➕ 明細追加</button><button class="btn" id="v114PdfFlow" style="margin-top:12px;font-size:17px;padding:14px">📄 出荷依頼PDFを確認</button></div>
+        <div class="v113-lines-wrap" style="margin-top:12px"><div id="v114Lines"></div><button class="btn secondary" id="v114AddLine">➕ 明細追加</button><button class="btn" id="v114PdfFlow" style="margin-top:12px;font-size:17px;padding:14px">📄 出荷依頼PDFを確認</button><button class="btn" id="v1649TestFaxDirect" type="button" style="margin-top:10px;font-size:17px;padding:14px;background:#7a3e00;color:#fff">🧪 テストFAX完了（FAX送信なし）</button></div>
         <div class="note" style="margin-top:10px">PDFを確認後、そのままFAXBOXへ登録します。FAXBOX登録が成功するまで在庫には反映されません。</div>
       </section>
     </div>`;
@@ -5811,6 +5811,98 @@ smLogs=function(){
 
     const v114PreviewBtn=byId('v114Preview');
     if(v114PreviewBtn)v114PreviewBtn.onclick=v161ShowPreview;
+
+    const v1649TestFaxBtn=byId('v1649TestFaxDirect');
+    if(v1649TestFaxBtn)v1649TestFaxBtn.onclick=()=>{
+      if(editing)return alert('テストFAX完了は新規出荷依頼で使用してください。');
+      if(!sn.value.trim())return alert('出荷人を入力してください。');
+      if(sx.value.trim()&&!/^\d{3}-\d{4}$/.test(sx.value.trim()))return alert('出荷人の郵便番号を123-4567形式で入力してください。');
+      if(!dn.value.trim())return alert('出荷先を入力してください。');
+      if(dx.value.trim()&&!/^\d{3}-\d{4}$/.test(dx.value.trim()))return alert('出荷先の郵便番号を123-4567形式で入力してください。');
+      if(!lines.length)return alert('明細を1件以上追加してください。');
+
+      for(const l of lines){
+        const d=productDefs[l.product],q=Number(l.qty);
+        if(!q||q<=0)return alert('明細の数量を入力してください。');
+        let av=0;try{av=d.avail(l)}catch(e){}
+        if(q>Number(av||0))return alert(`${d.desc(l)} の出荷可能在庫は ${fmt(av)} です。`);
+        l.qty=q;
+      }
+
+      const source={name:sn.value.trim(),postal:v229Postal(sx.value),address:sa.value.trim(),phone:sp.value.trim()};
+      const dest={name:dn.value.trim(),postal:v229Postal(dx.value),address:da.value.trim(),phone:dp.value.trim()};
+      const common={
+        source,dest,
+        shipDate:byId('v114ShipDate').value,
+        arrivalDate:byId('v114ArrivalDate').value,
+        deliveryPack:byId('v114DeliveryPack').value||'',
+        memo:byId('v114Memo').value||'',
+        batchId:'TESTM'+Date.now().toString(36).toUpperCase(),
+        createdAt:new Date().toISOString(),
+        updatedAt:new Date().toISOString()
+      };
+      const total=lines.reduce((n,l)=>n+Number(l.qty||0),0);
+      if(!confirm(
+        '【テストFAX完了】\n\n実際のFAXは送信しません。\n'+
+        '出荷依頼を保存し、本番のFAX完了後処理を実行します。\n\n'+
+        '出荷人：'+source.name+'\n出荷先：'+dest.name+
+        '\n出荷日：'+common.shipDate+'\n合計数量：'+total+
+        '\n\n在庫差引・入出庫履歴・出荷依頼履歴へ反映します。よろしいですか？'
+      ))return;
+
+      v1649TestFaxBtn.disabled=true;
+      v1649TestFaxBtn.textContent='テストFAX完了処理中…';
+      try{
+        const groups={};for(const l of lines)(groups[l.product]||(groups[l.product]=[])).push({...l});
+        const created=[];
+        if(groups.kushiro){
+          const ls=groups.kushiro.map(({product,...x})=>x);
+          const o={id:shipmentId(),status:'draft',source,destInfo:dest,dest:dest.name,baseYear:ls[0]?.year||state.activeYear,shipDate:common.shipDate,arrivalDate:common.arrivalDate,deliveryPack:common.deliveryPack,memo:common.memo,batchId:common.batchId,createdAt:common.createdAt,updatedAt:common.updatedAt,lines:ls};
+          state.shipments.push(o);save();created.push(['kushiro',o.id]);
+        }
+        if(groups.hidaka){
+          const ls=groups.hidaka.map(({product,memo,...x})=>x);
+          const o={id:hShipId(),status:'draft',source,dest,shipDate:common.shipDate,arrivalDate:common.arrivalDate,deliveryPack:common.deliveryPack,memo:common.memo,batchId:common.batchId,createdAt:common.createdAt,updatedAt:common.updatedAt,lines:ls};
+          hState.shipments.push(o);hSave();created.push(['hidaka',o.id]);
+        }
+        if(groups.nemuro){
+          const ls=groups.nemuro.map(({product,memo,...x})=>x);
+          const o={id:nShipId(),status:'draft',source,dest,shipDate:common.shipDate,arrivalDate:common.arrivalDate,deliveryPack:common.deliveryPack,memo:common.memo,batchId:common.batchId,createdAt:common.createdAt,updatedAt:common.updatedAt,lines:ls};
+          nState.shipments.push(o);nSave();created.push(['nemuro',o.id]);
+        }
+        if(groups.sanmae){
+          const ls=groups.sanmae.map(({product,memo,...x})=>x);
+          const o={id:smShipId(),status:'draft',source,dest,shipDate:common.shipDate,arrivalDate:common.arrivalDate,deliveryPack:common.deliveryPack,memo:common.memo,batchId:common.batchId,createdAt:common.createdAt,updatedAt:common.updatedAt,lines:ls};
+          smState.shipments.push(o);smSave();created.push(['sanmae',o.id]);
+        }
+
+        const stamp=Date.now();
+        for(const [product,id] of created){
+          // Same production stock validation/confirmation path.
+          window.kombuApplyFaxboxInventory(product,id,'confirm',{jobId:'TEST-'+stamp});
+          // Same production FAX-completion finalizer. This creates formal OUT records and shipment history.
+          window.kombuFinalizeFaxboxShipment(product,id,{
+            jobId:'TEST-'+stamp,
+            sentAt:new Date().toISOString(),
+            testMode:true
+          });
+        }
+        alert(
+          'テストFAX完了しました。\n\n'+
+          '実際のFAXは送信していません。\n'+
+          '作成した出荷依頼：'+created.length+'件\n'+
+          '在庫・入出庫履歴・出荷依頼履歴へ本番完了処理で反映しました。'
+        );
+        if(typeof globalThis.gShipmentHistory==='function')globalThis.gShipmentHistory();
+        else if(typeof globalThis.v136ShipmentHistory==='function')globalThis.v136ShipmentHistory();
+        else v76ShipmentMenu();
+      }catch(err){
+        console.error('[v164.9 direct test fax]',err);
+        v1649TestFaxBtn.disabled=false;
+        v1649TestFaxBtn.textContent='🧪 テストFAX完了（FAX送信なし）';
+        alert('テストFAX完了処理に失敗しました。\n'+String(err?.message||err));
+      }
+    };
 
     const v114SaveBtn=byId('v114Save');
     if(v114SaveBtn)v114SaveBtn.onclick=()=>{
