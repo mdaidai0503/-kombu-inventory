@@ -28,9 +28,42 @@ state.records=Array.isArray(state.records)?state.records:[];
 state.activeYear=YEARS.includes(state.activeYear)?state.activeYear:DEFAULT_YEAR;
 state.records=state.records.map(r=>({...r,year:YEARS.includes(r.year)?r.year:DEFAULT_YEAR}));
 state.pdfImports=Array.isArray(state.pdfImports)?state.pdfImports:[];
-state.companies=Array.isArray(state.companies)?state.companies:[];
-if(!state.companies.some(c=>c&&c.name==='㈱浜中運輸'))state.companies.unshift({name:'㈱浜中運輸',address:'',phone:''});
-state.companies=state.companies.filter(c=>c&&String(c.name||'').trim()).map(c=>({name:String(c.name||'').trim(),address:String(c.address||''),phone:String(c.phone||'')}));
+// v162: 会社マスター拡張項目（郵便番号・地区・用途など）を保持する。
+// Supabase互換キャッシュの companyMaster しかない場合は companies へ変換して引き継ぐ。
+if(!Array.isArray(state.companies)||!state.companies.length){
+ const cm=Array.isArray(state.companyMaster)?state.companyMaster:[];
+ state.companies=cm.map((c,i)=>({
+  code:String(c.company_code||c.code||''),
+  name:String(c.company_name||c.name||'').trim(),
+  postal:String(c.postal_code||c.postal||''),
+  address:String(c.address||''),
+  phone:String(c.tel||c.phone||''),
+  region:String(c.region||''),
+  toyamaRegion:String(c.toyama_region||c.toyamaRegion||''),
+  useSource:c.use_source!==undefined?!!c.use_source:(c.useSource!==undefined?!!c.useSource:true),
+  useDestination:c.use_destination!==undefined?!!c.use_destination:(c.useDestination!==undefined?!!c.useDestination:true),
+  favorite:c.favorite!==undefined?!!c.favorite:false,
+  sortOrder:Number(c.sort_order||c.sortOrder||i+1),
+  note:String(c.note||''),
+  active:c.active!==false
+ })).filter(c=>c.name);
+}
+if(!state.companies.some(c=>c&&c.name==='㈱浜中運輸'))state.companies.unshift({name:'㈱浜中運輸',postal:'',address:'',phone:'',region:'',toyamaRegion:'',useSource:true,useDestination:false,favorite:false,sortOrder:0,note:'',active:true});
+state.companies=state.companies.filter(c=>c&&String(c.name||'').trim()).map((c,i)=>({
+ code:String(c.code||c.company_code||''),
+ name:String(c.name||c.company_name||'').trim(),
+ postal:String(c.postal||c.postal_code||''),
+ address:String(c.address||''),
+ phone:String(c.phone||c.tel||''),
+ region:String(c.region||''),
+ toyamaRegion:String(c.toyamaRegion||c.toyama_region||''),
+ useSource:c.useSource!==undefined?!!c.useSource:(c.use_source!==undefined?!!c.use_source:true),
+ useDestination:c.useDestination!==undefined?!!c.useDestination:(c.use_destination!==undefined?!!c.use_destination:true),
+ favorite:c.favorite===true||c.favorite==='はい',
+ sortOrder:Number(c.sortOrder||c.sort_order||i+1),
+ note:String(c.note||''),
+ active:c.active!==false
+}));
 const DELETED_GROUPS=new Set(["コケ","特長・特特"]);
 state.records=state.records.filter(r=>!DELETED_GROUPS.has(r.group));
 save();
