@@ -7134,23 +7134,17 @@ if(histChanged){
       <section class="card" style="margin-top:14px;padding:16px">
         <h2 style="margin:0 0 6px;font-size:20px">📦 出荷依頼</h2>
         <div class="muted" style="font-size:12px">
-          新規作成・現在の出荷依頼・過去の履歴をここから選択します。
+          新規作成または過去の出荷依頼履歴を選択します。
         </div>
       </section>
 
       <section class="card" style="margin-top:12px;padding:14px">
-        <div style="display:grid;grid-template-columns:1fr;gap:12px">
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px" class="v162-shipment-menu-buttons">
 
           <button class="action green" id="v161NewShipment" type="button"
             style="text-align:left;padding:18px">
             ＋ 新規出荷依頼
             <small>4種類の昆布を共通フォームから入力</small>
-          </button>
-
-          <button class="action blue" id="v161ShipmentList" type="button"
-            style="text-align:left;padding:18px">
-            📋 出荷依頼一覧
-            <small>現在の出荷依頼を新しい順に確認</small>
           </button>
 
           <button class="action purple" id="v161ShipmentHistory" type="button"
@@ -7160,6 +7154,7 @@ if(histChanged){
           </button>
 
         </div>
+        <style>@media(max-width:700px){.v162-shipment-menu-buttons{grid-template-columns:1fr!important}}</style>
       </section>
 
       <section class="card" style="margin-top:12px;padding:12px">
@@ -7171,10 +7166,6 @@ if(histChanged){
 
     document.getElementById('v161NewShipment').onclick=function(){
       globalThis.v114UnifiedShipmentForm();
-    };
-
-    document.getElementById('v161ShipmentList').onclick=function(){
-      globalThis.v76ShipmentMenu();
     };
 
     document.getElementById('v161ShipmentHistory').onclick=function(){
