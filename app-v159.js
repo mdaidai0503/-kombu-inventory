@@ -5543,7 +5543,7 @@ smLogs=function(){
         <h3 class="v161-title">② 出荷人</h3>
         <div class="v161-party">
           <div class="v161-box"><label>よく使う会社<select id="v229SourceFavorite"></select></label><label style="display:block;margin-top:10px">地区<select id="v229SourceRegion">${v229RegionOptions(source0.toyamaRegion||source0.region||'すべて')}</select></label><label style="display:block;margin-top:10px">会社を選択<select id="v161SourceSelect">${v229SourceOptions(source0.name,source0.toyamaRegion||source0.region||'すべて')}</select></label><div class="small" style="margin-top:8px">よく使う会社、地区別会社、または右側への直接入力ができます。</div></div>
-          <div class="v161-details"><label>会社名<input id="v114SourceName" value="${esc(source0.name||'')}"></label><label>郵便番号<input id="v114SourcePostal" inputmode="numeric" placeholder="123-4567" value="${esc(source0.postal||source0.postal_code||'')}"></label><label>住所<input id="v114SourceAddress" value="${esc(source0.address||'')}"></label><label>電話<input id="v114SourcePhone" value="${esc(source0.phone||'')}"></label></div>
+          <div class="v161-details"><label>会社名<input id="v114SourceName" autocomplete="off" value="${esc(source0.name||'')}"></label><label>郵便番号<input id="v114SourcePostal" autocomplete="off" inputmode="numeric" placeholder="123-4567" value="${esc(source0.postal||source0.postal_code||'')}"></label><label>住所<input id="v114SourceAddress" autocomplete="off" value="${esc(source0.address||'')}"></label><label>電話<input id="v114SourcePhone" autocomplete="off" value="${esc(source0.phone||'')}"></label></div>
         </div>
       </section>
 
@@ -5551,7 +5551,7 @@ smLogs=function(){
         <h3 class="v161-title">③ 出荷先</h3>
         <div class="v161-party">
           <div class="v161-box"><label>よく使う会社<select id="v229DestFavorite"></select></label><label style="display:block;margin-top:10px">地区<select id="v229DestRegion">${v229RegionOptions(dest0.toyamaRegion||dest0.region||'すべて')}</select></label><label style="display:block;margin-top:10px">会社を選択<select id="v161DestSelect">${v229DestOptions(dest0.name,dest0.toyamaRegion||dest0.region||'すべて',source0.name)}</select></label><div class="small" style="margin-top:8px">よく使う会社を最上段に表示。通常欄では出荷人×出荷先の組み合わせ・地区・全会社から選択でき、直接入力もできます。</div></div>
-          <div class="v161-details"><label>会社名<input id="v114DestName" value="${esc(dest0.name||'')}"></label><label>郵便番号<input id="v114DestPostal" inputmode="numeric" placeholder="123-4567" value="${esc(dest0.postal||dest0.postal_code||'')}"></label><label>住所<input id="v114DestAddress" value="${esc(dest0.address||'')}"></label><label>電話<input id="v114DestPhone" value="${esc(dest0.phone||'')}"></label></div>
+          <div class="v161-details"><label>会社名<input id="v114DestName" autocomplete="off" value="${esc(dest0.name||'')}"></label><label>郵便番号<input id="v114DestPostal" autocomplete="off" inputmode="numeric" placeholder="123-4567" value="${esc(dest0.postal||dest0.postal_code||'')}"></label><label>住所<input id="v114DestAddress" autocomplete="off" value="${esc(dest0.address||'')}"></label><label>電話<input id="v114DestPhone" autocomplete="off" value="${esc(dest0.phone||'')}"></label></div>
         </div>
       </section>
 
@@ -5568,12 +5568,44 @@ smLogs=function(){
     sourceFavorite.innerHTML=v229FavoriteOptions('source','');
     destFavorite.innerHTML=v229FavoriteOptions('destination','');
     if(!editing){
-      const dateEl=byId('v114ShipDate');
-      if(dateEl){const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const m=Object.fromEntries(parts.map(p=>[p.type,p.value]));dateEl.value=m.year+'-'+m.month+'-'+m.day;}
-      sourceFavorite.value='';destFavorite.value='';
-      sourceRegion.value='すべて';destRegion.value='すべて';
-      sourceSelect.selectedIndex=0;sourceSelect.value='';
-      destSelect.selectedIndex=0;destSelect.value='';
+      const v1642TokyoToday=()=>{
+        const parts=new Intl.DateTimeFormat('en-CA',{
+          timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'
+        }).formatToParts(new Date());
+        const m=Object.fromEntries(parts.map(p=>[p.type,p.value]));
+        return m.year+'-'+m.month+'-'+m.day;
+      };
+      const v1642ResetNewShipmentDefaults=()=>{
+        const dateEl=byId('v114ShipDate');
+        if(dateEl){dateEl.value=v1642TokyoToday();dateEl.defaultValue=dateEl.value;}
+
+        sourceFavorite.value='';
+        destFavorite.value='';
+        sourceRegion.value='すべて';
+        destRegion.value='すべて';
+
+        // 必ず先頭の「直接入力」にする
+        sourceSelect.innerHTML=v229SourceOptions('','すべて');
+        destSelect.innerHTML=v229DestOptions('','すべて','');
+        sourceSelect.selectedIndex=0;
+        sourceSelect.value='';
+        destSelect.selectedIndex=0;
+        destSelect.value='';
+
+        // 新規画面では会社情報を必ず空欄にする
+        [sn,sx,sa,sp,dn,dx,da,dp].forEach(el=>{
+          if(!el)return;
+          el.value='';
+          el.defaultValue='';
+          el.setAttribute('autocomplete','off');
+        });
+      };
+
+      // Chrome のフォーム復元より後にも再度初期値を確定する
+      v1642ResetNewShipmentDefaults();
+      requestAnimationFrame(v1642ResetNewShipmentDefaults);
+      setTimeout(v1642ResetNewShipmentDefaults,80);
+      setTimeout(v1642ResetNewShipmentDefaults,220);
     }
     const v229Postal=v=>{const d=String(v||'').replace(/\D/g,'');return d.length===7?d.slice(0,3)+'-'+d.slice(3):String(v||'').trim()};
     const applyCompany=(selectEl,nameEl,postalEl,addressEl,phoneEl)=>{
@@ -9054,94 +9086,3 @@ document.getElementById('v161ShipmentHistory').onclick=function(){
 /* ===== /2026-08-29 company import only ===== */
 
 
-/* ===== v164.1 新規出荷依頼 初期状態固定（その他仕様変更なし） ===== */
-(function(){
-  function tokyoToday(){
-    try{
-      const parts = new Intl.DateTimeFormat('en-CA',{
-        timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'
-      }).formatToParts(new Date());
-      const o={}; parts.forEach(p=>{ if(p.type!=='literal') o[p.type]=p.value; });
-      return `${o.year}-${o.month}-${o.day}`;
-    }catch(e){
-      const d=new Date(Date.now()+9*60*60*1000);
-      return d.toISOString().slice(0,10);
-    }
-  }
-
-  function setSelectByTextOrValue(el, wanted){
-    if(!el) return;
-    const opts=[...el.options];
-    const hit=opts.find(o=>o.value===wanted || (o.textContent||'').trim()===wanted);
-    if(hit) el.value=hit.value;
-  }
-
-  function applyNewShipmentDefaults(){
-    // 新規画面だけに限定。編集画面の保存済み値は変更しない。
-    const app=document.getElementById('app');
-    if(!app) return;
-
-    const date =
-      app.querySelector('#requestDate') ||
-      app.querySelector('#shipRequestDate') ||
-      app.querySelector('input[name="requestDate"]') ||
-      [...app.querySelectorAll('input[type="date"]')].find(x=>{
-        const label=x.closest('label,.field,.form-group')?.textContent||'';
-        return label.includes('依頼日');
-      });
-    if(!date) return; // 新規出荷依頼フォームでない場合は何もしない
-
-    // 編集画面らしい場合は触らない
-    const editing = !!(
-      app.querySelector('[data-editing="true"]') ||
-      app.querySelector('#shipmentEditId')?.value ||
-      app.querySelector('input[name="shipmentId"]')?.value
-    );
-    if(editing) return;
-
-    date.value=tokyoToday();
-    date.defaultValue=date.value;
-
-    const ids = {
-      sourceFavorite:['v229SourceFavorite','sourceFavorite'],
-      sourceRegion:['v229SourceRegion','sourceRegion'],
-      sourceSelect:['v229SourceSelect','sourceSelect'],
-      sourceName:['v229SourceName','sourceName'],
-      sourcePostal:['v229SourcePostal','sourcePostal'],
-      sourceAddress:['v229SourceAddress','sourceAddress'],
-      sourcePhone:['v229SourcePhone','sourcePhone'],
-      destFavorite:['v229DestFavorite','destFavorite'],
-      destRegion:['v229DestRegion','destRegion'],
-      destSelect:['v229DestSelect','destSelect'],
-      destName:['v229DestName','destName'],
-      destPostal:['v229DestPostal','destPostal'],
-      destAddress:['v229DestAddress','destAddress'],
-      destPhone:['v229DestPhone','destPhone']
-    };
-    const get=(keys)=>keys.map(id=>document.getElementById(id)).find(Boolean);
-
-    setSelectByTextOrValue(get(ids.sourceFavorite),'選択してください');
-    setSelectByTextOrValue(get(ids.sourceRegion),'すべて');
-    setSelectByTextOrValue(get(ids.sourceSelect),'直接入力');
-    setSelectByTextOrValue(get(ids.destFavorite),'選択してください');
-    setSelectByTextOrValue(get(ids.destRegion),'すべて');
-    setSelectByTextOrValue(get(ids.destSelect),'直接入力');
-
-    [ids.sourceName,ids.sourcePostal,ids.sourceAddress,ids.sourcePhone,
-     ids.destName,ids.destPostal,ids.destAddress,ids.destPhone]
-      .map(get).filter(Boolean).forEach(el=>{ el.value=''; el.defaultValue=''; });
-  }
-
-  // 既存の画面描画処理が終わった後に一度だけ初期値を確定
-  const obs=new MutationObserver(()=>{
-    clearTimeout(window.__v1641NewShipTimer);
-    window.__v1641NewShipTimer=setTimeout(applyNewShipmentDefaults,0);
-  });
-  const start=()=>{
-    const app=document.getElementById('app');
-    if(app) obs.observe(app,{childList:true,subtree:true});
-  };
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',start,{once:true});
-  else start();
-})();
- /* ===== /v164.1 ===== */
