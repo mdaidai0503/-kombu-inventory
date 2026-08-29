@@ -5415,8 +5415,8 @@ smLogs=function(){
     let lines=existing?.lines?.length?existing.lines.map(x=>({product:editProduct,...x})):[];
     const existingSrc=existing?(existing.source&&typeof existing.source==='object'?existing.source:shipmentSource(existing)):null;
     const existingDst=existing?(existing.destInfo&&typeof existing.destInfo==='object'?existing.destInfo:(existing.dest&&typeof existing.dest==='object'?existing.dest:shipmentDest(existing))):null;
-    const source0=existingSrc||companyByName('㈱浜中運輸')||{name:'㈱浜中運輸',address:'',phone:''};
-    const dest0=existingDst||{name:'',address:'',phone:''};
+    const source0=existingSrc||{name:'',postal:'',address:'',phone:'',region:'',toyamaRegion:''};
+    const dest0=existingDst||{name:'',postal:'',address:'',phone:'',region:'',toyamaRegion:''};
     const companies=Array.isArray(state.companies)?state.companies.filter(c=>c&&String(c.name||'').trim()):[];
     const V229_PAIR_KEY='kombu_company_pairs_v162';
     const v229LoadPairs=()=>{try{const x=JSON.parse(localStorage.getItem(V229_PAIR_KEY)||'[]');return Array.isArray(x)?x:[]}catch(_){return []}};
@@ -5532,7 +5532,7 @@ smLogs=function(){
       <section class="card v161-s">
         <h3 class="v161-title">① 基本情報</h3>
         <div class="v161-basic">
-          <div class="v161-box"><label>依頼日<input id="v114ShipDate" type="date" value="${existing?.shipDate||(()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')})()}"></label></div>
+          <div class="v161-box"><label>依頼日<input id="v114ShipDate" type="date" value="${existing?.shipDate||(()=>{const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const m=Object.fromEntries(parts.map(p=>[p.type,p.value]));return m.year+'-'+m.month+'-'+m.day})()}"></label></div>
           <div class="v161-box"><label>着希望日<input id="v114ArrivalDate" type="date" value="${existing?.arrivalDate||''}"></label></div>
           <div class="v161-box"><label>配送・袋入等<select id="v114DeliveryPack"><option value="" ${!existing?.deliveryPack?'selected':''}>　</option><option value="ビニール袋入り" ${existing?.deliveryPack==='ビニール袋入り'?'selected':''}>ビニール袋入り</option><option value="コンテナ対応" ${existing?.deliveryPack==='コンテナ対応'?'selected':''}>コンテナ対応</option></select></label></div>
           <div class="v161-box"><label>備考<input id="v114Memo" type="text" placeholder="自由入力" value="${esc(existing?.memo||'')}"></label></div>
@@ -5567,6 +5567,14 @@ smLogs=function(){
     const sourceSelect=byId('v161SourceSelect'),destSelect=byId('v161DestSelect'),sourceRegion=byId('v229SourceRegion'),destRegion=byId('v229DestRegion'),sourceFavorite=byId('v229SourceFavorite'),destFavorite=byId('v229DestFavorite');
     sourceFavorite.innerHTML=v229FavoriteOptions('source','');
     destFavorite.innerHTML=v229FavoriteOptions('destination','');
+    if(!editing){
+      const dateEl=byId('v114ShipDate');
+      if(dateEl){const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const m=Object.fromEntries(parts.map(p=>[p.type,p.value]));dateEl.value=m.year+'-'+m.month+'-'+m.day;}
+      sourceFavorite.value='';destFavorite.value='';
+      sourceRegion.value='すべて';destRegion.value='すべて';
+      sourceSelect.selectedIndex=0;sourceSelect.value='';
+      destSelect.selectedIndex=0;destSelect.value='';
+    }
     const v229Postal=v=>{const d=String(v||'').replace(/\D/g,'');return d.length===7?d.slice(0,3)+'-'+d.slice(3):String(v||'').trim()};
     const applyCompany=(selectEl,nameEl,postalEl,addressEl,phoneEl)=>{
       if(!selectEl.value)return;
