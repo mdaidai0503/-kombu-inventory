@@ -7852,9 +7852,8 @@ document.getElementById('v161ShipmentHistory').onclick=function(){
       }
     };
 
-    document.getElementById('v161ShipmentHome').onclick=function(){
-      globalThis.productLanding();
-    };
+    // v164.4: 中段「ホームへ戻る」ボタンは削除済み。
+    // 下部固定ナビのホームを使用するため、旧ボタンへのイベント設定は行わない。
 
     // v2.20: 画面を先に表示してから出荷依頼用4ボタンを適用。
     // productChoicePage / setMode の古いラップ連鎖には依存しない。
