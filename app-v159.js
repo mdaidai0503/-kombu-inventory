@@ -5411,17 +5411,27 @@ smLogs=function(){
       return ['すべて',...v229MainRegions,...v229ToyamaRegions].map(x=>`<option value="${esc(x)}" ${x===v?'selected':''}>${esc(x)}</option>`).join('');
     };
     const v229Bool=(v,def=true)=>v===undefined||v===null||v===''?def:!(v===false||String(v).toLowerCase()==='false'||String(v)==='いいえ'||String(v)==='0');
-    const v229MatchRegion=(c,region)=>{
-      if(!region||region==='すべて')return true;
-      if(v229ToyamaRegions.includes(region))return String(c?.toyamaRegion||'')===region;
-      return String(c?.region||'')===region;
+    // 会社名照合は全角/半角・空白差を吸収。表示名そのものは変更しない。
+    const v229NormName=v=>String(v||'').normalize('NFKC').replace(/[\s　]+/g,'').trim();
+    const v229NormRegion=v=>String(v||'').normalize('NFKC').replace(/[\s　]+/g,'').trim();
+    const v229FindCompanyByName=name=>{
+      const key=v229NormName(name);
+      return companies.find(c=>v229NormName(c?.name)===key)||null;
     };
-    const v229CompanyPool=(type,region='すべて')=>companies.filter(c=>{
-      if(c?.active===false)return false;
-      if(type==='source'&&!v229Bool(c?.useSource,true))return false;
-      if(type==='destination'&&!v229Bool(c?.useDestination,true))return false;
-      return v229MatchRegion(c,region);
-    });
+    const v229FindCompanyForPair=p=>{
+      const code=String(p?.destCode||'').trim();
+      if(code){const byCode=companies.find(c=>String(c?.code||'').trim()===code);if(byCode)return byCode;}
+      return v229FindCompanyByName(p?.dest||'');
+    };
+    const v229MatchRegion=(c,region)=>{
+      const target=v229NormRegion(region);
+      if(!target||target===v229NormRegion('すべて'))return true;
+      if(v229ToyamaRegions.some(x=>v229NormRegion(x)===target))return v229NormRegion(c?.toyamaRegion||c?.toyama_region||'')===target;
+      return v229NormRegion(c?.region||'')===target;
+    };
+    // 会社マスターに登録されている有効会社は、出荷人・出荷先どちらでも選択可能。
+    // Excelの「出荷人として使用/出荷先として使用」は候補を消す条件にはしない。
+    const v229CompanyPool=(_type,region='すべて')=>companies.filter(c=>c?.active!==false&&v229MatchRegion(c,region));
     const v229SortCompanies=a=>a.slice().sort((x,y)=>{
       const xf=x?.favorite===true||x?.favorite==='はい'?0:1;
       const yf=y?.favorite===true||y?.favorite==='はい'?0:1;
@@ -5429,15 +5439,22 @@ smLogs=function(){
       return Number(x?.sortOrder||999999)-Number(y?.sortOrder||999999);
     });
     const v229SourceOptions=(selected,region='すべて')=>{
-      const selectedName=String(selected||'').trim();
+      const selectedKey=v229NormName(selected);
       const pool=v229SortCompanies(v229CompanyPool('source',region));
-      return `<option value="">直接入力</option>`+pool.map(c=>{const n=String(c.name||'').trim();return `<option value="${esc(n)}" ${n===selectedName?'selected':''}>${esc(n)}</option>`}).join('');
+      return `<option value="">直接入力</option>`+pool.map(c=>{const n=String(c.name||'').trim();return `<option value="${esc(n)}" ${v229NormName(n)===selectedKey?'selected':''}>${esc(n)}</option>`}).join('');
     };
     const v229DestOptions=(selected,region='すべて',sourceName='')=>{
-      const selectedName=String(selected||'').trim();
+      const selectedKey=v229NormName(selected);
       const all=v229SortCompanies(v229CompanyPool('destination','すべて'));
       const area=v229SortCompanies(v229CompanyPool('destination',region));
-      const pairRows=v229Pairs.filter(p=>String(p?.source||'').trim()===String(sourceName||'').trim()).sort((a,b)=>{
+      const sourceCompany=v229FindCompanyByName(sourceName);
+      const sourceCode=String(sourceCompany?.code||'').trim();
+      const sourceKey=v229NormName(sourceName);
+      const pairRows=v229Pairs.filter(p=>{
+        const pCode=String(p?.sourceCode||'').trim();
+        if(sourceCode&&pCode&&sourceCode===pCode)return true;
+        return v229NormName(p?.source||'')===sourceKey;
+      }).sort((a,b)=>{
         const af=a?.favorite===true||a?.favorite==='はい'?0:1;
         const bf=b?.favorite===true||b?.favorite==='はい'?0:1;
         if(af!==bf)return af-bf;
@@ -5446,14 +5463,15 @@ smLogs=function(){
       const seen=new Set();
       const priority=[];
       pairRows.forEach(p=>{
-        const c=companies.find(x=>String(x?.name||'').trim()===String(p?.dest||'').trim());
-        if(c&&v229Bool(c?.useDestination,true)&&c?.active!==false&&!seen.has(c.name)){seen.add(c.name);priority.push(c)}
+        const c=v229FindCompanyForPair(p);
+        const key=v229NormName(c?.name||'');
+        if(c&&c?.active!==false&&key&&!seen.has(key)){seen.add(key);priority.push(c)}
       });
-      const opt=c=>{const n=String(c?.name||'').trim();return `<option value="${esc(n)}" ${n===selectedName?'selected':''}>${esc(n)}</option>`};
+      const opt=c=>{const n=String(c?.name||'').trim();return `<option value="${esc(n)}" ${v229NormName(n)===selectedKey?'selected':''}>${esc(n)}</option>`};
       let html=`<option value="">直接入力</option>`;
-      if(priority.length)html+=`<optgroup label="この出荷人でよく使う出荷先">${priority.map(opt).join('')}</optgroup>`;
-      if(region&&region!=='すべて'&&area.length)html+=`<optgroup label="地区から探す：${esc(region)}">${area.map(opt).join('')}</optgroup>`;
-      html+=`<optgroup label="すべての会社から探す">${all.map(opt).join('')}</optgroup>`;
+      if(priority.length)html+=`<optgroup label="この出荷人でよく使う出荷先（${priority.length}件）">${priority.map(opt).join('')}</optgroup>`;
+      if(region&&region!=='すべて'&&area.length)html+=`<optgroup label="地区から探す：${esc(region)}（${area.length}件）">${area.map(opt).join('')}</optgroup>`;
+      html+=`<optgroup label="すべての会社から探す（${all.length}件）">${all.map(opt).join('')}</optgroup>`;
       return html;
     };
 
@@ -5524,7 +5542,7 @@ smLogs=function(){
     const v229Postal=v=>{const d=String(v||'').replace(/\D/g,'');return d.length===7?d.slice(0,3)+'-'+d.slice(3):String(v||'').trim()};
     const applyCompany=(selectEl,nameEl,postalEl,addressEl,phoneEl)=>{
       if(!selectEl.value)return;
-      const c=companyByName(selectEl.value);
+      const c=v229FindCompanyByName(selectEl.value)||companyByName(selectEl.value);
       nameEl.value=c?.name||'';postalEl.value=v229Postal(c?.postal||c?.postal_code||'');addressEl.value=c?.address||'';phoneEl.value=c?.phone||'';
     };
     const rebuildSource=()=>{
@@ -8982,6 +9000,6 @@ document.getElementById('v161ShipmentHistory').onclick=function(){
   }
 
   try{companyMasterPage=companyMasterWithExcelImport;globalThis.companyMasterPage=companyMasterWithExcelImport;}catch(e){console.error(e)}
-  console.info('[KOMBU v2.29] 会社マスター同時取込＋地区別会社選択・直接入力・出荷人別出荷先優先表示');
+  console.info('[KOMBU v2.29] 会社マスター同時取込＋地区候補欠落修正＋出荷人×出荷先照合強化');
 })();
 /* ===== /2026-08-29 company import only ===== */
