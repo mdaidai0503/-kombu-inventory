@@ -1,6 +1,6 @@
 /* =========================================================
    昆布在庫管理
-   送り状PDF連携 v159.8
+   送り状PDF連携 v160.4（複数出荷指示対応）
    shipment_waybill_inbox 専用
    - 出荷履歴のPDF表示
    - 出荷指示詳細画面への浜中運輸送り状表示
@@ -11,6 +11,7 @@
   'use strict';
 
   const TABLE_NAME = 'shipment_waybill_inbox';
+  const LINK_TABLE_NAME = 'shipment_waybill_links';
   const BUCKET_NAME = 'shipment-waybill-inbox';
   const MANUAL_LINK_URL =
     'https://crltrozxztivkyxtjjxv.supabase.co/functions/v1/waybill-manual-link';
@@ -19,6 +20,7 @@
   const SYNC_TOKEN_KEY = 'kombu_sync_token_v1';
 
   let waybillCache = [];
+  let waybillLinkCache = [];
   let refreshTimer = null;
   let refreshing = false;
 
@@ -43,6 +45,15 @@
   }
 
   function getScore(waybill) {
+    const linkScore =
+      waybill &&
+      waybill.__waybill_link &&
+      Number(waybill.__waybill_link.score);
+
+    if (Number.isFinite(linkScore)) {
+      return linkScore;
+    }
+
     const p = waybill && waybill.parsed_data;
     const score =
       p && p.match && p.match.best
@@ -107,7 +118,11 @@
       };
     }
 
-    if (waybill && waybill.match_status === 'review') {
+    if (
+      waybill &&
+      (waybill.match_status === 'review' ||
+       waybill.match_status === 'needs_review')
+    ) {
       return {
         key: 'review',
         label: '要確認',
@@ -168,30 +183,101 @@
     const sb = client();
     if (!sb) return [];
 
-    const result = await sb
-      .from(TABLE_NAME)
-      .select(
-        'id,storage_path,original_filename,match_status,matched_product,matched_shipment_id,received_at,shipping_date,parsed_data'
-      )
-      .order('received_at', { ascending: false });
+    const [waybillResult, linkResult] = await Promise.all([
+      sb
+        .from(TABLE_NAME)
+        .select(
+          'id,storage_path,original_filename,match_status,matched_product,matched_shipment_id,received_at,shipping_date,parsed_data'
+        )
+        .order('received_at', { ascending: false }),
 
-    if (result.error) {
-      console.error('送り状一覧取得エラー:', result.error);
+      sb
+        .from(LINK_TABLE_NAME)
+        .select(
+          'id,waybill_inbox_id,app_shipment_id,product_code,score,decision,is_primary,match_detail,created_at,updated_at'
+        )
+    ]);
+
+    if (waybillResult.error) {
+      console.error('送り状一覧取得エラー:', waybillResult.error);
       return [];
     }
 
-    waybillCache = Array.isArray(result.data) ? result.data : [];
+    // 新しい複数紐付けテーブルの取得に失敗しても、
+    // 既存 matched_shipment_id 方式へフォールバックして画面を壊さない。
+    if (linkResult.error) {
+      console.warn(
+        '複数送り状リンク取得エラー。従来方式で続行します:',
+        linkResult.error
+      );
+      waybillLinkCache = [];
+    } else {
+      waybillLinkCache =
+        Array.isArray(linkResult.data) ? linkResult.data : [];
+    }
+
+    waybillCache =
+      Array.isArray(waybillResult.data) ? waybillResult.data : [];
+
     return waybillCache;
   }
 
+  function linksForWaybill(waybillId) {
+    return waybillLinkCache.filter(function (link) {
+      return String(link.waybill_inbox_id || '') === String(waybillId || '');
+    });
+  }
+
+  function findLinkForShipment(product, shipmentId) {
+    const idText = String(shipmentId || '');
+
+    // まず「出荷指示ID + 商品コード」の厳密一致を優先。
+    if (product) {
+      const exact = waybillLinkCache.find(function (link) {
+        return (
+          String(link.app_shipment_id || '') === idText &&
+          String(link.product_code || '') === String(product)
+        );
+      });
+
+      if (exact) return exact;
+    }
+
+    // shipment ID はアプリ上で一意なので、商品コード表記揺れ時はID一致で救済。
+    return waybillLinkCache.find(function (link) {
+      return String(link.app_shipment_id || '') === idText;
+    }) || null;
+  }
+
   function findWaybill(product, shipmentId) {
+    // v160.4:
+    // 新しい shipment_waybill_links を最優先。
+    // 1枚の送り状が複数出荷指示へ紐付いていても、
+    // 各出荷履歴から同じPDFを参照できる。
+    const link = findLinkForShipment(product, shipmentId);
+
+    if (link) {
+      const linkedWaybill = waybillCache.find(function (w) {
+        return String(w.id || '') === String(link.waybill_inbox_id || '');
+      });
+
+      if (linkedWaybill) {
+        // 表示用スコアはリンク単位の95点等を優先できるよう、
+        // 元レコードを壊さず一時情報だけ付加する。
+        return Object.assign({}, linkedWaybill, {
+          __waybill_link: link
+        });
+      }
+    }
+
+    // 後方互換:
+    // shipment_waybill_links に無い過去データは従来の1件紐付けで表示。
     return waybillCache.find(function (w) {
       const sameId =
         String(w.matched_shipment_id || '') === String(shipmentId || '');
 
       if (!sameId) return false;
 
-      // 商品名が一致すれば優先。
       if (
         product &&
         w.matched_product &&
@@ -200,7 +286,6 @@
         return true;
       }
 
-      // shipment ID は一意なので、商品名表記に揺れがあっても拾う。
       return true;
     }) || null;
   }
@@ -615,6 +700,7 @@
 
   function makeReviewRow(w) {
     const info = classifyWaybill(w);
+    const multiLinks = linksForWaybill(w.id);
 
     const pdfButton = w.storage_path
       ? (
@@ -636,17 +722,39 @@
         'data-waybill-id="' + esc(w.id) + '">' +
         '手動紐付け</button>';
     } else if (info.key === 'matched') {
-      actionButton =
-        '<button class="mini secondary v159-waybill-unlink" ' +
-        'data-waybill-id="' + esc(w.id) + '">' +
-        '解除</button>';
+      // 複数自動紐付けを従来の「解除」APIで一括解除すると
+      // linkテーブルとの不整合になるため、この画面では保護する。
+      if (multiLinks.length > 1) {
+        actionButton =
+          '<span style="font-size:12px;font-weight:700;color:#126b34">' +
+          '複数紐付け済み</span>';
+      } else {
+        actionButton =
+          '<button class="mini secondary v159-waybill-unlink" ' +
+          'data-waybill-id="' + esc(w.id) + '">' +
+          '解除</button>';
+      }
     }
+
+    const shipmentDisplay =
+      multiLinks.length > 0
+        ? multiLinks.map(function (x) {
+            return x.app_shipment_id;
+          }).filter(Boolean).join(' / ')
+        : (w.matched_shipment_id || '—');
+
+    const productDisplay =
+      multiLinks.length > 0
+        ? multiLinks.map(function (x) {
+            return x.product_code;
+          }).filter(Boolean).join(' / ')
+        : (w.matched_product || '—');
 
     return (
       '<tr>' +
         '<td>' + statusBadgeHtml(info) + '</td>' +
-        '<td>' + esc(w.matched_shipment_id || '—') + '</td>' +
-        '<td>' + esc(w.matched_product || '—') + '</td>' +
+        '<td>' + esc(shipmentDisplay) + '</td>' +
+        '<td>' + esc(productDisplay) + '</td>' +
         '<td>' + esc(w.original_filename || '') + '</td>' +
         '<td style="white-space:nowrap">' +
           pdfButton +
@@ -1194,7 +1302,7 @@
   window.addEventListener('kombu:supabase-login', scheduleRefresh);
   window.addEventListener('load', scheduleRefresh);
 
-  window.KOMBU_WAYBILL_UI_VERSION = '160.3';
+  window.KOMBU_WAYBILL_UI_VERSION = '160.4';
   window.kombuWaybillInboxRefresh = refreshWaybills;
   window.kombuWaybillReviewOpen = async function () {
     await loadWaybills();
