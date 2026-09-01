@@ -1,6 +1,6 @@
 /* =========================================================
    昆布在庫管理
-   送り状PDF連携 v160.4（複数出荷指示対応）
+   送り状PDF連携 v160.5（ID重複誤表示防止）
    shipment_waybill_inbox 専用
    - 出荷履歴のPDF表示
    - 出荷指示詳細画面への浜中運輸送り状表示
@@ -230,22 +230,18 @@
 
   function findLinkForShipment(product, shipmentId) {
     const idText = String(shipmentId || '');
+    const productText = String(product || '');
 
-    // まず「出荷指示ID + 商品コード」の厳密一致を優先。
-    if (product) {
-      const exact = waybillLinkCache.find(function (link) {
-        return (
-          String(link.app_shipment_id || '') === idText &&
-          String(link.product_code || '') === String(product)
-        );
-      });
+    // v160.5:
+    // 出荷指示番号は商品種類をまたいで重複するため、
+    // app_shipment_id + product_code の完全一致だけを採用する。
+    if (!idText || !productText) return null;
 
-      if (exact) return exact;
-    }
-
-    // shipment ID はアプリ上で一意なので、商品コード表記揺れ時はID一致で救済。
     return waybillLinkCache.find(function (link) {
-      return String(link.app_shipment_id || '') === idText;
+      return (
+        String(link.app_shipment_id || '') === idText &&
+        String(link.product_code || '') === productText
+      );
     }) || null;
   }
 
@@ -271,22 +267,19 @@
     }
 
     // 後方互換:
-    // shipment_waybill_links に無い過去データは従来の1件紐付けで表示。
+    // shipment_waybill_links に無い過去データも、
+    // matched_shipment_id + matched_product の両方一致時だけ表示する。
+    // S00001 のような番号が釧路・釧棹で重複しても取り違えない。
+    const idText = String(shipmentId || '');
+    const productText = String(product || '');
+
+    if (!idText || !productText) return null;
+
     return waybillCache.find(function (w) {
-      const sameId =
-        String(w.matched_shipment_id || '') === String(shipmentId || '');
-
-      if (!sameId) return false;
-
-      if (
-        product &&
-        w.matched_product &&
-        String(w.matched_product) === String(product)
-      ) {
-        return true;
-      }
-
-      return true;
+      return (
+        String(w.matched_shipment_id || '') === idText &&
+        String(w.matched_product || '') === productText
+      );
     }) || null;
   }
 
@@ -1302,7 +1295,7 @@
   window.addEventListener('kombu:supabase-login', scheduleRefresh);
   window.addEventListener('load', scheduleRefresh);
 
-  window.KOMBU_WAYBILL_UI_VERSION = '160.4';
+  window.KOMBU_WAYBILL_UI_VERSION = '160.5';
   window.kombuWaybillInboxRefresh = refreshWaybills;
   window.kombuWaybillReviewOpen = async function () {
     await loadWaybills();
