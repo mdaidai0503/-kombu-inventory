@@ -53,6 +53,31 @@
   }
 
   function classifyWaybill(waybill) {
+    // v160.3:
+    // 手動紐付け・matched 状態を最優先する。
+    // 過去の parsed_data.match.best.score が 0 点のまま残っていても、
+    // すでに matched / auto_attached なら不一致表示へ戻さない。
+    if (
+      waybill &&
+      (waybill.match_status === 'matched' ||
+       waybill.match_status === 'auto_attached')
+    ) {
+      const score = getScore(waybill);
+      const manualLinked = !!(
+        waybill.parsed_data &&
+        waybill.parsed_data.manual_link &&
+        waybill.parsed_data.manual_link.linked === true
+      );
+
+      return {
+        key: 'matched',
+        label: manualLinked ? '添付済み' : '自動添付',
+        icon: '✅',
+        // 手動紐付けでは古い0点を表示しない。
+        score: manualLinked ? null : score
+      };
+    }
+
     const score = getScore(waybill);
 
     if (score !== null) {
@@ -79,19 +104,6 @@
         label: '不一致',
         icon: '✕',
         score: score
-      };
-    }
-
-    if (
-      waybill &&
-      (waybill.match_status === 'matched' ||
-       waybill.match_status === 'auto_attached')
-    ) {
-      return {
-        key: 'matched',
-        label: '自動添付',
-        icon: '✅',
-        score: null
       };
     }
 
@@ -668,56 +680,53 @@
     );
   }
 
-  async function deletePendingWaybillsV1603(buttonEl, statusEl) {
+  async function deletePendingWaybills() {
     const pendingItems = waybillCache.filter(function (w) {
       return classifyWaybill(w).key === 'pending';
     });
+
     if (!pendingItems.length) {
-      if (statusEl) statusEl.textContent = '過去の未判定は0件です。';
+      alert('削除する過去の未判定はありません。');
       return;
     }
 
     if (!window.confirm(
       '過去の未判定 ' + pendingItems.length + '件だけを削除します。\n' +
-      '出荷依頼履歴・FAX済データ・在庫・入出庫履歴・会社マスターは削除しません。\n\n' +
+      '出荷依頼履歴・在庫・入出庫履歴・会社マスターは削除しません。\n\n' +
       'よろしいですか？'
-    )) return;
-
-    const typed = window.prompt('確認のため「未判定削除」と入力してください。');
-    if (typed !== '未判定削除') {
-      if (statusEl) statusEl.textContent = '削除を中止しました。';
+    )) {
       return;
     }
 
-    const oldText = buttonEl.textContent;
-    buttonEl.disabled = true;
-    buttonEl.textContent = '削除中…';
-    if (statusEl) statusEl.textContent = '削除処理中です…';
-
-    try {
-      const data = await manualLinkApi('delete-pending', {});
-      await refreshWaybills();
-
-      const remaining = waybillCache.filter(function (w) {
-        return classifyWaybill(w).key === 'pending';
-      }).length;
-
-      if (remaining !== 0) {
-        throw new Error('削除処理後も未判定が ' + remaining + '件残っています。');
-      }
-
-      closeReviewModal();
-      openReviewModal();
-      alert('過去の未判定だけを削除しました。\n現在の未判定：0件');
-    } catch (e) {
-      console.error('[waybill pending delete]', e);
-      buttonEl.disabled = false;
-      buttonEl.textContent = oldText;
-      if (statusEl) statusEl.textContent =
-        '削除できませんでした：' + String(e?.message || e);
-      alert('削除できませんでした。\n\n' + String(e?.message || e) +
-            '\n\nボタンはそのまま残します。');
+    const sb = client();
+    if (!sb) {
+      alert('Supabaseへ接続できません。');
+      return;
     }
+
+    const ids = pendingItems.map(function (w) {
+      return w.id;
+    });
+
+    const result = await sb
+      .from(TABLE_NAME)
+      .delete()
+      .in('id', ids);
+
+    if (result.error) {
+      console.error('過去の未判定削除エラー:', result.error);
+      alert(
+        '過去の未判定を削除できませんでした。\n' +
+        String(result.error.message || result.error)
+      );
+      return;
+    }
+
+    await refreshWaybills();
+    closeReviewModal();
+    openReviewModal();
+
+    alert('過去の未判定 ' + pendingItems.length + '件を削除しました。');
   }
 
 
@@ -809,24 +818,24 @@
           '</div>' +
         '</details>' +
 
-        '<details id="v1603PendingDetails" style="margin-top:12px;border-top:1px solid #e5eaf0;padding-top:12px">' +
+        '<details style="margin-top:12px;border-top:1px solid #e5eaf0;padding-top:12px">' +
           '<summary style="cursor:pointer;font-weight:700;color:#627d98">' +
-            '<span>… 過去の未判定を表示（' + groups.pending.length + '件）</span>' +
-            (
-              groups.pending.length
-                ? '<button type="button" id="v1603DeletePending" ' +
-                  'style="margin-left:12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;' +
-                  'padding:5px 9px;font-weight:700;cursor:pointer;color:#334e68">' +
-                  '🧹 未判定だけ削除（' + groups.pending.length + '件）' +
-                  '</button>'
-                : ''
-            ) +
+            '… 過去の未判定を表示（' + groups.pending.length + '件）' +
           '</summary>' +
-          '<div id="v1603PendingDeleteStatus" style="min-height:18px;margin:6px 0;font-size:12px;font-weight:700;color:#b91c1c"></div>' +
           '<div style="margin-top:10px">' +
             '<div style="font-size:12px;color:#627d98;margin-bottom:8px">' +
               '過去取込分です。通常運用では開く必要はありません。' +
             '</div>' +
+            (
+              groups.pending.length
+                ? '<div style="margin-bottom:10px">' +
+                  '<button class="btn secondary" id="v159DeletePendingWaybills" ' +
+                  'style="width:auto;padding:8px 12px">' +
+                  '🧹 過去の未判定だけ削除（' + groups.pending.length + '件）' +
+                  '</button>' +
+                  '</div>'
+                : ''
+            ) +
             tableHtml(groups.pending, '未判定はありません。') +
           '</div>' +
         '</details>' +
@@ -842,14 +851,17 @@
       if (e.target === wrap) closeReviewModal();
     });
 
-    const pendingDeleteBtn = document.getElementById('v1603DeletePending');
-    const pendingDeleteStatus = document.getElementById('v1603PendingDeleteStatus');
-    if (pendingDeleteBtn) {
-      pendingDeleteBtn.onclick = async function (ev) {
-        ev.preventDefault();
-        ev.stopPropagation();
-        await deletePendingWaybillsV1603(pendingDeleteBtn, pendingDeleteStatus);
-        return false;
+    const deletePendingButton =
+      document.getElementById('v159DeletePendingWaybills');
+
+    if (deletePendingButton) {
+      deletePendingButton.onclick = async function () {
+        deletePendingButton.disabled = true;
+        try {
+          await deletePendingWaybills();
+        } finally {
+          deletePendingButton.disabled = false;
+        }
       };
     }
 
