@@ -1,6 +1,6 @@
 /* =========================================================
    昆布在庫管理
-   送り状PDF連携 v160.5（ID重複誤表示防止）
+   送り状PDF連携 v160.6（候補選択＋履歴再描画対応）
    shipment_waybill_inbox 専用
    - 出荷履歴のPDF表示
    - 出荷指示詳細画面への浜中運輸送り状表示
@@ -548,6 +548,76 @@
     ].filter(Boolean).join('｜');
   }
 
+  function scoredCandidatesFromWaybill(waybill) {
+    const match =
+      waybill &&
+      waybill.parsed_data &&
+      waybill.parsed_data.match
+        ? waybill.parsed_data.match
+        : null;
+
+    if (!match) return [];
+
+    const direct =
+      Array.isArray(match.multiple_matches)
+        ? match.multiple_matches
+        : [];
+
+    const nested =
+      match.multiple_match &&
+      Array.isArray(match.multiple_match.matches)
+        ? match.multiple_match.matches
+        : [];
+
+    const src = direct.length ? direct : nested;
+    const seen = new Set();
+
+    return src
+      .filter(function (x) {
+        return Number(x && x.score) >= 90;
+      })
+      .filter(function (x) {
+        const key =
+          String(x.app_shipment_id || '') + '||' +
+          String(x.kombu_type || '');
+        if (!x.app_shipment_id || !x.kombu_type || seen.has(key)) {
+          return false;
+        }
+        seen.add(key);
+        return true;
+      })
+      .sort(function (a, b) {
+        return Number(b.score || 0) - Number(a.score || 0);
+      });
+  }
+
+  function mergeScoredCandidate(scoreRow, shipment) {
+    return Object.assign({}, shipment || {}, {
+      app_shipment_id: scoreRow.app_shipment_id,
+      kombu_type: scoreRow.kombu_type,
+      __waybill_score: Number(scoreRow.score || 0),
+      __score_breakdown: scoreRow.score_breakdown || {},
+      __line_qty: Number(scoreRow.line_qty || 0)
+    });
+  }
+
+  function candidateOptionLabel(s) {
+    const score = Number(s && s.__waybill_score);
+    const prefix =
+      Number.isFinite(score) && score > 0
+        ? '【' + score + '点】'
+        : '';
+
+    return [
+      prefix,
+      s.app_shipment_id,
+      s.kombu_type,
+      s.ship_date || '',
+      (s.source_name || '') + ' → ' + (s.dest_name || ''),
+      '数量 ' + Number(s.total_qty || s.__line_qty || 0)
+    ].filter(Boolean).join('｜');
+  }
+
   async function openManualLinkDialog(waybillId) {
     const waybill = waybillCache.find(function (w) {
       return String(w.id) === String(waybillId);
@@ -555,7 +625,24 @@
 
     if (!waybill) return;
 
-    const candidates = await loadManualCandidates();
+    const allCandidates = await loadManualCandidates();
+    const scoredRows = scoredCandidatesFromWaybill(waybill);
+
+    const scoredCandidates = scoredRows.map(function (scoreRow) {
+      const full = allCandidates.find(function (s) {
+        return (
+          String(s.app_shipment_id || '') === String(scoreRow.app_shipment_id || '') &&
+          String(s.kombu_type || '') === String(scoreRow.kombu_type || '')
+        );
+      });
+
+      return mergeScoredCandidate(scoreRow, full);
+    });
+
+    let candidates =
+      scoredCandidates.length
+        ? scoredCandidates
+        : allCandidates;
 
     const overlay = document.createElement('div');
     overlay.id = 'v159ManualLinkDialog';
@@ -566,15 +653,19 @@
     overlay.style.padding = '20px';
     overlay.style.overflow = 'auto';
 
-    const options = candidates.map(function (s) {
-      return (
-        '<option value="' +
-        esc(s.app_shipment_id) + '||' +
-        esc(s.kombu_type) + '">' +
-        esc(shipmentOptionLabel(s)) +
-        '</option>'
-      );
-    }).join('');
+    function buildOptions(list) {
+      return list.map(function (s) {
+        return (
+          '<option value="' +
+          esc(s.app_shipment_id) + '||' +
+          esc(s.kombu_type) + '">' +
+          esc(candidateOptionLabel(s)) +
+          '</option>'
+        );
+      }).join('');
+    }
+
+    const options = buildOptions(candidates);
 
     overlay.innerHTML =
       '<div style="' +
@@ -589,20 +680,40 @@
           esc(waybill.original_filename || '') +
         '</div>' +
         '<label style="display:block;font-weight:700;margin-bottom:6px">' +
-          '出荷指示を選択' +
+          (scoredCandidates.length
+            ? '照合候補から選択（90点以上）'
+            : '出荷指示を選択') +
         '</label>' +
+        (scoredCandidates.length
+          ? '<div style="font-size:12px;color:#627d98;margin-bottom:8px">' +
+              '出荷元・出荷先・本数などから絞り込んだ候補です。最後に人が選択して添付します。' +
+            '</div>'
+          : '') +
         '<select id="v159ManualShipmentSelect" style="' +
           'width:100%;padding:10px;border:1px solid #ccd6e2;border-radius:8px' +
         '">' +
           options +
         '</select>' +
+        (scoredCandidates.length
+          ? '<button type="button" class="mini secondary" id="v159ManualShowAll" ' +
+              'style="margin-top:8px">すべての出荷指示から選ぶ</button>'
+          : '') +
         '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">' +
-          '<button class="btn" id="v159ManualLinkSave">この出荷指示に添付</button>' +
+          '<button class="btn" id="v159ManualLinkSave">選択した候補に添付</button>' +
           '<button class="btn secondary" id="v159ManualLinkCancel">キャンセル</button>' +
         '</div>' +
       '</div>';
 
     document.body.appendChild(overlay);
+
+    const showAll = document.getElementById('v159ManualShowAll');
+    if (showAll) showAll.onclick = function () {
+      const select = document.getElementById('v159ManualShipmentSelect');
+      if (!select) return;
+      candidates = allCandidates;
+      select.innerHTML = buildOptions(allCandidates);
+      showAll.remove();
+    };
 
     const cancel = document.getElementById('v159ManualLinkCancel');
     if (cancel) cancel.onclick = function () {
@@ -655,7 +766,7 @@
         );
       } finally {
         save.disabled = false;
-        save.textContent = 'この出荷指示に添付';
+        save.textContent = '選択した候補に添付';
       }
     };
   }
@@ -1270,17 +1381,27 @@
 
   const observer = new MutationObserver(function (mutations) {
     const relevant = mutations.some(function (m) {
+      const target = m && m.target;
+
+      if (
+        target &&
+        target.nodeType === 1 &&
+        (
+          target.id === 'v136HistBody' ||
+          (target.closest && target.closest('#v136HistBody'))
+        )
+      ) {
+        return true;
+      }
+
       return Array.from(m.addedNodes || []).some(function (node) {
         if (!node || node.nodeType !== 1) return false;
 
-        if (
+        return (
           node.id === 'v136HistBody' ||
+          (node.closest && node.closest('#v136HistBody')) ||
           (node.querySelector && node.querySelector('#v136HistBody'))
-        ) {
-          return true;
-        }
-
-        return false;
+        );
       });
     });
 
@@ -1295,8 +1416,9 @@
   window.addEventListener('kombu:supabase-login', scheduleRefresh);
   window.addEventListener('load', scheduleRefresh);
 
-  window.KOMBU_WAYBILL_UI_VERSION = '160.5';
+  window.KOMBU_WAYBILL_UI_VERSION = '160.6';
   window.kombuWaybillInboxRefresh = refreshWaybills;
+  window.kombuWaybillPatchHistory = patchHistoryTable;
   window.kombuWaybillReviewOpen = async function () {
     await loadWaybills();
     openReviewModal();
