@@ -1,6 +1,6 @@
 /* =========================================================
    昆布在庫管理
-   送り状PDF連携 v161.1（会社ペア基準・複数選択対応）
+   送り状PDF連携 v161.3（会社ペア＋PDF名出荷先＋PDF名日付基準・複数選択対応）
    shipment_waybill_inbox 専用
    - 出荷履歴のPDF表示
    - 出荷指示詳細画面への浜中運輸送り状表示
@@ -383,6 +383,11 @@
 
       if (cells.length !== 8) return;
 
+      // 右端PDF名の出荷先・日付を、
+      // 送り状候補絞り込み用に保存。
+      cacheHistoryPdfDestinationRow(tr);
+      cacheHistoryPdfDateRow(tr);
+
       // v2.16: 8列構成
       // 0依頼日 / 1昆布 / 2出荷人 / 3出荷先 / 4個数 /
       // 5状態 / 6送り状 / 7PDF
@@ -653,8 +658,283 @@
       s.kombu_type || s.product_code || '',
       s.ship_date || '',
       (s.source_name || '') + ' → ' + (s.dest_name || ''),
-      '数量 ' + Number(s.total_qty || s.__line_qty || 0)
+      '数量 ' + Number(s.total_qty || s.__line_qty || 0),
+      s.__history_pdf_dest
+        ? 'PDF名出荷先 ' + s.__history_pdf_dest
+        : ''
     ].filter(Boolean).join('｜');
+  }
+
+  // v161.2:
+  // 出荷依頼履歴の右端PDF名
+  // 「YYYY.MM.DD_出荷先_出荷指示」を候補照合の追加条件にする。
+  //
+  // 例:
+  // 2026.08.31_㈱和気食品_出荷指示
+  //
+  // このPDF名から取り出した出荷先と、
+  // 候補レコードの dest_name が一致しない候補は表示しない。
+  const historyPdfDestCache = {};
+
+  function normalizeHistoryCompanyName(v) {
+    return String(v == null ? '' : v)
+      .normalize('NFKC')
+      .toLowerCase()
+      .replace(/[ 　\t\r\n]/g, '')
+      .replace(/株式会社|㈱|\(株\)|（株）/g, '')
+      .replace(/有限会社|㈲|\(有\)|（有）/g, '')
+      .replace(/[・･,，.。\-ー_\/\\()[\]{}「」『』]/g, '');
+  }
+
+  function parseDestinationFromShipmentPdfName(v) {
+    const text = String(v || '').trim();
+    if (!text) return '';
+
+    // ボタン等に他文字が混ざっていても、
+    // 日付_出荷先_出荷指示 の部分を拾う。
+    const m = text.match(
+      /\d{4}[.\-\/]\d{1,2}[.\-\/]\d{1,2}_(.+?)_出荷指示/
+    );
+
+    return m ? String(m[1] || '').trim() : '';
+  }
+
+  function historyPdfDestKey(shipmentId, product) {
+    return (
+      String(shipmentId || '') +
+      '||' +
+      String(product || '')
+    );
+  }
+
+  function cacheHistoryPdfDestinationRow(tr) {
+    if (!tr) return;
+
+    const shipmentId = String(tr.dataset.hid || '');
+    const product = String(tr.dataset.hprod || '');
+    const cells = tr.querySelectorAll('td');
+
+    if (!shipmentId || cells.length < 8) return;
+
+    const pdfText = String(cells[7].textContent || '').trim();
+    const pdfDest = parseDestinationFromShipmentPdfName(pdfText);
+
+    if (!pdfDest) return;
+
+    // 商品別の完全キー
+    historyPdfDestCache[
+      historyPdfDestKey(shipmentId, product)
+    ] = pdfDest;
+
+    // 同一IDで商品が取れないとき用の補助キー
+    if (!historyPdfDestCache[historyPdfDestKey(shipmentId, '')]) {
+      historyPdfDestCache[
+        historyPdfDestKey(shipmentId, '')
+      ] = pdfDest;
+    }
+  }
+
+  function refreshHistoryPdfDestinationCache() {
+    document
+      .querySelectorAll('#v136HistBody tr[data-hid]')
+      .forEach(cacheHistoryPdfDestinationRow);
+  }
+
+  function getHistoryPdfDestination(candidate) {
+    refreshHistoryPdfDestinationCache();
+
+    const shipmentId =
+      String(candidate && candidate.app_shipment_id || '');
+
+    const product =
+      String(
+        candidate &&
+        (candidate.kombu_type || candidate.product_code) ||
+        ''
+      );
+
+    return (
+      historyPdfDestCache[
+        historyPdfDestKey(shipmentId, product)
+      ] ||
+      historyPdfDestCache[
+        historyPdfDestKey(shipmentId, '')
+      ] ||
+      ''
+    );
+  }
+
+  function candidateMatchesHistoryPdfDestination(candidate) {
+    const pdfDest = getHistoryPdfDestination(candidate);
+
+    // PDF名から出荷先を確認できない候補は
+    // 「自動候補」には出さない。
+    if (!pdfDest) return false;
+
+    const candidateDest =
+      String(candidate && candidate.dest_name || '');
+
+    const a = normalizeHistoryCompanyName(pdfDest);
+    const b = normalizeHistoryCompanyName(candidateDest);
+
+    if (!a || !b) return false;
+
+    const matched =
+      a === b ||
+      a.includes(b) ||
+      b.includes(a);
+
+    if (matched) {
+      candidate.__history_pdf_dest = pdfDest;
+    }
+
+    return matched;
+  }
+
+  function filterCandidatesByHistoryPdfDestination(list) {
+    return (Array.isArray(list) ? list : [])
+      .filter(candidateMatchesHistoryPdfDestination);
+  }
+
+
+  // v161.3:
+  // 出荷依頼履歴PDF名の日付を基準日にする。
+  // 送り状側の出荷日がその基準日より前なら候補から除外する。
+  //
+  // 例:
+  // 出荷指示PDF名 = 2026.08.31_㈱和気食品_出荷指示
+  // 送り状出荷日  = 2026-08-30 → 除外
+  // 送り状出荷日  = 2026-08-31 → 候補可
+  // 送り状出荷日  = 2026-09-01 → 候補可
+  function parseDateFromShipmentPdfName(v) {
+    const text = String(v || '').trim();
+    const m = text.match(
+      /(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})_(.+?)_出荷指示/
+    );
+
+    if (!m) return '';
+
+    return [
+      m[1],
+      String(m[2]).padStart(2, '0'),
+      String(m[3]).padStart(2, '0')
+    ].join('-');
+  }
+
+  const historyPdfDateCache = {};
+
+  function cacheHistoryPdfDateRow(tr) {
+    if (!tr) return;
+
+    const shipmentId = String(tr.dataset.hid || '');
+    const product = String(tr.dataset.hprod || '');
+    const cells = tr.querySelectorAll('td');
+
+    if (!shipmentId || cells.length < 8) return;
+
+    const pdfText = String(cells[7].textContent || '').trim();
+    const pdfDate = parseDateFromShipmentPdfName(pdfText);
+
+    if (!pdfDate) return;
+
+    historyPdfDateCache[
+      historyPdfDestKey(shipmentId, product)
+    ] = pdfDate;
+
+    if (!historyPdfDateCache[historyPdfDestKey(shipmentId, '')]) {
+      historyPdfDateCache[
+        historyPdfDestKey(shipmentId, '')
+      ] = pdfDate;
+    }
+  }
+
+  function refreshHistoryPdfDateCache() {
+    document
+      .querySelectorAll('#v136HistBody tr[data-hid]')
+      .forEach(cacheHistoryPdfDateRow);
+  }
+
+  function getHistoryPdfDate(candidate) {
+    refreshHistoryPdfDateCache();
+
+    const shipmentId =
+      String(candidate && candidate.app_shipment_id || '');
+
+    const product =
+      String(
+        candidate &&
+        (candidate.kombu_type || candidate.product_code) ||
+        ''
+      );
+
+    return (
+      historyPdfDateCache[
+        historyPdfDestKey(shipmentId, product)
+      ] ||
+      historyPdfDateCache[
+        historyPdfDestKey(shipmentId, '')
+      ] ||
+      ''
+    );
+  }
+
+  function normalizeIsoDate(v) {
+    const text = String(v || '').trim();
+    const m = text.match(
+      /^(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/
+    );
+
+    if (!m) return '';
+
+    return [
+      m[1],
+      String(m[2]).padStart(2, '0'),
+      String(m[3]).padStart(2, '0')
+    ].join('-');
+  }
+
+  function waybillShippingDate(waybill) {
+    const parsed =
+      waybill &&
+      waybill.parsed_data &&
+      typeof waybill.parsed_data === 'object'
+        ? waybill.parsed_data
+        : {};
+
+    return normalizeIsoDate(
+      parsed.shipping_date ||
+      parsed.ship_date ||
+      waybill.shipping_date ||
+      ''
+    );
+  }
+
+  function candidatePassesHistoryPdfDate(candidate, waybill) {
+    const pdfDate = getHistoryPdfDate(candidate);
+    const wbDate = waybillShippingDate(waybill);
+
+    // 日付が確認できない場合は、誤除外を避けるため
+    // この追加条件だけでは落とさない。
+    if (!pdfDate || !wbDate) return true;
+
+    const passed = wbDate >= pdfDate;
+
+    if (passed) {
+      candidate.__history_pdf_date = pdfDate;
+      candidate.__waybill_shipping_date = wbDate;
+    }
+
+    return passed;
+  }
+
+  function filterCandidatesByHistoryPdfDate(list, waybill) {
+    return (Array.isArray(list) ? list : [])
+      .filter(function (candidate) {
+        return candidatePassesHistoryPdfDate(
+          candidate,
+          waybill
+        );
+      });
   }
 
   async function openManualLinkDialog(waybillId) {
@@ -693,7 +973,7 @@
       return mergeScoredCandidate(scoreRow, full);
     });
 
-    let candidates =
+    let rawCandidates =
       smartCandidates.length
         ? smartCandidates
         : (
@@ -701,6 +981,17 @@
               ? scoredCandidates
               : allCandidates
           );
+
+    // ★ v161.2 最重要条件
+    // 出荷依頼履歴の右端PDF名に含まれる出荷先と、
+    // 候補の dest_name が一致するものだけ候補表示する。
+    let candidates =
+      filterCandidatesByHistoryPdfDate(
+        filterCandidatesByHistoryPdfDestination(
+          rawCandidates
+        ),
+        waybill
+      );
 
     const overlay = document.createElement('div');
     overlay.id = 'v159ManualLinkDialog';
@@ -721,7 +1012,11 @@
 
     function buildRows(list) {
       if (!list.length) {
-        return '<div class="empty">候補がありません。</div>';
+        return (
+          '<div class="warning" style="margin:8px 0">' +
+            '右端の出荷指示PDF名の出荷先・日付条件に一致する候補がありません。' +
+          '</div>'
+        );
       }
 
       return list.map(function (s, idx) {
@@ -733,7 +1028,7 @@
             'padding:10px 12px;border:1px solid #d6dee8;' +
             'border-radius:10px;margin-bottom:8px;cursor:pointer' +
           '">' +
-            '<input type="checkbox" class="v1611-candidate-check" ' +
+            '<input type="checkbox" class="v1612-candidate-check" ' +
               'data-key="' + esc(key) + '" ' +
               'style="margin-top:4px;transform:scale(1.15)">' +
             '<span style="line-height:1.45">' +
@@ -744,19 +1039,9 @@
       }).join('');
     }
 
-    function renderRows() {
-      const box =
-        document.getElementById('v1611CandidateList');
-
-      if (box) {
-        box.innerHTML =
-          buildRows(candidates);
-      }
-    }
-
     overlay.innerHTML =
       '<div style="' +
-        'max-width:860px;' +
+        'max-width:900px;' +
         'margin:40px auto;' +
         'background:#fff;' +
         'border-radius:16px;' +
@@ -768,23 +1053,20 @@
         '</div>' +
         '<div style="' +
           'background:#eef6ff;padding:10px 12px;border-radius:10px;' +
-          'font-size:13px;line-height:1.6;margin-bottom:12px' +
+          'font-size:13px;line-height:1.7;margin-bottom:12px' +
         '">' +
-          '<b>出荷元・出荷先の一致を基準に候補表示しています。</b><br>' +
-          '数量・日付は候補を除外する条件にはしていません。' +
-          '該当する出荷依頼を複数選択して添付できます。' +
+          '<b>候補条件</b><br>' +
+          '① 送り状解析の出荷元・出荷先が一致<br>' +
+          '② 出荷依頼履歴の右端PDF名「日付_出荷先_出荷指示」の出荷先が候補の出荷先と一致<br>' +
+          '③ 送り状の出荷日が、そのPDF名の日付と同日またはそれ以降<br>' +
+          '数量は候補除外の必須条件にはしていません。' +
         '</div>' +
         '<div style="font-weight:700;margin-bottom:8px">' +
           '候補を選択（複数選択可）' +
         '</div>' +
-        '<div id="v1611CandidateList" style="max-height:430px;overflow:auto">' +
+        '<div id="v1612CandidateList" style="max-height:460px;overflow:auto">' +
           buildRows(candidates) +
         '</div>' +
-        ((smartCandidates.length || scoredCandidates.length)
-          ? '<button type="button" class="mini secondary" ' +
-              'id="v159ManualShowAll" style="margin-top:8px">' +
-              'すべての出荷指示から選ぶ</button>'
-          : '') +
         '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">' +
           '<button class="btn" id="v159ManualLinkSave">' +
             '選択した候補に添付</button>' +
@@ -794,17 +1076,6 @@
       '</div>';
 
     document.body.appendChild(overlay);
-
-    const showAll =
-      document.getElementById('v159ManualShowAll');
-
-    if (showAll) {
-      showAll.onclick = function () {
-        candidates = allCandidates;
-        renderRows();
-        showAll.remove();
-      };
-    }
 
     const cancel =
       document.getElementById('v159ManualLinkCancel');
@@ -828,7 +1099,7 @@
       save.onclick = async function () {
         const checked = Array.from(
           overlay.querySelectorAll(
-            '.v1611-candidate-check:checked'
+            '.v1612-candidate-check:checked'
           )
         );
 
@@ -1553,7 +1824,7 @@
   window.addEventListener('kombu:supabase-login', scheduleRefresh);
   window.addEventListener('load', scheduleRefresh);
 
-  window.KOMBU_WAYBILL_UI_VERSION = '161.1';
+  window.KOMBU_WAYBILL_UI_VERSION = '161.3';
   window.kombuWaybillInboxRefresh = refreshWaybills;
   window.kombuWaybillPatchHistory = patchHistoryTable;
   window.kombuWaybillReviewOpen = async function () {
