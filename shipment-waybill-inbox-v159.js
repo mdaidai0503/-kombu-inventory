@@ -1,6 +1,6 @@
 /* =========================================================
    昆布在庫管理
-   送り状PDF連携 v160.8（needs_review優先＋候補選択対応）
+   送り状PDF連携 v160.9（同一出荷ID統合候補対応）
    shipment_waybill_inbox 専用
    - 出荷履歴のPDF表示
    - 出荷指示詳細画面への浜中運輸送り状表示
@@ -546,15 +546,28 @@
     return data;
   }
 
-  async function loadManualCandidates() {
+  async function loadManualCandidates(waybillId) {
     const data = await manualLinkApi(
       'candidates',
-      {}
+      {
+        waybill_inbox_id: waybillId || ''
+      }
     );
 
-    return Array.isArray(data.shipments)
-      ? data.shipments
-      : [];
+    return {
+      shipments: Array.isArray(data.shipments)
+        ? data.shipments
+        : [],
+      allShipments: Array.isArray(data.all_shipments)
+        ? data.all_shipments
+        : (
+            Array.isArray(data.shipments)
+              ? data.shipments
+              : []
+          ),
+      smartCandidatesUsed:
+        data.smart_candidates_used === true
+    };
   }
 
   function shipmentOptionLabel(s) {
@@ -630,10 +643,10 @@
     return [
       prefix,
       s.app_shipment_id,
-      s.kombu_type,
+      s.combined_kombu_types || s.kombu_type,
       s.ship_date || '',
       (s.source_name || '') + ' → ' + (s.dest_name || ''),
-      '数量 ' + Number(s.total_qty || s.__line_qty || 0)
+      '合計 ' + Number(s.combined_total_qty || s.total_qty || s.__line_qty || 0)
     ].filter(Boolean).join('｜');
   }
 
@@ -644,8 +657,21 @@
 
     if (!waybill) return;
 
-    const allCandidates = await loadManualCandidates();
-    const scoredRows = scoredCandidatesFromWaybill(waybill);
+    const candidateData =
+      await loadManualCandidates(waybill.id);
+
+    const allCandidates =
+      candidateData.allShipments;
+
+    const smartCandidates =
+      candidateData.smartCandidatesUsed
+        ? candidateData.shipments
+        : [];
+
+    const scoredRows =
+      smartCandidates.length
+        ? []
+        : scoredCandidatesFromWaybill(waybill);
 
     const scoredCandidates = scoredRows.map(function (scoreRow) {
       const full = allCandidates.find(function (s) {
@@ -659,9 +685,13 @@
     });
 
     let candidates =
-      scoredCandidates.length
-        ? scoredCandidates
-        : allCandidates;
+      smartCandidates.length
+        ? smartCandidates
+        : (
+            scoredCandidates.length
+              ? scoredCandidates
+              : allCandidates
+          );
 
     const overlay = document.createElement('div');
     overlay.id = 'v159ManualLinkDialog';
@@ -699,13 +729,13 @@
           esc(waybill.original_filename || '') +
         '</div>' +
         '<label style="display:block;font-weight:700;margin-bottom:6px">' +
-          (scoredCandidates.length
+          ((smartCandidates.length || scoredCandidates.length)
             ? '照合候補から選択（90点以上）'
             : '出荷指示を選択') +
         '</label>' +
-        (scoredCandidates.length
+        ((smartCandidates.length || scoredCandidates.length)
           ? '<div style="font-size:12px;color:#627d98;margin-bottom:8px">' +
-              '出荷元・出荷先・本数などから絞り込んだ候補です。最後に人が選択して添付します。' +
+              '同一出荷指示IDをまとめ、出荷元・出荷先・合計本数から絞り込んだ候補です。最後に人が選択して添付します。' +
             '</div>'
           : '') +
         '<select id="v159ManualShipmentSelect" style="' +
@@ -713,7 +743,7 @@
         '">' +
           options +
         '</select>' +
-        (scoredCandidates.length
+        ((smartCandidates.length || scoredCandidates.length)
           ? '<button type="button" class="mini secondary" id="v159ManualShowAll" ' +
               'style="margin-top:8px">すべての出荷指示から選ぶ</button>'
           : '') +
@@ -1435,7 +1465,7 @@
   window.addEventListener('kombu:supabase-login', scheduleRefresh);
   window.addEventListener('load', scheduleRefresh);
 
-  window.KOMBU_WAYBILL_UI_VERSION = '160.8';
+  window.KOMBU_WAYBILL_UI_VERSION = '160.9';
   window.kombuWaybillInboxRefresh = refreshWaybills;
   window.kombuWaybillPatchHistory = patchHistoryTable;
   window.kombuWaybillReviewOpen = async function () {
