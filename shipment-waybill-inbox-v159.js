@@ -1,6 +1,6 @@
 /* =========================================================
    昆布在庫管理
-   送り状PDF連携 v160.9（同一出荷ID統合候補対応）
+   送り状PDF連携 v161.1（会社ペア基準・複数選択対応）
    shipment_waybill_inbox 専用
    - 出荷履歴のPDF表示
    - 出荷指示詳細画面への浜中運輸送り状表示
@@ -606,15 +606,22 @@
 
     return src
       .filter(function (x) {
-        return Number(x && x.score) >= 90;
+        const b = x && x.score_breakdown ? x.score_breakdown : {};
+        const pair = Number(b.company_pair || 0);
+        const legacyPair =
+          Number(b.dest || 0) + Number(b.source || 0);
+
+        return pair >= 85 || legacyPair >= 60;
       })
       .filter(function (x) {
         const key =
           String(x.app_shipment_id || '') + '||' +
           String(x.kombu_type || '');
+
         if (!x.app_shipment_id || !x.kombu_type || seen.has(key)) {
           return false;
         }
+
         seen.add(key);
         return true;
       })
@@ -643,10 +650,10 @@
     return [
       prefix,
       s.app_shipment_id,
-      s.combined_kombu_types || s.kombu_type,
+      s.kombu_type || s.product_code || '',
       s.ship_date || '',
       (s.source_name || '') + ' → ' + (s.dest_name || ''),
-      '合計 ' + Number(s.combined_total_qty || s.total_qty || s.__line_qty || 0)
+      '数量 ' + Number(s.total_qty || s.__line_qty || 0)
     ].filter(Boolean).join('｜');
   }
 
@@ -661,11 +668,11 @@
       await loadManualCandidates(waybill.id);
 
     const allCandidates =
-      candidateData.allShipments;
+      candidateData.allShipments || [];
 
     const smartCandidates =
       candidateData.smartCandidatesUsed
-        ? candidateData.shipments
+        ? (candidateData.shipments || [])
         : [];
 
     const scoredRows =
@@ -676,8 +683,10 @@
     const scoredCandidates = scoredRows.map(function (scoreRow) {
       const full = allCandidates.find(function (s) {
         return (
-          String(s.app_shipment_id || '') === String(scoreRow.app_shipment_id || '') &&
-          String(s.kombu_type || '') === String(scoreRow.kombu_type || '')
+          String(s.app_shipment_id || '') ===
+            String(scoreRow.app_shipment_id || '') &&
+          String(s.kombu_type || '') ===
+            String(scoreRow.kombu_type || '')
         );
       });
 
@@ -702,122 +711,198 @@
     overlay.style.padding = '20px';
     overlay.style.overflow = 'auto';
 
-    function buildOptions(list) {
-      return list.map(function (s) {
+    function rowKey(s, idx) {
+      return [
+        String(s.app_shipment_id || ''),
+        String(s.kombu_type || s.product_code || ''),
+        String(idx)
+      ].join('||');
+    }
+
+    function buildRows(list) {
+      if (!list.length) {
+        return '<div class="empty">候補がありません。</div>';
+      }
+
+      return list.map(function (s, idx) {
+        const key = rowKey(s, idx);
+
         return (
-          '<option value="' +
-          esc(s.app_shipment_id) + '||' +
-          esc(s.kombu_type) + '">' +
-          esc(candidateOptionLabel(s)) +
-          '</option>'
+          '<label style="' +
+            'display:flex;gap:10px;align-items:flex-start;' +
+            'padding:10px 12px;border:1px solid #d6dee8;' +
+            'border-radius:10px;margin-bottom:8px;cursor:pointer' +
+          '">' +
+            '<input type="checkbox" class="v1611-candidate-check" ' +
+              'data-key="' + esc(key) + '" ' +
+              'style="margin-top:4px;transform:scale(1.15)">' +
+            '<span style="line-height:1.45">' +
+              esc(candidateOptionLabel(s)) +
+            '</span>' +
+          '</label>'
         );
       }).join('');
     }
 
-    const options = buildOptions(candidates);
+    function renderRows() {
+      const box =
+        document.getElementById('v1611CandidateList');
+
+      if (box) {
+        box.innerHTML =
+          buildRows(candidates);
+      }
+    }
 
     overlay.innerHTML =
       '<div style="' +
-        'max-width:720px;' +
-        'margin:60px auto;' +
+        'max-width:860px;' +
+        'margin:40px auto;' +
         'background:#fff;' +
         'border-radius:16px;' +
         'padding:18px' +
       '">' +
-        '<h2 style="margin-top:0">手動で出荷指示へ紐付け</h2>' +
+        '<h2 style="margin-top:0">送り状PDFの添付候補</h2>' +
         '<div style="font-size:13px;color:#627d98;margin-bottom:10px">' +
           esc(waybill.original_filename || '') +
         '</div>' +
-        '<label style="display:block;font-weight:700;margin-bottom:6px">' +
-          ((smartCandidates.length || scoredCandidates.length)
-            ? '照合候補から選択（90点以上）'
-            : '出荷指示を選択') +
-        '</label>' +
-        ((smartCandidates.length || scoredCandidates.length)
-          ? '<div style="font-size:12px;color:#627d98;margin-bottom:8px">' +
-              '同一出荷指示IDをまとめ、出荷元・出荷先・合計本数から絞り込んだ候補です。最後に人が選択して添付します。' +
-            '</div>'
-          : '') +
-        '<select id="v159ManualShipmentSelect" style="' +
-          'width:100%;padding:10px;border:1px solid #ccd6e2;border-radius:8px' +
+        '<div style="' +
+          'background:#eef6ff;padding:10px 12px;border-radius:10px;' +
+          'font-size:13px;line-height:1.6;margin-bottom:12px' +
         '">' +
-          options +
-        '</select>' +
+          '<b>出荷元・出荷先の一致を基準に候補表示しています。</b><br>' +
+          '数量・日付は候補を除外する条件にはしていません。' +
+          '該当する出荷依頼を複数選択して添付できます。' +
+        '</div>' +
+        '<div style="font-weight:700;margin-bottom:8px">' +
+          '候補を選択（複数選択可）' +
+        '</div>' +
+        '<div id="v1611CandidateList" style="max-height:430px;overflow:auto">' +
+          buildRows(candidates) +
+        '</div>' +
         ((smartCandidates.length || scoredCandidates.length)
-          ? '<button type="button" class="mini secondary" id="v159ManualShowAll" ' +
-              'style="margin-top:8px">すべての出荷指示から選ぶ</button>'
+          ? '<button type="button" class="mini secondary" ' +
+              'id="v159ManualShowAll" style="margin-top:8px">' +
+              'すべての出荷指示から選ぶ</button>'
           : '') +
         '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">' +
-          '<button class="btn" id="v159ManualLinkSave">選択した候補に添付</button>' +
-          '<button class="btn secondary" id="v159ManualLinkCancel">キャンセル</button>' +
+          '<button class="btn" id="v159ManualLinkSave">' +
+            '選択した候補に添付</button>' +
+          '<button class="btn secondary" id="v159ManualLinkCancel">' +
+            'キャンセル</button>' +
         '</div>' +
       '</div>';
 
     document.body.appendChild(overlay);
 
-    const showAll = document.getElementById('v159ManualShowAll');
-    if (showAll) showAll.onclick = function () {
-      const select = document.getElementById('v159ManualShipmentSelect');
-      if (!select) return;
-      candidates = allCandidates;
-      select.innerHTML = buildOptions(allCandidates);
-      showAll.remove();
-    };
+    const showAll =
+      document.getElementById('v159ManualShowAll');
 
-    const cancel = document.getElementById('v159ManualLinkCancel');
-    if (cancel) cancel.onclick = function () {
-      overlay.remove();
-    };
+    if (showAll) {
+      showAll.onclick = function () {
+        candidates = allCandidates;
+        renderRows();
+        showAll.remove();
+      };
+    }
+
+    const cancel =
+      document.getElementById('v159ManualLinkCancel');
+
+    if (cancel) {
+      cancel.onclick = function () {
+        overlay.remove();
+      };
+    }
 
     overlay.addEventListener('click', function (e) {
-      if (e.target === overlay) overlay.remove();
+      if (e.target === overlay) {
+        overlay.remove();
+      }
     });
 
-    const save = document.getElementById('v159ManualLinkSave');
-    if (save) save.onclick = async function () {
-      const select = document.getElementById('v159ManualShipmentSelect');
-      const value = String(select?.value || '');
-      const parts = value.split('||');
-      const shipmentId = parts[0] || '';
-      const kombuType = parts.slice(1).join('||') || '';
+    const save =
+      document.getElementById('v159ManualLinkSave');
 
-      if (!shipmentId) {
-        alert('出荷指示を選択してください。');
-        return;
-      }
-
-      if (!window.confirm(
-        shipmentId + ' にこの送り状PDFを紐付けます。よろしいですか？'
-      )) {
-        return;
-      }
-
-      save.disabled = true;
-      save.textContent = '保存中…';
-
-      try {
-        await manualLinkApi('link', {
-          waybill_inbox_id: waybill.id,
-          app_shipment_id: shipmentId,
-          kombu_type: kombuType
-        });
-
-        overlay.remove();
-        await refreshWaybills();
-        closeReviewModal();
-        openReviewModal();
-
-        alert('手動紐付けしました。');
-      } catch (e) {
-        alert(
-          '手動紐付けに失敗しました。\n' +
-          String(e?.message || e)
+    if (save) {
+      save.onclick = async function () {
+        const checked = Array.from(
+          overlay.querySelectorAll(
+            '.v1611-candidate-check:checked'
+          )
         );
-      } finally {
-        save.disabled = false;
-        save.textContent = '選択した候補に添付';
-      }
-    };
+
+        if (!checked.length) {
+          alert(
+            '添付する出荷依頼を1件以上選択してください。'
+          );
+          return;
+        }
+
+        const selected =
+          checked.map(function (input) {
+            const key =
+              String(input.dataset.key || '');
+
+            return candidates.find(function (s, idx) {
+              return rowKey(s, idx) === key;
+            });
+          }).filter(Boolean);
+
+        const lines =
+          selected.map(function (s) {
+            return '・' +
+              candidateOptionLabel(s);
+          }).join('\n');
+
+        if (!window.confirm(
+          'この送り状PDFを次の ' +
+          selected.length +
+          ' 件へ添付します。\n\n' +
+          lines +
+          '\n\nよろしいですか？'
+        )) {
+          return;
+        }
+
+        save.disabled = true;
+        save.textContent = '保存中…';
+
+        try {
+          for (const s of selected) {
+            await manualLinkApi('link', {
+              waybill_inbox_id:
+                waybill.id,
+              app_shipment_id:
+                s.app_shipment_id || '',
+              kombu_type:
+                s.kombu_type ||
+                s.product_code ||
+                ''
+            });
+          }
+
+          overlay.remove();
+          await refreshWaybills();
+          closeReviewModal();
+          openReviewModal();
+
+          alert(
+            selected.length +
+            '件の出荷依頼へ添付しました。'
+          );
+        } catch (e) {
+          alert(
+            '手動紐付けに失敗しました。\n' +
+            String(e?.message || e)
+          );
+        } finally {
+          save.disabled = false;
+          save.textContent =
+            '選択した候補に添付';
+        }
+      };
+    }
   }
 
   async function unlinkWaybill(waybillId) {
@@ -875,17 +960,20 @@
         'data-waybill-id="' + esc(w.id) + '">' +
         '手動紐付け</button>';
     } else if (info.key === 'matched') {
-      // 複数自動紐付けを従来の「解除」APIで一括解除すると
-      // linkテーブルとの不整合になるため、この画面では保護する。
-      if (multiLinks.length > 1) {
-        actionButton =
-          '<span style="font-size:12px;font-weight:700;color:#126b34">' +
-          '複数紐付け済み</span>';
-      } else {
-        actionButton =
-          '<button class="mini secondary v159-waybill-unlink" ' +
+      actionButton =
+        '<button class="mini v159-waybill-manual-link" ' +
+        'data-waybill-id="' + esc(w.id) + '">' +
+        '追加添付</button>';
+
+      if (multiLinks.length === 1) {
+        actionButton +=
+          ' <button class="mini secondary v159-waybill-unlink" ' +
           'data-waybill-id="' + esc(w.id) + '">' +
           '解除</button>';
+      } else if (multiLinks.length > 1) {
+        actionButton +=
+          ' <span style="font-size:12px;font-weight:700;color:#126b34">' +
+          multiLinks.length + '件紐付け済み</span>';
       }
     }
 
@@ -1465,7 +1553,7 @@
   window.addEventListener('kombu:supabase-login', scheduleRefresh);
   window.addEventListener('load', scheduleRefresh);
 
-  window.KOMBU_WAYBILL_UI_VERSION = '160.9';
+  window.KOMBU_WAYBILL_UI_VERSION = '161.1';
   window.kombuWaybillInboxRefresh = refreshWaybills;
   window.kombuWaybillPatchHistory = patchHistoryTable;
   window.kombuWaybillReviewOpen = async function () {
