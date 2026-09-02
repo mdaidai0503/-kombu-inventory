@@ -1,6 +1,6 @@
 /* =========================================================
    昆布在庫管理
-   送り状PDF連携 v160.6（候補選択＋履歴再描画対応）
+   送り状PDF連携 v160.8（needs_review優先＋候補選択対応）
    shipment_waybill_inbox 専用
    - 出荷履歴のPDF表示
    - 出荷指示詳細画面への浜中運輸送り状表示
@@ -23,6 +23,7 @@
   let waybillLinkCache = [];
   let refreshTimer = null;
   let refreshing = false;
+  let waybillCacheLoaded = false;
 
   function client() {
     return window.kombuSupabase || null;
@@ -64,31 +65,62 @@
   }
 
   function classifyWaybill(waybill) {
-    // v160.3:
-    // 手動紐付け・matched 状態を最優先する。
-    // 過去の parsed_data.match.best.score が 0 点のまま残っていても、
-    // すでに matched / auto_attached なら不一致表示へ戻さない。
-    if (
-      waybill &&
-      (waybill.match_status === 'matched' ||
-       waybill.match_status === 'auto_attached')
-    ) {
-      const score = getScore(waybill);
-      const manualLinked = !!(
-        waybill.parsed_data &&
-        waybill.parsed_data.manual_link &&
-        waybill.parsed_data.manual_link.linked === true
-      );
+    // v160.8:
+    // match_status を判定の正本として最優先する。
+    //
+    // 特に needs_review なのに best.score >= 90 の場合、
+    // 以前はスコア判定が先に走って「自動添付」扱いになり、
+    // 送り状確認から消えていた。
+    //
+    // 現在は:
+    // matched / auto_attached → 添付済み
+    // review / needs_review    → 要確認
+    // unmatched               → 不一致
+    // それ以外の旧データだけ score で補完判定
+    if (waybill) {
+      if (
+        waybill.match_status === 'matched' ||
+        waybill.match_status === 'auto_attached'
+      ) {
+        const score = getScore(waybill);
+        const manualLinked = !!(
+          waybill.parsed_data &&
+          waybill.parsed_data.manual_link &&
+          waybill.parsed_data.manual_link.linked === true
+        );
 
-      return {
-        key: 'matched',
-        label: manualLinked ? '添付済み' : '自動添付',
-        icon: '✅',
-        // 手動紐付けでは古い0点を表示しない。
-        score: manualLinked ? null : score
-      };
+        return {
+          key: 'matched',
+          label: manualLinked ? '添付済み' : '自動添付',
+          icon: '✅',
+          score: manualLinked ? null : score
+        };
+      }
+
+      if (
+        waybill.match_status === 'review' ||
+        waybill.match_status === 'needs_review'
+      ) {
+        return {
+          key: 'review',
+          label: '要確認',
+          icon: '⚠️',
+          score: getScore(waybill)
+        };
+      }
+
+      if (waybill.match_status === 'unmatched') {
+        return {
+          key: 'unmatched',
+          label: '不一致',
+          icon: '✕',
+          score: getScore(waybill)
+        };
+      }
     }
 
+    // 旧データ互換:
+    // match_status が未設定などの場合だけ、保存済みスコアから補完する。
     const score = getScore(waybill);
 
     if (score !== null) {
@@ -115,28 +147,6 @@
         label: '不一致',
         icon: '✕',
         score: score
-      };
-    }
-
-    if (
-      waybill &&
-      (waybill.match_status === 'review' ||
-       waybill.match_status === 'needs_review')
-    ) {
-      return {
-        key: 'review',
-        label: '要確認',
-        icon: '⚠️',
-        score: null
-      };
-    }
-
-    if (waybill && waybill.match_status === 'unmatched') {
-      return {
-        key: 'unmatched',
-        label: '不一致',
-        icon: '✕',
-        score: null
       };
     }
 
@@ -218,6 +228,7 @@
 
     waybillCache =
       Array.isArray(waybillResult.data) ? waybillResult.data : [];
+    waybillCacheLoaded = true;
 
     return waybillCache;
   }
@@ -375,6 +386,14 @@
       // v2.16: 8列構成
       // 0依頼日 / 1昆布 / 2出荷人 / 3出荷先 / 4個数 /
       // 5状態 / 6送り状 / 7PDF
+      // v160.7:
+      // Supabaseキャッシュ取得前は既存セルを「未着」で上書きしない。
+      // 並び替え直後のPDFボタン消失を防止する。
+      if (!waybillCacheLoaded) {
+        scheduleRefresh();
+        return;
+      }
+
       // 状態欄は絶対に上書きしない。
       cells[6].innerHTML = makeWaybillCell(product, shipmentId);
     });
@@ -1002,7 +1021,7 @@
             '<div style="font-size:28px;font-weight:700;color:#8a5a00">' +
               groups.review.length +
             '</div>' +
-            '<small>70〜89点</small>' +
+            '<small>候補複数・要確認判定</small>' +
           '</div>' +
           '<div class="card" style="padding:14px;border:1px solid #efb0b0">' +
             '<b>✕ 不一致</b>' +
@@ -1416,7 +1435,7 @@
   window.addEventListener('kombu:supabase-login', scheduleRefresh);
   window.addEventListener('load', scheduleRefresh);
 
-  window.KOMBU_WAYBILL_UI_VERSION = '160.6';
+  window.KOMBU_WAYBILL_UI_VERSION = '160.8';
   window.kombuWaybillInboxRefresh = refreshWaybills;
   window.kombuWaybillPatchHistory = patchHistoryTable;
   window.kombuWaybillReviewOpen = async function () {
