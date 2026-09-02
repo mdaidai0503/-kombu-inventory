@@ -5557,7 +5557,7 @@ smLogs=function(){
 
       <section class="card v161-s">
         <div class="v161-headrow"><h3 class="v161-title" style="margin:0">④ 出荷明細</h3><div class="v161-total">合計数量：<span id="v161ShipmentTotal">0</span></div></div>
-        <div class="v113-lines-wrap" style="margin-top:12px"><div id="v114Lines"></div><button class="btn secondary" id="v114AddLine">➕ 明細追加</button><button class="btn" id="v114PdfFlow" style="margin-top:12px;font-size:17px;padding:14px">📄 出荷依頼PDFを確認</button><button class="btn" id="v1649TestFaxDirect" type="button" style="margin-top:10px;font-size:17px;padding:14px;background:#7a3e00;color:#fff">🧪 テストFAX完了（FAX送信なし）</button></div>
+        <div class="v113-lines-wrap" style="margin-top:12px"><div id="v114Lines"></div><button class="btn secondary" id="v114AddLine">➕ 明細追加</button><button class="btn" id="v114PdfFlow" style="margin-top:12px;font-size:17px;padding:14px">📄 出荷依頼PDFを確認</button></div>
         <div class="note" style="margin-top:10px">PDFを確認後、そのままFAXBOXへ登録します。FAXBOX登録が成功するまで在庫には反映されません。</div>
       </section>
     </div>`;
@@ -5811,98 +5811,6 @@ smLogs=function(){
 
     const v114PreviewBtn=byId('v114Preview');
     if(v114PreviewBtn)v114PreviewBtn.onclick=v161ShowPreview;
-
-    const v1649TestFaxBtn=byId('v1649TestFaxDirect');
-    if(v1649TestFaxBtn)v1649TestFaxBtn.onclick=()=>{
-      if(editing)return alert('テストFAX完了は新規出荷依頼で使用してください。');
-      if(!sn.value.trim())return alert('出荷人を入力してください。');
-      if(sx.value.trim()&&!/^\d{3}-\d{4}$/.test(sx.value.trim()))return alert('出荷人の郵便番号を123-4567形式で入力してください。');
-      if(!dn.value.trim())return alert('出荷先を入力してください。');
-      if(dx.value.trim()&&!/^\d{3}-\d{4}$/.test(dx.value.trim()))return alert('出荷先の郵便番号を123-4567形式で入力してください。');
-      if(!lines.length)return alert('明細を1件以上追加してください。');
-
-      for(const l of lines){
-        const d=productDefs[l.product],q=Number(l.qty);
-        if(!q||q<=0)return alert('明細の数量を入力してください。');
-        let av=0;try{av=d.avail(l)}catch(e){}
-        if(q>Number(av||0))return alert(`${d.desc(l)} の出荷可能在庫は ${fmt(av)} です。`);
-        l.qty=q;
-      }
-
-      const source={name:sn.value.trim(),postal:v229Postal(sx.value),address:sa.value.trim(),phone:sp.value.trim()};
-      const dest={name:dn.value.trim(),postal:v229Postal(dx.value),address:da.value.trim(),phone:dp.value.trim()};
-      const common={
-        source,dest,
-        shipDate:byId('v114ShipDate').value,
-        arrivalDate:byId('v114ArrivalDate').value,
-        deliveryPack:byId('v114DeliveryPack').value||'',
-        memo:byId('v114Memo').value||'',
-        batchId:'TESTM'+Date.now().toString(36).toUpperCase(),
-        createdAt:new Date().toISOString(),
-        updatedAt:new Date().toISOString()
-      };
-      const total=lines.reduce((n,l)=>n+Number(l.qty||0),0);
-      if(!confirm(
-        '【テストFAX完了】\n\n実際のFAXは送信しません。\n'+
-        '出荷依頼を保存し、本番のFAX完了後処理を実行します。\n\n'+
-        '出荷人：'+source.name+'\n出荷先：'+dest.name+
-        '\n出荷日：'+common.shipDate+'\n合計数量：'+total+
-        '\n\n在庫差引・入出庫履歴・出荷依頼履歴へ反映します。よろしいですか？'
-      ))return;
-
-      v1649TestFaxBtn.disabled=true;
-      v1649TestFaxBtn.textContent='テストFAX完了処理中…';
-      try{
-        const groups={};for(const l of lines)(groups[l.product]||(groups[l.product]=[])).push({...l});
-        const created=[];
-        if(groups.kushiro){
-          const ls=groups.kushiro.map(({product,...x})=>x);
-          const o={id:shipmentId(),status:'draft',source,destInfo:dest,dest:dest.name,baseYear:ls[0]?.year||state.activeYear,shipDate:common.shipDate,arrivalDate:common.arrivalDate,deliveryPack:common.deliveryPack,memo:common.memo,batchId:common.batchId,createdAt:common.createdAt,updatedAt:common.updatedAt,lines:ls};
-          state.shipments.push(o);save();created.push(['kushiro',o.id]);
-        }
-        if(groups.hidaka){
-          const ls=groups.hidaka.map(({product,memo,...x})=>x);
-          const o={id:hShipId(),status:'draft',source,dest,shipDate:common.shipDate,arrivalDate:common.arrivalDate,deliveryPack:common.deliveryPack,memo:common.memo,batchId:common.batchId,createdAt:common.createdAt,updatedAt:common.updatedAt,lines:ls};
-          hState.shipments.push(o);hSave();created.push(['hidaka',o.id]);
-        }
-        if(groups.nemuro){
-          const ls=groups.nemuro.map(({product,memo,...x})=>x);
-          const o={id:nShipId(),status:'draft',source,dest,shipDate:common.shipDate,arrivalDate:common.arrivalDate,deliveryPack:common.deliveryPack,memo:common.memo,batchId:common.batchId,createdAt:common.createdAt,updatedAt:common.updatedAt,lines:ls};
-          nState.shipments.push(o);nSave();created.push(['nemuro',o.id]);
-        }
-        if(groups.sanmae){
-          const ls=groups.sanmae.map(({product,memo,...x})=>x);
-          const o={id:smShipId(),status:'draft',source,dest,shipDate:common.shipDate,arrivalDate:common.arrivalDate,deliveryPack:common.deliveryPack,memo:common.memo,batchId:common.batchId,createdAt:common.createdAt,updatedAt:common.updatedAt,lines:ls};
-          smState.shipments.push(o);smSave();created.push(['sanmae',o.id]);
-        }
-
-        const stamp=Date.now();
-        for(const [product,id] of created){
-          // Same production stock validation/confirmation path.
-          window.kombuApplyFaxboxInventory(product,id,'confirm',{jobId:'TEST-'+stamp});
-          // Same production FAX-completion finalizer. This creates formal OUT records and shipment history.
-          window.kombuFinalizeFaxboxShipment(product,id,{
-            jobId:'TEST-'+stamp,
-            sentAt:new Date().toISOString(),
-            testMode:true
-          });
-        }
-        alert(
-          'テストFAX完了しました。\n\n'+
-          '実際のFAXは送信していません。\n'+
-          '作成した出荷依頼：'+created.length+'件\n'+
-          '在庫・入出庫履歴・出荷依頼履歴へ本番完了処理で反映しました。'
-        );
-        if(typeof globalThis.gShipmentHistory==='function')globalThis.gShipmentHistory();
-        else if(typeof globalThis.v136ShipmentHistory==='function')globalThis.v136ShipmentHistory();
-        else v76ShipmentMenu();
-      }catch(err){
-        console.error('[v164.9 direct test fax]',err);
-        v1649TestFaxBtn.disabled=false;
-        v1649TestFaxBtn.textContent='🧪 テストFAX完了（FAX送信なし）';
-        alert('テストFAX完了処理に失敗しました。\n'+String(err?.message||err));
-      }
-    };
 
     const v114SaveBtn=byId('v114Save');
     if(v114SaveBtn)v114SaveBtn.onclick=()=>{
@@ -6832,6 +6740,16 @@ async function v130TopBackup(){
   window.kombuHistoryFourNav=v224HistoryFourNav;
 
   function shipmentHistory(){
+    // v164.7: 履歴の基準日は「依頼日」。現行データでは shipDate を依頼日として表示している。
+    // 将来 requestDate が保存された場合はそちらを優先する。
+    const historyRequestDate=it=>String(
+      it?.requestDate ||
+      it?.snapshot?.requestDate ||
+      it?.shipDate ||
+      it?.snapshot?.shipDate ||
+      ''
+    );
+
     const hist=load(HIST_KEY)
       .filter(it=>it.faxboxStatus!=='queued')
       .sort((a,b)=>{
@@ -6841,10 +6759,16 @@ async function v130TopBackup(){
         // 取消済は必ず最下部
         if(aCancelled!==bCancelled)return aCancelled?1:-1;
 
-        // 同じグループ内は最新順
-        const at=String(a.sentAt||a.cancelledAt||a.archivedAt||a.shipDate||'');
-        const bt=String(b.sentAt||b.cancelledAt||b.archivedAt||b.shipDate||'');
-        return bt.localeCompare(at);
+        // 依頼日の新しい順
+        const at=historyRequestDate(a);
+        const bt=historyRequestDate(b);
+        const byDate=bt.localeCompare(at,'ja',{numeric:true});
+        if(byDate!==0)return byDate;
+
+        // 同日の場合は保存日時が新しい順
+        const as=String(a.sentAt||a.archivedAt||a.cancelledAt||'');
+        const bs=String(b.sentAt||b.archivedAt||b.cancelledAt||'');
+        return bs.localeCompare(as);
       });
     /* v159: 履歴画面は上部タイトル文字なし。固定ナビは維持。 */
     setHeader('出荷依頼履歴');setNavVisible(false);
@@ -6926,7 +6850,7 @@ async function v130TopBackup(){
     };
 
     const getVal=(it,col)=>{
-      if(col==='date')return it.shipDate||'';
+      if(col==='date')return historyRequestDate(it);
       if(col==='product')return label(it.product);
       if(col==='source')return it.source?.name||'';
       if(col==='dest')return it.dest?.name||'';
@@ -6973,7 +6897,7 @@ async function v130TopBackup(){
     const body=document.getElementById('v136HistBody');
     const selects=[...document.querySelectorAll('.v159-filter-row select[data-col]')];
     const stateFilter={};
-    let sortCol='',sortDir='';
+    let sortCol='date',sortDir='desc';
 
     function render(){
       let items=hist.slice();
@@ -6995,7 +6919,7 @@ async function v130TopBackup(){
         });
       }
 body.innerHTML=items.map(it=>`<tr data-hprod="${it.product}" data-hid="${escAttr(it.id||'')}" data-hkey="${escAttr(it.key)}">
-  <td>${esc(it.shipDate||'')}</td>
+  <td>${esc(historyRequestDate(it))}</td>
   <td><b>${esc(label(it.product))}</b></td>
   <td>${esc(it.source?.name||'')}</td>
   <td>${esc(it.dest?.name||'')}</td>
@@ -7004,6 +6928,11 @@ body.innerHTML=items.map(it=>`<tr data-hprod="${it.product}" data-hid="${escAttr
   <td><span class="muted">未着</span></td>
   <td><button class="mini v215-history-pdf" data-hpdf="1" title="${escAttr(pdfDisplayName(it))}">${esc(pdfDisplayName(it))}</button></td>
 </tr>`).join('')||'<tr><td colspan="8" class="empty">該当する出荷依頼履歴はありません</td></tr>';
+
+      // v164.7: 並び替え・絞り込み直後に送り状PDF欄を即時復元。
+      if(typeof window.kombuWaybillPatchHistory==='function'){
+        window.kombuWaybillPatchHistory();
+      }
     }
 
     selects.forEach(sel=>sel.onchange=()=>{
@@ -7022,6 +6951,9 @@ body.innerHTML=items.map(it=>`<tr data-hprod="${it.product}" data-hid="${escAttr
       }
       render();
     });
+
+    const dateSortSelect=selects.find(sel=>sel.dataset.col==='date');
+    if(dateSortSelect)dateSortSelect.value='__desc';
 
     if(body)body.onclick=e=>{
       const tr=e.target.closest('[data-hid]');
@@ -9363,183 +9295,89 @@ document.getElementById('v161ShipmentHistory').onclick=function(){
     try{const x=JSON.parse(localStorage.getItem(PAIR_KEY)||'[]');return Array.isArray(x)?x:[]}catch(_){return []}
   }
   function fullBackup(){
-    const localStorageSnapshot={};
-    for(let i=0;i<localStorage.length;i++){
-      const k=localStorage.key(i);
-      if(k!==null)localStorageSnapshot[k]=localStorage.getItem(k);
-    }
-
-    const history=(()=>{
-      try{
-        const x=JSON.parse(localStorage.getItem('kombu-v136-shipment-history')||'[]');
-        return Array.isArray(x)?x:[];
-      }catch(_){return []}
-    })();
-
     const payload={
       backupType:'KOMBU_FULL_TEST_BACKUP',
-      backupVersion:2,
-      appVersion:'v165.0',
+      backupVersion:1,
+      appVersion:'v164.6',
       exportedAt:new Date().toISOString(),
-
-      // 4種類すべての実データ
-      kushiro:JSON.parse(JSON.stringify(state)),
-      hidaka:JSON.parse(JSON.stringify(hState)),
-      nemuro:JSON.parse(JSON.stringify(nState)),
-      sanmae:JSON.parse(JSON.stringify(smState)),
-
-      // 出荷履歴・会社組み合わせ
-      shipmentHistory:history,
-      companyPairs:pairs(),
-
-      // 念のためアプリのlocalStorage全体も保存
-      localStorageSnapshot
+      state:JSON.parse(JSON.stringify(state)),
+      companyPairs:pairs()
     };
-
-    downloadJson(`昆布在庫管理_テスト前完全バックアップ_v2_${jpStamp()}.json`,payload);
+    downloadJson(`昆布在庫管理_テスト前完全バックアップ_${jpStamp()}.json`,payload);
     alert(
-      `完全バックアップ v2 を作成しました。\n\n`+
+      `完全バックアップを作成しました。\n\n`+
       `会社マスター：${Array.isArray(state.companies)?state.companies.length:0}件\n`+
-      `出荷人×出荷先：${payload.companyPairs.length}件\n`+
-      `出荷依頼履歴：${history.length}件\n\n`+
-      `釧路・日高・根室・釧棹の全データとlocalStorage全体を保存しています。\n`+
-      `このJSONファイルを安全な場所に保管してください。`
+      `出荷人×出荷先：${payload.companyPairs.length}件\n\n`+
+      `ダウンロードしたJSONファイルを安全な場所に保管してください。`
     );
   }
 
   function testResetPreview(){
     const companies=Array.isArray(state.companies)?state.companies.length:0;
     const pairCount=pairs().length;
-
-    const kRecords=Array.isArray(state.records)?state.records.length:0;
-    const hRecords=Array.isArray(hState.records)?hState.records.length:0;
-    const nRecords=Array.isArray(nState.records)?nState.records.length:0;
-    const sRecords=Array.isArray(smState.records)?smState.records.length:0;
-
-    const kShips=Array.isArray(state.shipments)?state.shipments.length:0;
-    const hShips=Array.isArray(hState.shipments)?hState.shipments.length:0;
-    const nShips=Array.isArray(nState.shipments)?nState.shipments.length:0;
-    const sShips=Array.isArray(smState.shipments)?smState.shipments.length:0;
-
-    const historyCount=(()=>{
-      try{
-        const x=JSON.parse(localStorage.getItem('kombu-v136-shipment-history')||'[]');
-        return Array.isArray(x)?x.length:0;
-      }catch(_){return 0}
-    })();
+    const records=Array.isArray(state.records)?state.records.length:0;
+    const shipments=Array.isArray(state.shipments)?state.shipments.length:0;
+    const pdfImports=Array.isArray(state.pdfImports)?state.pdfImports.length:0;
+    const faxbox=(()=>{try{const x=JSON.parse(localStorage.getItem('kombu-v99-fax-box')||'[]');return Array.isArray(x)?x.length:0}catch(_){return 0}})();
 
     const ok=confirm(
-      `【完全テスト初期化・最終確認】\n\n`+
+      `【テスト初期化・最終確認】\n\n`+
       `維持するデータ\n`+
       `・会社マスター：${companies}件\n`+
       `・出荷人×出荷先：${pairCount}件\n`+
-      `・地区／よく使う会社設定\n`+
-      `・漁協等のマスター設定\n\n`+
+      `・地区／よく使う会社設定：会社マスター内の設定を維持\n\n`+
       `初期化するデータ\n`+
-      `・釧路 入出庫：${kRecords}件 / 出荷依頼：${kShips}件\n`+
-      `・日高 入出庫：${hRecords}件 / 出荷依頼：${hShips}件\n`+
-      `・根室 入出庫：${nRecords}件 / 出荷依頼：${nShips}件\n`+
-      `・釧棹 入出庫：${sRecords}件 / 出荷依頼：${sShips}件\n`+
-      `・出荷依頼履歴：${historyCount}件\n`+
-      `・FAXBOX／PDF取込履歴／送り状判定／未判定／チェック状態\n\n`+
-      `必ず先に「完全バックアップ v2」を保存してください。\n`+
+      `・在庫／入出庫データ：${records}件\n`+
+      `・出荷依頼／出荷履歴：${shipments}件\n`+
+      `・PDF取込履歴：${pdfImports}件\n`+
+      `・FAXBOX：${faxbox}件\n`+
+      `・送り状の判定／未判定などテスト対象の保存データ\n\n`+
+      `先に「完全バックアップ」を保存したことを確認してください。\n`+
       `本当にテスト用に初期化しますか？`
     );
     if(!ok)return;
 
-    const typed=prompt('誤操作防止のため「完全テスト初期化」と入力してください。');
-    if(typed!=='完全テスト初期化')return alert('初期化を中止しました。');
+    const typed=prompt('誤操作防止のため「テスト初期化」と入力してください。');
+    if(typed!=='テスト初期化')return alert('初期化を中止しました。');
 
-    // ---- 維持データ ----
+    // Preserve master data exactly.
     const keepCompanies=JSON.parse(JSON.stringify(Array.isArray(state.companies)?state.companies:[]));
     const keepCoops=JSON.parse(JSON.stringify(Array.isArray(state.coops)?state.coops:[]));
     const keepPairs=pairs();
+    const keepYear=state.activeYear;
 
-    const keepYears={
-      k:state.activeYear,
-      h:hState.activeYear,
-      n:nState.activeYear,
-      s:smState.activeYear
-    };
-
-    // ---- 4種類すべての在庫・入出庫・出荷依頼・PDF履歴を初期化 ----
+    // Clear only operational/test data.
     state.records=[];
     state.shipments=[];
     state.shipmentSeq=1;
     state.pdfImports=[];
     state.companies=keepCompanies;
     state.coops=keepCoops;
-    state.activeYear=keepYears.k;
-
-    hState.records=[];
-    hState.shipments=[];
-    hState.shipmentSeq=1;
-    hState.pdfImports=[];
-    hState.activeYear=keepYears.h;
-
-    nState.records=[];
-    nState.shipments=[];
-    nState.shipmentSeq=1;
-    nState.pdfImports=[];
-    nState.activeYear=keepYears.n;
-
-    smState.records=[];
-    smState.shipments=[];
-    smState.shipmentSeq=1;
-    smState.pdfImports=[];
-    smState.activeYear=keepYears.s;
-
-    // 会社組み合わせは必ず維持
+    state.activeYear=keepYear;
     localStorage.setItem(PAIR_KEY,JSON.stringify(keepPairs));
 
-    // 4種類の状態を保存
-    save();
-    hSave();
-    nSave();
-    smSave();
-
-    // ---- 出荷履歴などの別保存領域を明示的に削除 ----
+    // Known operational caches / queues. Do NOT touch company master or pair key.
     [
-      'kombu-v136-shipment-history',
       'kombu-v99-fax-box',
-      'kombu-v76-shipment-checks',
-      'kombu-v136-autosave-snapshot',
-      'kombu-v136-form-drafts',
       'kombu_shipment_history_month_open_v1645'
     ].forEach(k=>localStorage.removeItem(k));
 
-    // ---- 送り状・判定・未判定系の保存キーを削除 ----
-    // 会社マスター・組み合わせ・4種類本体・接続設定は保護
-    const protectedKeys=new Set([
-      PAIR_KEY,
-      'kombu_local_only_v2',
-      'kombu_local_only_v3',
-      'kombu_hidaka_local_v1',
-      'kombu_nemuro_local_v1',
-      'kombu_kushiro_sanmae_local_v1'
-    ]);
-
+    // Remove only keys whose names clearly indicate shipping-label judgement/unmatched caches.
+    const protectedKeys=new Set([PAIR_KEY,'kombu_local_only_v2']);
     const remove=[];
     for(let i=0;i<localStorage.length;i++){
       const k=localStorage.key(i)||'';
       if(protectedKeys.has(k))continue;
-      if(
-        /(waybill|送り状|unmatched|未判定|judg|match|shipment.*history|fax.*history|pdf.*history|inbox.*shipment|shipment.*inbox)/i.test(k)
-      ){
-        remove.push(k);
-      }
+      if(/(送り状|waybill|label.*(judge|match|unmatch|pending)|shipment.*(judge|match|unmatch|pending)|pdf.*(judge|match|unmatch|pending))/i.test(k))remove.push(k);
     }
     remove.forEach(k=>localStorage.removeItem(k));
 
-    // 組み合わせが削除されていないことを最後に再保証
-    localStorage.setItem(PAIR_KEY,JSON.stringify(keepPairs));
-
+    save();
     alert(
-      `完全テスト初期化が完了しました。\n\n`+
-      `維持：会社マスター ${keepCompanies.length}件\n`+
-      `維持：出荷人×出荷先 ${keepPairs.length}件\n\n`+
-      `釧路・日高・根室・釧棹の在庫／入出庫／出荷依頼、\n`+
-      `出荷依頼履歴、FAXBOX、PDF・送り状判定／未判定を初期化しました。`
+      `テスト初期化が完了しました。\n\n`+
+      `会社マスター：${keepCompanies.length}件 維持\n`+
+      `出荷人×出荷先：${keepPairs.length}件 維持\n\n`+
+      `在庫・入出庫・出荷履歴・テスト対象PDF/送り状データを初期化しました。`
     );
     home();
   }
@@ -9547,30 +9385,22 @@ document.getElementById('v161ShipmentHistory').onclick=function(){
   function addTestTools(){
     const app=document.getElementById('app');
     if(!app || document.getElementById('v1646TestTools'))return;
-
-    // v164.7: 下部ナビの表示文字やアイコンに依存せず、
-    // 「在庫管理」「出荷依頼」の2ボタンがあるトップ画面だけで必ず表示する。
-    const txt=(app.textContent||'').replace(/\s+/g,'');
-    const isTop = txt.includes('在庫管理') && txt.includes('出荷依頼');
-    if(!isTop)return;
-
+    // Only add to the top/home screen where backup controls already exist or the main landing is visible.
+    const backupBtn=[...document.querySelectorAll('button')].find(b=>(b.textContent||'').trim()==='バックアップ');
+    if(!backupBtn)return;
     const box=document.createElement('section');
     box.id='v1646TestTools';
     box.className='card';
-    box.style.cssText='margin-top:12px;padding:14px';
+    box.style.marginTop='12px';
     box.innerHTML=`
-      <h3 style="margin:0 0 8px">🧪 テスト準備</h3>
-      <div class="small" style="margin-bottom:10px">
-        会社マスター・出荷人×出荷先を維持したまま、8月テスト用の準備を行います。
-      </div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <button class="btn" id="v1646FullBackup" type="button">💾 完全バックアップ v2</button>
-        <button class="btn secondary" id="v1646TestReset" type="button">🧹 完全テスト初期化</button>
-      </div>
-      <div class="small" style="margin-top:8px;color:#7a4b00">
-        先に「完全バックアップ v2」を実行してください。確認前に「完全テスト初期化」は押さないでください。
+      <h3 style="margin-top:0">テスト準備</h3>
+      <div class="small" style="margin-bottom:10px">会社マスター・出荷人×出荷先を維持したまま、8月テスト用の準備を行います。</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" id="v1646FullBackup" type="button">完全バックアップ</button>
+        <button class="btn secondary" id="v1646TestReset" type="button">テスト初期化</button>
       </div>`;
-    app.appendChild(box);
+    const parent=backupBtn.closest('section')?.parentElement || app;
+    parent.appendChild(box);
     document.getElementById('v1646FullBackup').onclick=fullBackup;
     document.getElementById('v1646TestReset').onclick=testResetPreview;
   }
@@ -9587,129 +9417,6 @@ document.getElementById('v161ShipmentHistory').onclick=function(){
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});
   else start();
 
-  console.info('[KOMBU v164.7] 完全バックアップ＋安全なテスト初期化');
+  console.info('[KOMBU v164.6] 完全バックアップ＋安全なテスト初期化');
 })();
  /* ===== /v164.6 ===== */
-
-
-/* ===== v164.8 テストFAX完了（実FAX送信なし／本番完了処理を共用） ===== */
-(function(){
-  'use strict';
-
-  function getShipment(product,id){
-    if(product==='kushiro')return (state.shipments||[]).find(x=>String(x.id)===String(id))||null;
-    if(product==='hidaka')return (hState.shipments||[]).find(x=>String(x.id)===String(id))||null;
-    if(product==='nemuro')return (nState.shipments||[]).find(x=>String(x.id)===String(id))||null;
-    if(product==='sanmae')return (smState.shipments||[]).find(x=>String(x.id)===String(id))||null;
-    return null;
-  }
-
-  function addTestFaxButton(product,id){
-    const s=getShipment(product,id);
-    if(!s||!window.app)return;
-    if(document.getElementById('v1648TestFaxDone'))return;
-    if(s.status==='shipped'||s.status==='cancelled')return;
-
-    const btn=document.createElement('button');
-    btn.id='v1648TestFaxDone';
-    btn.type='button';
-    btn.className='btn';
-    btn.style.cssText='margin-top:10px;background:#7a3e00;color:#fff';
-    btn.textContent='🧪 テストFAX完了（送信しない）';
-
-    const note=document.createElement('div');
-    note.id='v1648TestFaxNote';
-    note.className='note';
-    note.style.marginTop='8px';
-    note.textContent='テスト専用：実際のFAXは送信せず、本番のFAX送信完了と同じ在庫・履歴処理だけを実行します。';
-
-    const flow=document.getElementById('v161Step5Flow');
-    const actions=document.getElementById('v161Step5Actions');
-    if(actions)actions.appendChild(btn);
-    else if(flow)flow.appendChild(btn);
-    else{
-      const first=app.querySelector('section.card');
-      if(first)first.appendChild(btn);else app.appendChild(btn);
-    }
-    btn.insertAdjacentElement('afterend',note);
-
-    btn.onclick=()=>{
-      const latest=getShipment(product,id);
-      if(!latest)return alert('出荷依頼が見つかりません。');
-      if(latest.status==='cancelled')return alert('取消済みの出荷依頼です。');
-      if(latest.status==='shipped')return alert('すでにFAX完了／出荷済みです。');
-
-      const qty=(latest.lines||[]).reduce((n,l)=>n+Number(l.qty||0),0);
-      const src=latest?.source?.name||'';
-      const dst=(product==='kushiro'
-        ? (latest?.destInfo?.name||latest?.dest||'')
-        : (latest?.dest?.name||latest?.destInfo?.name||''));
-
-      if(!confirm(
-        '【テストFAX完了】\n\n'+
-        '実際のFAXは送信しません。\n'+
-        '本番のFAX送信完了と同じ後処理を実行します。\n\n'+
-        '出荷人：'+src+'\n'+
-        '出荷先：'+dst+'\n'+
-        '出荷日：'+(latest.shipDate||'')+'\n'+
-        '数量：'+qty+'\n\n'+
-        '在庫差引・入出庫履歴・出荷依頼履歴へ反映してよろしいですか？'
-      ))return;
-
-      btn.disabled=true;
-      btn.textContent='テスト完了処理中…';
-      try{
-        // If still draft, use the existing FAXBOX confirmation path first.
-        // This performs the same stock-availability validation as production.
-        if(latest.status==='draft' && typeof window.kombuApplyFaxboxInventory==='function'){
-          window.kombuApplyFaxboxInventory(product,id,'confirm',{
-            jobId:'TEST-'+Date.now()
-          });
-        }
-        if(typeof window.kombuFinalizeFaxboxShipment!=='function'){
-          throw new Error('本番FAX完了処理が見つかりません。');
-        }
-        // IMPORTANT: call the production finalizer itself; do not duplicate its inventory/history logic.
-        window.kombuFinalizeFaxboxShipment(product,id,{
-          jobId:'TEST-'+Date.now(),
-          sentAt:new Date().toISOString(),
-          testMode:true
-        });
-        alert('テストFAX完了処理が完了しました。\n実際のFAXは送信していません。\n在庫・入出庫履歴・出荷依頼履歴を確認してください。');
-        if(typeof globalThis.openGlobalShipment==='function')globalThis.openGlobalShipment(product,id);
-      }catch(err){
-        console.error('[v164.8 test fax]',err);
-        btn.disabled=false;
-        btn.textContent='🧪 テストFAX完了（送信しない）';
-        alert('テストFAX完了処理に失敗しました。\n'+String(err?.message||err));
-      }
-    };
-  }
-
-  const baseOpen=globalThis.openGlobalShipment;
-  if(typeof baseOpen==='function'){
-    globalThis.openGlobalShipment=function(product,id){
-      const r=baseOpen.apply(this,arguments);
-      setTimeout(()=>addTestFaxButton(product,id),0);
-      return r;
-    };
-  }
-
-  [
-    ['shipmentDetail','kushiro'],
-    ['hShipDetail','hidaka'],
-    ['nShipDetail','nemuro'],
-    ['smShipDetail','sanmae']
-  ].forEach(([name,product])=>{
-    const fn=globalThis[name];
-    if(typeof fn!=='function')return;
-    globalThis[name]=function(id){
-      const r=fn.apply(this,arguments);
-      setTimeout(()=>addTestFaxButton(product,id),0);
-      return r;
-    };
-  });
-
-  console.info('[KOMBU v164.8] テストFAX完了を有効化（実送信なし）');
-})();
- /* ===== /v164.8 ===== */
