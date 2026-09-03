@@ -1,6 +1,6 @@
 /* =========================================================
    昆布在庫管理
-   送り状PDF連携 v161.7（履歴の要確認候補表示＋複数解析候補対応）
+   送り状PDF連携 v161.9（未リンクreview候補をmatched表示より最優先）
    shipment_waybill_inbox 専用
    - 出荷履歴のPDF表示
    - 出荷指示詳細画面への浜中運輸送り状表示
@@ -393,10 +393,20 @@
   function findReviewWaybillForShipment(product, shipmentId) {
     const candidates = waybillCache
       .filter(function (w) {
-        const info = classifyWaybill(w);
-
+        /*
+         * v161.8:
+         * 1枚の送り状に候補が複数あり、そのうち1件だけ手動紐づけすると
+         * waybill自体の match_status が matched に変わることがある。
+         *
+         * v161.7 は classifyWaybill(w).key === 'review' を必須にしていたため、
+         * 1件を紐づけた瞬間、同じPDFに残っている未紐づけ候補まで
+         * 「要確認」から消えて「未着」に戻ってしまった。
+         *
+         * ここでは status ではなく parsed_data.match.review_candidates を
+         * 真実の候補情報として使う。
+         * 対象出荷依頼が未紐づけで、候補内に含まれていれば表示する。
+         */
         return (
-          info.key === 'review' &&
           !findLinkForShipment(product, shipmentId) &&
           waybillContainsReviewShipment(w, product, shipmentId)
         );
@@ -407,6 +417,56 @@
       });
 
     return candidates[0] || null;
+  }
+
+  function unlinkedReviewCandidateRefs(waybill) {
+    return flattenReviewCandidateRefs(waybill)
+      .filter(function (ref) {
+        return !findLinkForShipment(
+          ref.kombu_type || ref.product_code,
+          ref.app_shipment_id
+        );
+      });
+  }
+
+
+  function hasUnlinkedReviewCandidateForShipment(
+    waybill,
+    product,
+    shipmentId
+  ) {
+    const idText = String(shipmentId || '');
+    const productText = String(product || '');
+
+    if (!idText || !productText) return false;
+
+    return unlinkedReviewCandidateRefs(waybill)
+      .some(function (ref) {
+        return (
+          String(ref.app_shipment_id || '') === idText &&
+          String(ref.kombu_type || ref.product_code || '') === productText
+        );
+      });
+  }
+
+  function findAnyReviewWaybillForShipment(product, shipmentId) {
+    return waybillCache
+      .filter(function (w) {
+        /*
+         * v161.9:
+         * waybill.match_status が matched でも review_candidates が残っており、
+         * 対象出荷依頼がまだ未リンクなら「要確認」を最優先する。
+         */
+        return hasUnlinkedReviewCandidateForShipment(
+          w,
+          product,
+          shipmentId
+        );
+      })
+      .sort(function (a, b) {
+        return reviewWaybillSortValue(b)
+          .localeCompare(reviewWaybillSortValue(a));
+      })[0] || null;
   }
 
   async function openWaybillPdf(waybill) {
@@ -435,31 +495,37 @@
   }
 
   function makeWaybillCell(product, shipmentId) {
+    /*
+     * v161.9 最優先ルール:
+     * 未リンクのreview候補が残っている場合は、
+     * waybill全体がmatchedでも、他候補がリンク済みでも、
+     * この出荷依頼行では必ず「要確認」を表示する。
+     */
+    const reviewWaybill =
+      findAnyReviewWaybillForShipment(
+        product,
+        shipmentId
+      );
+
+    if (reviewWaybill) {
+      const refs =
+        unlinkedReviewCandidateRefs(
+          reviewWaybill
+        );
+
+      return (
+        '<button class="mini v159-waybill-review-candidate" ' +
+        'data-waybill-id="' + esc(reviewWaybill.id) + '" ' +
+        'style="white-space:nowrap;font-weight:700;color:#8a5a00">' +
+        '⚠ 要確認' +
+        (refs.length > 1 ? '（候補' + refs.length + '件）' : '') +
+        '</button>'
+      );
+    }
+
     const waybill = findWaybill(product, shipmentId);
 
     if (!waybill) {
-      const reviewWaybill =
-        findReviewWaybillForShipment(
-          product,
-          shipmentId
-        );
-
-      if (reviewWaybill) {
-        const refs =
-          flattenReviewCandidateRefs(
-            reviewWaybill
-          );
-
-        return (
-          '<button class="mini v159-waybill-review-candidate" ' +
-          'data-waybill-id="' + esc(reviewWaybill.id) + '" ' +
-          'style="white-space:nowrap;font-weight:700;color:#8a5a00">' +
-          '⚠ 要確認' +
-          (refs.length > 1 ? '（候補' + refs.length + '件）' : '') +
-          '</button>'
-        );
-      }
-
       return '<span class="muted">未着</span>';
     }
 
@@ -1164,7 +1230,20 @@
       resolveParsedReviewCandidates(
         waybill,
         allCandidates
-      );
+      )
+        .filter(function (candidate) {
+          /*
+           * v161.8:
+           * 同じPDFですでに紐づけ済みの候補は、
+           * 次の手動選択画面には出さない。
+           * これにより2件候補の1件目を確定後、
+           * 残り1件だけを安全に選べる。
+           */
+          return !findLinkForShipment(
+            candidate.kombu_type || candidate.product_code,
+            candidate.app_shipment_id
+          );
+        });
 
     let rawCandidates =
       parsedReviewCandidates.length
