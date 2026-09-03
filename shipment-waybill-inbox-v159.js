@@ -1,6 +1,6 @@
 /* =========================================================
    昆布在庫管理
-   送り状PDF連携 v161.5（履歴の未着から候補PDF選択・会社向き逆の要確認候補対応）
+   送り状PDF連携 v161.7（履歴の要確認候補表示＋複数解析候補対応）
    shipment_waybill_inbox 専用
    - 出荷履歴のPDF表示
    - 出荷指示詳細画面への浜中運輸送り状表示
@@ -197,7 +197,7 @@
       sb
         .from(TABLE_NAME)
         .select(
-          'id,storage_path,original_filename,match_status,matched_product,matched_shipment_id,received_at,shipping_date,source_name,destination_name,total_qty,parsed_data'
+          'id,storage_path,original_filename,match_status,matched_product,matched_shipment_id,received_at,shipping_date,parsed_data'
         )
         .order('received_at', { ascending: false }),
 
@@ -294,6 +294,121 @@
     }) || null;
   }
 
+
+  // v161.7:
+  // parsed_data.match.review_candidates には、
+  // 1件候補だけでなく { shipments:[...] } の組み合わせ候補も入る。
+  // 出荷履歴の各行から「この出荷依頼を候補に含む要確認PDF」を逆引きする。
+  function flattenReviewCandidateRefs(waybill) {
+    const match =
+      waybill &&
+      waybill.parsed_data &&
+      waybill.parsed_data.match
+        ? waybill.parsed_data.match
+        : null;
+
+    if (!match) return [];
+
+    const sources = [];
+
+    if (Array.isArray(match.review_candidates)) {
+      sources.push.apply(sources, match.review_candidates);
+    }
+
+    if (
+      match.multiple_match &&
+      Array.isArray(match.multiple_match.candidate_combinations)
+    ) {
+      sources.push.apply(
+        sources,
+        match.multiple_match.candidate_combinations
+      );
+    }
+
+    const out = [];
+    const seen = new Set();
+
+    sources.forEach(function (candidate) {
+      const rows =
+        candidate && Array.isArray(candidate.shipments)
+          ? candidate.shipments
+          : [candidate];
+
+      rows.forEach(function (row) {
+        if (!row) return;
+
+        const appId = String(row.app_shipment_id || '');
+        const product = String(
+          row.kombu_type || row.product_code || ''
+        );
+
+        if (!appId || !product) return;
+
+        const key = appId + '||' + product;
+        if (seen.has(key)) return;
+
+        seen.add(key);
+        out.push({
+          app_shipment_id: appId,
+          kombu_type: product,
+          product_code: product,
+          ship_date: row.ship_date || '',
+          source_name: row.source_name || '',
+          dest_name: row.dest_name || '',
+          total_qty: Number(row.qty != null ? row.qty : row.total_qty || 0),
+          __review_source: candidate
+        });
+      });
+    });
+
+    return out;
+  }
+
+  function waybillContainsReviewShipment(waybill, product, shipmentId) {
+    const idText = String(shipmentId || '');
+    const productText = String(product || '');
+
+    if (!idText || !productText) return false;
+
+    return flattenReviewCandidateRefs(waybill).some(function (row) {
+      return (
+        String(row.app_shipment_id || '') === idText &&
+        String(row.kombu_type || row.product_code || '') === productText
+      );
+    });
+  }
+
+  function reviewWaybillSortValue(waybill) {
+    const path = String(waybill && waybill.storage_path || '');
+    const m = path.match(/^split\/(\d{4}-\d{2}-\d{2})\//);
+    const splitDate = m ? m[1] : '';
+
+    return [
+      splitDate,
+      String(waybill && waybill.updated_at || ''),
+      String(waybill && waybill.created_at || '')
+    ].join('|');
+  }
+
+  function findReviewWaybillForShipment(product, shipmentId) {
+    const candidates = waybillCache
+      .filter(function (w) {
+        const info = classifyWaybill(w);
+
+        return (
+          info.key === 'review' &&
+          !findLinkForShipment(product, shipmentId) &&
+          waybillContainsReviewShipment(w, product, shipmentId)
+        );
+      })
+      .sort(function (a, b) {
+        return reviewWaybillSortValue(b)
+          .localeCompare(reviewWaybillSortValue(a));
+      });
+
+    return candidates[0] || null;
+  }
+
   async function openWaybillPdf(waybill) {
     if (!waybill || !waybill.storage_path) {
       alert('送り状PDFが見つかりません。');
@@ -319,410 +434,28 @@
     window.open(result.data.signedUrl, '_blank', 'noopener');
   }
 
-  // v161.5:
-  // 出荷依頼履歴でリンク未登録の行にも、候補PDFが存在する場合は
-  // 「要確認（候補n件）」ボタンを表示し、そこからPDF確認・手動添付できるようにする。
-  //
-  // 自動添付はしない。特に会社の向きが逆に解析されたPDFは
-  // 候補としてのみ表示し、ユーザー確認を必須にする。
-  const historyRowContextCache = {};
-
-  function historyShipmentKey(product, shipmentId) {
-    return String(shipmentId || '') + '||' + String(product || '');
-  }
-
-  function numberFromText(v) {
-    const cleaned = String(v == null ? '' : v)
-      .replace(/,/g, '')
-      .replace(/[^0-9.\-]/g, '');
-    const x = Number(cleaned);
-    return Number.isFinite(x) ? x : 0;
-  }
-
-  function cacheHistoryRowContext(tr) {
-    if (!tr) return null;
-
-    const shipmentId = String(tr.dataset.hid || '');
-    const product = String(tr.dataset.hprod || '');
-    const cells = tr.querySelectorAll('td');
-
-    if (!shipmentId || !product || cells.length < 8) return null;
-
-    const ctx = {
-      app_shipment_id: shipmentId,
-      product_code: product,
-      ship_date: normalizeIsoDate(cells[0].textContent || ''),
-      source_name: String(cells[2].textContent || '').trim(),
-      dest_name: String(cells[3].textContent || '').trim(),
-      total_qty: numberFromText(cells[4].textContent || '')
-    };
-
-    historyRowContextCache[historyShipmentKey(product, shipmentId)] = ctx;
-    return ctx;
-  }
-
-  function getHistoryRowContext(product, shipmentId) {
-    const key = historyShipmentKey(product, shipmentId);
-    if (historyRowContextCache[key]) return historyRowContextCache[key];
-
-    const rows = document.querySelectorAll('#v136HistBody tr[data-hid]');
-    for (const tr of rows) {
-      if (
-        String(tr.dataset.hid || '') === String(shipmentId || '') &&
-        String(tr.dataset.hprod || '') === String(product || '')
-      ) {
-        return cacheHistoryRowContext(tr);
-      }
-    }
-
-    return null;
-  }
-
-  function waybillCompanySource(waybill) {
-    const p = waybill && waybill.parsed_data && typeof waybill.parsed_data === 'object'
-      ? waybill.parsed_data
-      : {};
-
-    return String(
-      waybill?.source_name ||
-      p.source_name ||
-      p.raw_shipper_name ||
-      p.shipper_name ||
-      ''
-    ).trim();
-  }
-
-  function waybillCompanyDest(waybill) {
-    const p = waybill && waybill.parsed_data && typeof waybill.parsed_data === 'object'
-      ? waybill.parsed_data
-      : {};
-
-    return String(
-      waybill?.destination_name ||
-      p.dest_name ||
-      p.raw_consignee_name ||
-      p.consignee_name ||
-      ''
-    ).trim();
-  }
-
-  function waybillQty(waybill) {
-    const p = waybill && waybill.parsed_data && typeof waybill.parsed_data === 'object'
-      ? waybill.parsed_data
-      : {};
-
-    const direct = Number(waybill?.total_qty);
-    if (Number.isFinite(direct) && direct > 0) return direct;
-
-    const parsed = Number(p.total_qty);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-
-  function sameHistoryCompany(a, b) {
-    const x = normalizeHistoryCompanyName(a);
-    const y = normalizeHistoryCompanyName(b);
-    if (!x || !y) return false;
-    return x === y || x.includes(y) || y.includes(x);
-  }
-
-  function flattenReviewShipmentCandidates(waybill) {
-    const match =
-      waybill && waybill.parsed_data && waybill.parsed_data.match
-        ? waybill.parsed_data.match
-        : null;
-
-    if (!match) return [];
-
-    const out = [];
-    const seen = new Set();
-
-    function add(row) {
-      if (!row || !row.app_shipment_id) return;
-      const product = row.kombu_type || row.product_code || '';
-      const key = String(row.app_shipment_id) + '||' + String(product);
-      if (seen.has(key)) return;
-      seen.add(key);
-      out.push(row);
-    }
-
-    function addContainer(container) {
-      if (!container) return;
-      if (Array.isArray(container)) {
-        container.forEach(function (x) {
-          if (x && Array.isArray(x.shipments)) {
-            x.shipments.forEach(add);
-          } else {
-            add(x);
-          }
-        });
-      }
-    }
-
-    addContainer(match.review_candidates);
-    addContainer(match.multiple_matches);
-    addContainer(
-      match.multiple_match && match.multiple_match.candidate_combinations
-    );
-    addContainer(
-      match.multiple_match && match.multiple_match.matches
-    );
-
-    return out;
-  }
-
-  function matcherExplicitlyMentionsShipment(waybill, product, shipmentId) {
-    return flattenReviewShipmentCandidates(waybill).some(function (row) {
-      const rowProduct = String(row.kombu_type || row.product_code || '');
-      return (
-        String(row.app_shipment_id || '') === String(shipmentId || '') &&
-        (!rowProduct || rowProduct === String(product || ''))
-      );
-    });
-  }
-
-  function candidateWaybillForHistory(waybill, ctx) {
-    if (!waybill || !ctx || !waybill.storage_path) return null;
-
-    // すでにこの出荷依頼へリンク済みなら候補扱いしない。
-    const alreadyLinked = waybillLinkCache.some(function (link) {
-      return (
-        String(link.waybill_inbox_id || '') === String(waybill.id || '') &&
-        String(link.app_shipment_id || '') === String(ctx.app_shipment_id || '') &&
-        String(link.product_code || '') === String(ctx.product_code || '')
-      );
-    });
-    if (alreadyLinked) return null;
-
-    const info = classifyWaybill(waybill);
-    if (!['review', 'unmatched', 'pending', 'matched'].includes(info.key)) {
-      return null;
-    }
-
-    const wbDate = waybillShippingDate(waybill);
-    const shipmentDate = normalizeIsoDate(ctx.ship_date || '');
-
-    // ユーザー指定: 出荷依頼より前の日付の送り状は候補から除外。
-    if (wbDate && shipmentDate && wbDate < shipmentDate) {
-      return null;
-    }
-
-    const wbQty = waybillQty(waybill);
-    const shipmentQty = Number(ctx.total_qty || 0);
-    if (
-      wbQty > 0 && shipmentQty > 0 &&
-      Math.abs(wbQty - shipmentQty) > 0.0001
-    ) {
-      return null;
-    }
-
-    const wbSource = waybillCompanySource(waybill);
-    const wbDest = waybillCompanyDest(waybill);
-
-    const directPair =
-      sameHistoryCompany(wbSource, ctx.source_name) &&
-      sameHistoryCompany(wbDest, ctx.dest_name);
-
-    const reversePair =
-      sameHistoryCompany(wbSource, ctx.dest_name) &&
-      sameHistoryCompany(wbDest, ctx.source_name);
-
-    const explicit = matcherExplicitlyMentionsShipment(
-      waybill,
-      ctx.product_code,
-      ctx.app_shipment_id
-    );
-
-    // 基本は会社ペア一致。matcherがこの出荷依頼を明示した場合も候補に残す。
-    if (!directPair && !reversePair && !explicit) return null;
-
-    return {
-      waybill: waybill,
-      direct_pair: directPair,
-      reverse_pair: reversePair,
-      explicit_matcher_candidate: explicit,
-      waybill_date: wbDate,
-      waybill_qty: wbQty,
-      waybill_source: wbSource,
-      waybill_dest: wbDest
-    };
-  }
-
-  function findHistoryWaybillCandidates(product, shipmentId) {
-    const ctx = getHistoryRowContext(product, shipmentId);
-    if (!ctx) return [];
-
-    const ranked = waybillCache
-      .map(function (w) {
-        return candidateWaybillForHistory(w, ctx);
-      })
-      .filter(Boolean)
-      .sort(function (a, b) {
-        // matcher明示候補を上位、次に正方向、最後に逆方向候補。
-        if (a.explicit_matcher_candidate !== b.explicit_matcher_candidate) {
-          return a.explicit_matcher_candidate ? -1 : 1;
-        }
-        if (a.direct_pair !== b.direct_pair) {
-          return a.direct_pair ? -1 : 1;
-        }
-
-        // 同名のテスト分割と本番分割が重複している場合は
-        // production の split/ を優先する。
-        const aProd = String(a.waybill.storage_path || '').startsWith('split/');
-        const bProd = String(b.waybill.storage_path || '').startsWith('split/');
-        if (aProd !== bProd) return aProd ? -1 : 1;
-
-        return String(b.waybill.received_at || '')
-          .localeCompare(String(a.waybill.received_at || ''));
-      });
-
-    const seen = new Set();
-    return ranked.filter(function (c) {
-      const key = [
-        String(c.waybill.original_filename || ''),
-        String(c.waybill_date || ''),
-        normalizeHistoryCompanyName(c.waybill_source || ''),
-        normalizeHistoryCompanyName(c.waybill_dest || ''),
-        String(c.waybill_qty || '')
-      ].join('||');
-
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-  }
-
-  async function openHistoryWaybillCandidateDialog(product, shipmentId) {
-    const ctx = getHistoryRowContext(product, shipmentId);
-    if (!ctx) {
-      alert('出荷依頼情報を取得できませんでした。');
-      return;
-    }
-
-    const candidates = findHistoryWaybillCandidates(product, shipmentId);
-    if (!candidates.length) {
-      alert('この出荷依頼に対する送り状PDF候補はありません。');
-      return;
-    }
-
-    const old = document.getElementById('v1615HistoryCandidateDialog');
-    if (old) old.remove();
-
-    const overlay = document.createElement('div');
-    overlay.id = 'v1615HistoryCandidateDialog';
-    overlay.style.position = 'fixed';
-    overlay.style.inset = '0';
-    overlay.style.zIndex = '100001';
-    overlay.style.background = 'rgba(15,23,42,.5)';
-    overlay.style.padding = '20px';
-    overlay.style.overflow = 'auto';
-
-    const rows = candidates.map(function (c) {
-      const w = c.waybill;
-      const pairLabel = c.reverse_pair && !c.direct_pair
-        ? '<span style="color:#9a5b00;font-weight:700">⚠ 会社の向きが逆・要確認</span>'
-        : '<span style="color:#126b34;font-weight:700">会社ペア一致</span>';
-      const explicit = c.explicit_matcher_candidate
-        ? ' <span style="color:#2457a6;font-weight:700">照合候補</span>'
-        : '';
-
-      return (
-        '<div style="border:1px solid #d6dee8;border-radius:12px;padding:12px;margin-bottom:10px">' +
-          '<div style="font-weight:700;margin-bottom:5px">' + esc(w.original_filename || '') + '</div>' +
-          '<div style="font-size:13px;line-height:1.65;color:#3f5368">' +
-            '送り状日：' + esc(c.waybill_date || '不明') + '<br>' +
-            '送り状：' + esc(c.waybill_source || '不明') + ' → ' + esc(c.waybill_dest || '不明') + '<br>' +
-            '個数：' + esc(c.waybill_qty || '不明') + '<br>' +
-            pairLabel + explicit +
-          '</div>' +
-          '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">' +
-            '<button class="mini v1615-candidate-pdf" data-waybill-id="' + esc(w.id) + '">PDF確認</button>' +
-            '<button class="mini v1615-candidate-attach" data-waybill-id="' + esc(w.id) + '">この送り状を添付</button>' +
-          '</div>' +
-        '</div>'
-      );
-    }).join('');
-
-    overlay.innerHTML =
-      '<div style="max-width:860px;margin:40px auto;background:#fff;border-radius:16px;padding:18px">' +
-        '<h2 style="margin-top:0">送り状PDF候補</h2>' +
-        '<div style="background:#eef6ff;padding:10px 12px;border-radius:10px;font-size:13px;line-height:1.7;margin-bottom:12px">' +
-          '<b>出荷依頼</b><br>' +
-          esc(ctx.ship_date || '') + '　' + esc(ctx.product_code || '') + '<br>' +
-          esc(ctx.source_name || '') + ' → ' + esc(ctx.dest_name || '') + '　' + esc(ctx.total_qty || 0) + '個<br>' +
-          '送り状日が出荷依頼日より前のPDFは候補から除外しています。自動確定はせず、必ずPDFを確認して選択してください。' +
-        '</div>' +
-        rows +
-        '<button class="btn secondary" id="v1615CandidateClose">閉じる</button>' +
-      '</div>';
-
-    document.body.appendChild(overlay);
-
-    const close = document.getElementById('v1615CandidateClose');
-    if (close) close.onclick = function () { overlay.remove(); };
-    overlay.addEventListener('click', function (e) {
-      if (e.target === overlay) overlay.remove();
-    });
-
-    overlay.querySelectorAll('.v1615-candidate-pdf').forEach(function (btn) {
-      btn.onclick = function () {
-        const w = waybillCache.find(function (x) {
-          return String(x.id || '') === String(btn.dataset.waybillId || '');
-        });
-        openWaybillPdf(w);
-      };
-    });
-
-    overlay.querySelectorAll('.v1615-candidate-attach').forEach(function (btn) {
-      btn.onclick = async function () {
-        const w = waybillCache.find(function (x) {
-          return String(x.id || '') === String(btn.dataset.waybillId || '');
-        });
-        if (!w) return;
-
-        if (!window.confirm(
-          'この送り状PDFを次の出荷依頼へ添付します。\n\n' +
-          ctx.app_shipment_id + ' / ' + ctx.product_code + '\n' +
-          ctx.source_name + ' → ' + ctx.dest_name + '\n' +
-          '数量 ' + ctx.total_qty + '\n\n' +
-          'PDF: ' + (w.original_filename || '') + '\n\nよろしいですか？'
-        )) return;
-
-        btn.disabled = true;
-        btn.textContent = '添付中…';
-
-        try {
-          await manualLinkApi('link', {
-            waybill_inbox_id: w.id,
-            app_shipment_id: ctx.app_shipment_id,
-            kombu_type: ctx.product_code
-          });
-
-          await refreshWaybills();
-          overlay.remove();
-          patchHistoryTable();
-          alert('送り状PDFを添付しました。');
-        } catch (e) {
-          alert('送り状PDFの添付に失敗しました。\n' + String(e?.message || e));
-          btn.disabled = false;
-          btn.textContent = 'この送り状を添付';
-        }
-      };
-    });
-  }
-
   function makeWaybillCell(product, shipmentId) {
     const waybill = findWaybill(product, shipmentId);
 
     if (!waybill) {
-      const candidates = findHistoryWaybillCandidates(product, shipmentId);
+      const reviewWaybill =
+        findReviewWaybillForShipment(
+          product,
+          shipmentId
+        );
 
-      if (candidates.length > 0) {
+      if (reviewWaybill) {
+        const refs =
+          flattenReviewCandidateRefs(
+            reviewWaybill
+          );
+
         return (
-          '<button class="mini v1615-waybill-candidate" ' +
-          'data-shipment-id="' + esc(shipmentId) + '" ' +
-          'data-product="' + esc(product) + '" ' +
-          'style="white-space:nowrap;color:#8a5a00;font-weight:700">' +
-          '⚠ 要確認（候補' + candidates.length + '件）' +
+          '<button class="mini v159-waybill-review-candidate" ' +
+          'data-waybill-id="' + esc(reviewWaybill.id) + '" ' +
+          'style="white-space:nowrap;font-weight:700;color:#8a5a00">' +
+          '⚠ 要確認' +
+          (refs.length > 1 ? '（候補' + refs.length + '件）' : '') +
           '</button>'
         );
       }
@@ -763,7 +496,9 @@
   }
 
   function bindWaybillButtons(root) {
-    (root || document)
+    const scope = root || document;
+
+    scope
       .querySelectorAll('.v159-waybill-pdf')
       .forEach(function (button) {
         button.onclick = function () {
@@ -775,14 +510,22 @@
         };
       });
 
-    (root || document)
-      .querySelectorAll('.v1615-waybill-candidate')
+    // v161.7:
+    // 履歴セルの「要確認」から、そのPDFの候補選択画面を直接開く。
+    scope
+      .querySelectorAll('.v159-waybill-review-candidate')
       .forEach(function (button) {
-        button.onclick = function () {
-          openHistoryWaybillCandidateDialog(
-            button.dataset.product || '',
-            button.dataset.shipmentId || ''
-          );
+        button.onclick = async function () {
+          try {
+            await openManualLinkDialog(
+              button.dataset.waybillId
+            );
+          } catch (e) {
+            alert(
+              '送り状候補を開けませんでした。\n' +
+              String(e?.message || e)
+            );
+          }
         };
       });
   }
@@ -802,7 +545,6 @@
       // 送り状候補絞り込み用に保存。
       cacheHistoryPdfDestinationRow(tr);
       cacheHistoryPdfDateRow(tr);
-      cacheHistoryRowContext(tr);
 
       // v2.16: 8列構成
       // 0依頼日 / 1昆布 / 2出荷人 / 3出荷先 / 4個数 /
@@ -1022,23 +764,7 @@
         ? match.multiple_match.matches
         : [];
 
-    const review = Array.isArray(match.review_candidates)
-      ? match.review_candidates.flatMap(function (x) {
-          return x && Array.isArray(x.shipments) ? x.shipments : [x];
-        })
-      : [];
-
-    const comboReview =
-      match.multiple_match &&
-      Array.isArray(match.multiple_match.candidate_combinations)
-        ? match.multiple_match.candidate_combinations.flatMap(function (x) {
-            return x && Array.isArray(x.shipments) ? x.shipments : [];
-          })
-        : [];
-
-    const src = direct.length
-      ? direct
-      : (nested.length ? nested : review.concat(comboReview));
+    const src = direct.length ? direct : nested;
     const seen = new Set();
 
     return src
@@ -1048,12 +774,7 @@
         const legacyPair =
           Number(b.dest || 0) + Number(b.source || 0);
 
-        const hasBreakdown = Object.keys(b).length > 0;
-
-        // v161.5 review_candidates / candidate_combinations は
-        // score_breakdown を持たないことがある。matcherが候補として返した
-        // レコードはここで落とさない。
-        return !hasBreakdown || pair >= 85 || legacyPair >= 60;
+        return pair >= 85 || legacyPair >= 60;
       })
       .filter(function (x) {
         const key =
@@ -1234,15 +955,14 @@
   }
 
 
-  // v161.5:
-  // ユーザー指定の時系列ルール:
-  // 「出荷依頼より前の日付の送り状PDF」は候補から除外する。
+  // v161.4:
+  // 送り状日より前の日付の出荷依頼PDFは候補から除外する。
   //
   // 例:
-  // 出荷依頼日 = 2026-08-06
-  // 送り状日   = 2026-08-05 → 除外
-  // 送り状日   = 2026-08-06 → 候補可
-  // 送り状日   = 2026-08-07 → 候補可
+  // 送り状出荷日  = 2026-08-06
+  // 出荷指示PDF名 = 2026.08.04_㈱和気食品_出荷指示 → 除外
+  // 出荷指示PDF名 = 2026.08.06_㈱和気食品_出荷指示 → 候補可
+  // 出荷指示PDF名 = 2026.08.07_㈱和気食品_出荷指示 → 候補可
   function parseDateFromShipmentPdfName(v) {
     const text = String(v || '').trim();
     const m = text.match(
@@ -1354,8 +1074,7 @@
     // この追加条件だけでは落とさない。
     if (!pdfDate || !wbDate) return true;
 
-    // 送り状日が出荷依頼日と同日または後なら候補可。
-    const passed = wbDate >= pdfDate;
+    const passed = pdfDate >= wbDate;
 
     if (passed) {
       candidate.__history_pdf_date = pdfDate;
@@ -1373,6 +1092,36 @@
           waybill
         );
       });
+  }
+
+  function resolveParsedReviewCandidates(waybill, allShipments) {
+    const refs =
+      flattenReviewCandidateRefs(
+        waybill
+      );
+
+    const fullList =
+      Array.isArray(allShipments)
+        ? allShipments
+        : [];
+
+    return refs.map(function (ref) {
+      const full = fullList.find(function (shipment) {
+        return (
+          String(shipment.app_shipment_id || '') ===
+            String(ref.app_shipment_id || '') &&
+          String(shipment.kombu_type || shipment.product_code || '') ===
+            String(ref.kombu_type || ref.product_code || '')
+        );
+      });
+
+      return Object.assign({}, full || {}, ref, {
+        app_shipment_id: ref.app_shipment_id,
+        kombu_type: ref.kombu_type || ref.product_code,
+        product_code: ref.kombu_type || ref.product_code,
+        __from_parsed_review: true
+      });
+    });
   }
 
   async function openManualLinkDialog(waybillId) {
@@ -1411,15 +1160,31 @@
       return mergeScoredCandidate(scoreRow, full);
     });
 
+    const parsedReviewCandidates =
+      resolveParsedReviewCandidates(
+        waybill,
+        allCandidates
+      );
+
     let rawCandidates =
-      smartCandidates.length
-        ? smartCandidates
+      parsedReviewCandidates.length
+        ? parsedReviewCandidates
         : (
-            scoredCandidates.length
-              ? scoredCandidates
-              : allCandidates
+            smartCandidates.length
+              ? smartCandidates
+              : (
+                  scoredCandidates.length
+                    ? scoredCandidates
+                    : allCandidates
+                )
           );
 
+    // v161.7:
+    // v3.1再照合で確定した review_candidates は、
+    // AIの最新coverが誤読（例: 和気食品→朝岡食品）していても
+    // 正しい旧解析候補を保持している。
+    // そのためparsed review候補を最優先する。
+    //
     // ★ v161.2 最重要条件
     // 出荷依頼履歴の右端PDF名に含まれる出荷先と、
     // 候補の dest_name が一致するものだけ候補表示する。
