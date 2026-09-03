@@ -6742,13 +6742,61 @@ async function v130TopBackup(){
   function shipmentHistory(){
     // v164.7: 履歴の基準日は「依頼日」。現行データでは shipDate を依頼日として表示している。
     // 将来 requestDate が保存された場合はそちらを優先する。
+    // v165.2: 履歴の基準日は依頼日。日付文字列を正規化して確実に新しい順へ並べる。
     const historyRequestDate=it=>String(
       it?.requestDate ||
       it?.snapshot?.requestDate ||
       it?.shipDate ||
       it?.snapshot?.shipDate ||
       ''
-    );
+    ).trim();
+
+    const historyDateTime=it=>{
+      const raw=historyRequestDate(it);
+      const m=raw.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/);
+      if(m){
+        return Date.UTC(Number(m[1]),Number(m[2])-1,Number(m[3]));
+      }
+      const t=Date.parse(raw);
+      return Number.isFinite(t)?t:0;
+    };
+
+    const historySavedTime=it=>{
+      const raw=String(
+        it?.sentAt ||
+        it?.archivedAt ||
+        it?.cancelledAt ||
+        it?.createdAt ||
+        it?.snapshot?.sentAt ||
+        ''
+      );
+      const t=Date.parse(raw);
+      return Number.isFinite(t)?t:0;
+    };
+
+    // v165.3: 同じ依頼日では、同じ出荷人＋出荷先を必ず連続表示する。
+    // (株) / ㈱ / 株式会社などの表記揺れは同一会社としてグループ化する。
+    const historyCompanyKey=v=>String(v??'')
+      .normalize('NFKC')
+      .toLowerCase()
+      .replace(/[ 　\t\r\n]/g,'')
+      .replace(/株式会社|㈱|\(株\)|（株）/g,'')
+      .replace(/有限会社|㈲|\(有\)|（有）/g,'')
+      .replace(/[・･.,，。、\-ー_\/\\()[\]{}「」『』]/g,'');
+
+    const historyPairKey=it=>{
+      const src=
+        it?.source?.name ||
+        it?.snapshot?.source?.name ||
+        it?.snapshot?.sourceInfo?.name ||
+        '';
+      const dst=
+        it?.dest?.name ||
+        it?.snapshot?.dest?.name ||
+        it?.snapshot?.destInfo?.name ||
+        '';
+      return historyCompanyKey(src)+'||'+historyCompanyKey(dst);
+    };
 
     const hist=load(HIST_KEY)
       .filter(it=>it.faxboxStatus!=='queued')
@@ -6759,16 +6807,24 @@ async function v130TopBackup(){
         // 取消済は必ず最下部
         if(aCancelled!==bCancelled)return aCancelled?1:-1;
 
-        // 依頼日の新しい順
-        const at=historyRequestDate(a);
-        const bt=historyRequestDate(b);
-        const byDate=bt.localeCompare(at,'ja',{numeric:true});
+        // v165.2: 依頼日の新しい順（文字列比較ではなく日付値で固定）
+        const byDate=historyDateTime(b)-historyDateTime(a);
         if(byDate!==0)return byDate;
 
-        // 同日の場合は保存日時が新しい順
-        const as=String(a.sentAt||a.archivedAt||a.cancelledAt||'');
-        const bs=String(b.sentAt||b.archivedAt||b.cancelledAt||'');
-        return bs.localeCompare(as);
+        // v165.3: 同日はまず「出荷人＋出荷先」でグループ化して連続表示。
+        const byPair=historyPairKey(a).localeCompare(
+          historyPairKey(b),
+          'ja',
+          {numeric:true}
+        );
+        if(byPair!==0)return byPair;
+
+        // 同じ日・同じ会社ペア内では保存日時が新しい順。
+        const bySaved=historySavedTime(b)-historySavedTime(a);
+        if(bySaved!==0)return bySaved;
+
+        // 最後の安定化キー
+        return String(b?.id||b?.key||'').localeCompare(String(a?.id||a?.key||''),'ja',{numeric:true});
       });
     /* v159: 履歴画面は上部タイトル文字なし。固定ナビは維持。 */
     setHeader('出荷依頼履歴');setNavVisible(false);
@@ -6900,6 +6956,20 @@ async function v130TopBackup(){
     let sortCol='date',sortDir='desc';
 
     function render(){
+      // v165.2:
+      // 並び替え前に現在表示中の送り状セルを出荷ID単位で退避する。
+      // tbodyを再生成しても、送り状PDFボタンを一瞬「未着」に戻さない。
+      const waybillHtmlByKey=new Map();
+      body?.querySelectorAll('tr[data-hid][data-hprod]').forEach(tr=>{
+        const cells=tr.querySelectorAll('td');
+        if(cells.length===8){
+          waybillHtmlByKey.set(
+            String(tr.dataset.hprod||'')+'||'+String(tr.dataset.hid||''),
+            cells[6].innerHTML
+          );
+        }
+      });
+
       let items=hist.slice();
       for(const [col,val] of Object.entries(stateFilter)){
         if(!val||val==='__asc'||val==='__desc')continue;
@@ -6915,6 +6985,30 @@ async function v130TopBackup(){
 
           const av=getVal(a,sortCol),bv=getVal(b,sortCol);
           if(sortCol==='qty')return (Number(av)-Number(bv))*(sortDir==='desc'?-1:1);
+          if(sortCol==='date'){
+            // 第一条件: 依頼日。初期値は新しい順。
+            const diff=historyDateTime(a)-historyDateTime(b);
+            if(diff!==0)return diff*(sortDir==='desc'?-1:1);
+
+            // 第二条件: 同じ依頼日では同じ出荷人＋出荷先を連続表示。
+            // 日付の昇順/降順を変えても会社グループは崩さない。
+            const pairDiff=historyPairKey(a).localeCompare(
+              historyPairKey(b),
+              'ja',
+              {numeric:true}
+            );
+            if(pairDiff!==0)return pairDiff;
+
+            // 第三条件: 同じ会社ペア内で保存日時。
+            const savedDiff=historySavedTime(a)-historySavedTime(b);
+            if(savedDiff!==0)return savedDiff*(sortDir==='desc'?-1:1);
+
+            return String(a?.id||a?.key||'').localeCompare(
+              String(b?.id||b?.key||''),
+              'ja',
+              {numeric:true}
+            )*(sortDir==='desc'?-1:1);
+          }
           return String(av).localeCompare(String(bv),'ja',{numeric:true})*(sortDir==='desc'?-1:1);
         });
       }
@@ -6929,9 +7023,24 @@ body.innerHTML=items.map(it=>`<tr data-hprod="${it.product}" data-hid="${escAttr
   <td><button class="mini v215-history-pdf" data-hpdf="1" title="${escAttr(pdfDisplayName(it))}">${esc(pdfDisplayName(it))}</button></td>
 </tr>`).join('')||'<tr><td colspan="8" class="empty">該当する出荷依頼履歴はありません</td></tr>';
 
-      // v164.7: 並び替え・絞り込み直後に送り状PDF欄を即時復元。
+      // v165.2: 再描画前に表示されていた送り状セルをまず即時復元。
+      body?.querySelectorAll('tr[data-hid][data-hprod]').forEach(tr=>{
+        const cells=tr.querySelectorAll('td');
+        if(cells.length!==8)return;
+        const k=String(tr.dataset.hprod||'')+'||'+String(tr.dataset.hid||'');
+        if(waybillHtmlByKey.has(k)){
+          cells[6].innerHTML=waybillHtmlByKey.get(k);
+        }
+      });
+
+      // そのうえで最新キャッシュから正式に再パッチ。
       if(typeof window.kombuWaybillPatchHistory==='function'){
         window.kombuWaybillPatchHistory();
+        requestAnimationFrame(()=>{
+          if(typeof window.kombuWaybillPatchHistory==='function'){
+            window.kombuWaybillPatchHistory();
+          }
+        });
       }
     }
 
