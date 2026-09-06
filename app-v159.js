@@ -9313,7 +9313,7 @@ document.getElementById('v161ShipmentHistory').onclick=function(){
                 }catch(_){}
                 const qty=(s?.lines||[]).reduce((a,l)=>a+Number(l.qty||0),0);
                 const openFn=`window.openGlobalShipment&&window.openGlobalShipment('${String(product).replace(/'/g,"\\'")}','${String(s.id||'').replace(/'/g,"\\'")}')`;
-                return `<tr>
+                return `<tr data-hprod="${String(product).replace(/"/g,'&quot;')}" data-hid="${String(s.id||'').replace(/"/g,'&quot;')}">
                   <td>${status}</td><td>${src}</td><td>${dst}</td>
                   <td>${s.shipDate||''}</td><td>${s.arrivalDate||''}</td><td>${qty}</td>
                   <td>${s.id?`<button class="mini" type="button" onclick="${openFn}">PDF/詳細</button>`:''}</td>
@@ -9529,3 +9529,99 @@ document.getElementById('v161ShipmentHistory').onclick=function(){
   console.info('[KOMBU v164.6] 完全バックアップ＋安全なテスト初期化');
 })();
  /* ===== /v164.6 ===== */
+
+
+/* ===== v165.4 出荷依頼履歴：PDFチェック選択＋一括印刷 ===== */
+(function(){
+  'use strict';
+  const selected=new Set();
+  const keyOf=(p,id)=>String(p||'')+'||'+String(id||'');
+  const escHtml=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  function lookupShipment(product,id){
+    const sid=String(id||'');
+    if(product==='kushiro')return (state.shipments||[]).find(x=>String(x.id)===sid)||null;
+    if(product==='hidaka')return (hState.shipments||[]).find(x=>String(x.id)===sid)||null;
+    if(product==='nemuro')return (nState.shipments||[]).find(x=>String(x.id)===sid)||null;
+    if(product==='sanmae')return (smState.shipments||[]).find(x=>String(x.id)===sid)||null;
+    return null;
+  }
+  function canvasesFor(product,s){
+    if(!s)return [];
+    let activeYear=DEFAULT_YEAR,maker=null;
+    if(product==='kushiro'){activeYear=state.activeYear;maker=v55CanvasKushiro}
+    else if(product==='hidaka'){activeYear=hState.activeYear;maker=v55CanvasHidaka}
+    else if(product==='nemuro'){activeYear=nState.activeYear;maker=v55CanvasNemuro}
+    else if(product==='sanmae'){activeYear=smState.activeYear;maker=v55CanvasSanmae}
+    if(!maker)return [];
+    return v55ShipmentYears(s,activeYear).map(y=>maker(s,y));
+  }
+  function visibleChecks(){return [...document.querySelectorAll('.v1654-pdf-check')].filter(x=>x.offsetParent!==null)}
+  function updateButton(){
+    const b=document.getElementById('v1654PrintSelected');
+    if(b)b.textContent=`選択したPDFを印刷（${selected.size}件）`;
+    const a=document.getElementById('v1654SelectAll');
+    if(a){const cs=visibleChecks();a.textContent=cs.length&&cs.every(x=>x.checked)?'全解除':'全選択'}
+  }
+  function enhance(){
+    const table=document.querySelector('.v159-history-table');
+    if(table){
+      const ths=table.querySelectorAll('thead tr:first-child th');
+      const pdfTh=ths[7];
+      if(pdfTh&&!pdfTh.querySelector('#v1654PrintSelected')){
+        pdfTh.innerHTML=`<div class="v1654-pdf-head"><div>PDF</div><div class="v1654-pdf-actions"><button type="button" id="v1654SelectAll" class="mini">全選択</button><button type="button" id="v1654PrintSelected" class="mini">選択したPDFを印刷（0件）</button></div></div>`;
+      }
+    }
+    document.querySelectorAll('tr[data-hprod][data-hid]').forEach(tr=>{
+      const product=tr.dataset.hprod||'',id=tr.dataset.hid||'';
+      if(!product||!id)return;
+      const cells=tr.querySelectorAll(':scope > td');
+      if(cells.length<7)return;
+      // 通常履歴は8列でPDF=8列目、月別アーカイブも8列でPDF=7列目。
+      let pdfCell=null;
+      if(tr.closest('.v159-history-table'))pdfCell=cells[7];
+      else if(tr.closest('.v1645-month-detail'))pdfCell=cells[6];
+      if(!pdfCell||pdfCell.querySelector('.v1654-pdf-check'))return;
+      const k=keyOf(product,id),cb=document.createElement('input');
+      cb.type='checkbox';cb.className='v1654-pdf-check';cb.dataset.key=k;cb.dataset.product=product;cb.dataset.id=id;
+      cb.checked=selected.has(k);cb.setAttribute('aria-label','この出荷指示PDFを印刷対象に選択');
+      cb.style.cssText='width:18px;height:18px;flex:0 0 auto;margin:0 6px 0 0;cursor:pointer';
+      const wrap=document.createElement('span');wrap.className='v1654-pdf-cell';wrap.style.cssText='display:flex;align-items:center;gap:2px;min-width:0';
+      while(pdfCell.firstChild)wrap.appendChild(pdfCell.firstChild);
+      pdfCell.appendChild(wrap);wrap.insertBefore(cb,wrap.firstChild);
+      cb.addEventListener('click',e=>e.stopPropagation());
+      cb.addEventListener('change',()=>{cb.checked?selected.add(k):selected.delete(k);updateButton()});
+    });
+    updateButton();
+  }
+
+  async function printSelected(){
+    const entries=[...selected].map(k=>{const [product,id]=k.split('||');return {product,id,s:lookupShipment(product,id)}}).filter(x=>x.s);
+    if(!entries.length){alert('印刷する出荷指示PDFをチェックしてください。');return}
+    const w=window.open('about:blank','_blank');
+    if(!w){alert('印刷画面を開けませんでした。ブラウザのポップアップ設定を確認してください。');return}
+    try{
+      w.document.write('<!doctype html><html lang="ja"><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>出荷指示PDF 一括印刷</title></head><body style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:32px;text-align:center"><h3>選択した出荷指示PDFを準備しています…</h3><p>そのままお待ちください。</p></body></html>');w.document.close();
+      const pages=[];
+      for(const e of entries){for(const c of canvasesFor(e.product,e.s))pages.push(c.toDataURL('image/jpeg',0.94))}
+      if(!pages.length)throw new Error('印刷できる出荷指示PDFがありません。');
+      const imgs=pages.map((u,i)=>`<section class="page"><img src="${u}" alt="出荷指示 ${i+1}"></section>`).join('');
+      w.document.open();w.document.write(`<!doctype html><html lang="ja"><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>出荷指示PDF 一括印刷</title><style>@page{size:A4 landscape;margin:5mm}html,body{margin:0;padding:0;background:#fff}.bar{position:sticky;top:0;z-index:5;padding:10px;background:#173661;text-align:center}.bar button{font-size:16px;font-weight:800;padding:10px 18px;border:0;border-radius:9px}.page{width:287mm;height:200mm;margin:0 auto;display:flex;align-items:center;justify-content:center;page-break-after:always;break-after:page;overflow:hidden}.page:last-child{page-break-after:auto;break-after:auto}.page img{display:block;max-width:100%;max-height:100%;width:100%;height:100%;object-fit:contain}@media print{.bar{display:none!important}.page{margin:0}}</style></head><body><div class="bar"><button id="doPrint">印刷する</button></div>${imgs}<script>document.getElementById('doPrint').onclick=()=>window.print();window.addEventListener('load',()=>setTimeout(()=>window.print(),350));<\/script></body></html>`);w.document.close();
+    }catch(e){try{w.close()}catch(_){}alert('一括印刷の準備に失敗しました。\n'+String(e?.message||e))}
+  }
+
+  document.addEventListener('click',e=>{
+    const all=e.target.closest&&e.target.closest('#v1654SelectAll');
+    if(all){e.preventDefault();e.stopPropagation();const cs=visibleChecks(),turnOn=cs.some(x=>!x.checked);cs.forEach(cb=>{cb.checked=turnOn;turnOn?selected.add(cb.dataset.key):selected.delete(cb.dataset.key)});updateButton();return}
+    const pr=e.target.closest&&e.target.closest('#v1654PrintSelected');
+    if(pr){e.preventDefault();e.stopPropagation();printSelected();return}
+  },true);
+
+  const st=document.createElement('style');st.id='v1654-history-batch-print-style';st.textContent=`.v1654-pdf-head{display:flex;flex-direction:column;gap:5px;align-items:stretch}.v1654-pdf-actions{display:flex;gap:4px;flex-wrap:wrap}.v1654-pdf-actions .mini{font-size:10px;padding:5px 6px;white-space:nowrap}.v1654-pdf-cell .v215-history-pdf{flex:1;min-width:0}@media(max-width:900px){.v1654-pdf-actions{flex-direction:column}.v1654-pdf-actions .mini{width:100%}}`;
+  document.head.appendChild(st);
+  const obs=new MutationObserver(()=>{clearTimeout(window.__v1654PrintTimer);window.__v1654PrintTimer=setTimeout(enhance,40)});
+  const start=()=>{const a=document.getElementById('app');if(a)obs.observe(a,{childList:true,subtree:true});enhance()};
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
+  console.info('[KOMBU v165.4] 出荷依頼履歴 PDF選択・全選択・一括印刷');
+})();
+/* ===== /v165.4 ===== */
