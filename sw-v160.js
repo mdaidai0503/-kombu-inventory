@@ -1,4 +1,4 @@
-const CACHE = 'kombu-inventory-v165-9-3';
+const CACHE = 'kombu-inventory-v165-9-4';
 
 const APP_SHELL = [
   './',
@@ -7,7 +7,7 @@ const APP_SHELL = [
   './kombu-nemuro-r8-import-v1.js?v=1.0',
   './kombu-ui-v165.6.js?v=165.9.3',
   './kombu-ui-v165.7.js?v=165.9.3',
-  './kombu-ui-v165.9.2.js?v=165.9.3',
+  './kombu-ui-v165.9.2.js?v=165.9.4',
   './kombu-pdf-filename-v1.js?v=1.3',
   './manifest.webmanifest',
   './icon-180.png',

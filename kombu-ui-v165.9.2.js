@@ -1,5 +1,5 @@
 /* =========================================================
-   昆布在庫管理 v165.9.2 安定版UIパッチ
+   昆布在庫管理 v165.9.4 安定版UIパッチ
    - v165.9のフリーズ原因を除去
    - 出荷可能在庫の計算ロジックには触れない
      （既存本体 + v165.7の正しい計算をそのまま使用）
@@ -10,7 +10,7 @@
 (function(){
   'use strict';
 
-  const VERSION = 'v165.9.2';
+  const VERSION = 'v165.9.4';
   const TABLE = 'shipment_waybill_inbox';
   const BUCKET = 'shipment-waybill-inbox';
 
@@ -183,10 +183,17 @@
     if(!select) return;
     Array.from(select.options || []).forEach(function(opt){
       const t = String(opt.textContent || '').trim();
-      let next = t;
-      if(/^R\d+$/.test(t)) next = t + '年産';
-      else if(/^R\d+年$/.test(t)) next = t.replace(/年$/,'年産');
-      if(next !== t) opt.textContent = next;
+      const v = String(opt.value || '').trim();
+      const m = (t.match(/^(R\d+)(?:年産|年)?$/) || v.match(/^(R\d+)(?:年産|年)?$/));
+      if(!m) return;
+
+      // 表示だけ「R8年産」にし、内部値は必ず「R8」のまま保持する。
+      // <option>R8</option> は textContent を変えると value も変わるため、
+      // 先に value 属性を明示してから表示文字を変更する。
+      const canonical = m[1];
+      opt.setAttribute('value', canonical);
+      opt.value = canonical;
+      opt.textContent = canonical + '年産';
     });
   }
 
