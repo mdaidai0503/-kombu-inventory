@@ -1,4 +1,4 @@
-/* ===== 出荷依頼PDF・帳票プレビュー v1.2 =====
+/* ===== 出荷依頼PDF・帳票プレビュー v1.4 =====
    形式: YYYYMMDD_出荷先名_出荷依頼.pdf
    同じ出荷日・出荷先が複数ある場合: _02, _03 ...
    Windowsで使えない記号は自動除去。
@@ -171,14 +171,24 @@
     return {label:'釧路産昆布',year:(globalThis.state&&state.activeYear)||'',maker:globalThis.v55CanvasKushiro};
   }
 
-  async function previewShipmentForFlow(product,shipment,created){
+  function canvasesForFlowEntry(product,shipment){
     const info=flowCanvasInfo(product);
     if(typeof info.maker!=='function')throw new Error('帳票作成機能を確認できません。');
     const ys=v55ShipmentYears(shipment,info.year);
-    const canvases=ys.map(y=>info.maker(shipment,y));
+    return ys.map(y=>info.maker(shipment,y));
+  }
+
+  async function previewShipmentForFlow(product,shipment,created){
+    const entries=Array.isArray(created)&&created.length?created:[{product,shipment}];
+    const canvases=[];
+    for(const entry of entries){
+      if(!entry||!entry.shipment)continue;
+      canvases.push(...canvasesForFlowEntry(entry.product,entry.shipment));
+    }
+    if(!canvases.length)throw new Error('帳票ページを作成できませんでした。');
     const blob=await v65LandscapePdfBlobFromCanvases(canvases);
     const name=filenameFor(shipment);
-    makePreviewOverlay(canvases,shipment,blob,name,{flow:true,product,created:created||[{product,shipment}]});
+    makePreviewOverlay(canvases,shipment,blob,name,{flow:true,product,created:entries});
   }
 
   async function outputNamedPdf(productName, shipment, activeYear, canvasMaker){
