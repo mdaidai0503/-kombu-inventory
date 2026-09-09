@@ -1,5 +1,5 @@
 /* =========================================================
-   昆布在庫管理 取消解除 安定化 v1.1
+   昆布在庫管理 取消解除 安定化 v1.2
    ---------------------------------------------------------
    - 取消解除後、旧FAXBOX取消通知・旧クラウド状態で再取消されない
    - 取消解除ロックをlocalStorageに保存し、再読込後も保護
@@ -178,8 +178,26 @@
   }
 
   document.addEventListener('click',onClickCapture,true);
-  const observer=new MutationObserver(()=>{wrapCancellationSync();ensureRestoreButtons();enforceRestoreLocks(false);});
-  observer.observe(document.documentElement,{subtree:true,childList:true});
-  setInterval(()=>{wrapCancellationSync();ensureRestoreButtons();enforceRestoreLocks(true);},1500);
+
+  // v1.2: DOM全体のMutationObserverは画面再描画と相互発火して
+  // Chromeの「ページが応答しません」を起こすため廃止。
+  // 初期化時に限定回数だけ既存関数をラップし、その後は低頻度の安全確認のみ行う。
+  let initTry=0;
+  const initTimer=setInterval(()=>{
+    initTry++;
+    const ok=wrapCancellationSync();
+    ensureRestoreButtons();
+    if(ok || initTry>=20) clearInterval(initTimer);
+  },500);
+
+  function lightMaintenance(){
+    wrapCancellationSync();
+    ensureRestoreButtons();
+    enforceRestoreLocks(false);
+  }
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)setTimeout(lightMaintenance,100);});
+  window.addEventListener('hashchange',()=>setTimeout(lightMaintenance,100));
+  setInterval(lightMaintenance,15000);
+
   window.kombuRestoreCancelledShipment=restoreCancelled;
 })();
