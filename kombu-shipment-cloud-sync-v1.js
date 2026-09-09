@@ -1,5 +1,5 @@
 /* =========================================================
-   昆布在庫管理 出荷依頼→送り状照合用同期 v1.0
+   昆布在庫管理 出荷依頼→送り状照合用同期 v1.1
    ---------------------------------------------------------
    目的:
    - 4種類の出荷依頼を kombu_shipment_sync へ自動同期
@@ -11,6 +11,9 @@
 
   const ENDPOINT =
     'https://crltrozxztivkyxtjjxv.supabase.co/functions/v1/kombu-shipment-sync';
+
+  const REMATCH_ENDPOINT =
+    'https://crltrozxztivkyxtjjxv.supabase.co/functions/v1/waybill-rematch-pending';
 
   const TOKEN_KEYS = [
     'kombu_sync_token_v1',
@@ -113,6 +116,45 @@
     return data;
   }
 
+
+  async function rematchPending(token) {
+    const response = await fetch(REMATCH_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-kombu-sync-token': token
+      },
+      body: JSON.stringify({
+        since: '2026-09-01T00:00:00+09:00',
+        limit: 120
+      })
+    });
+
+    let data = null;
+    try {
+      data = await response.json();
+    } catch (_) {
+      data = null;
+    }
+
+    if (!response.ok || !data || data.ok !== true) {
+      throw new Error(
+        (data && data.error) ||
+        `再照合 HTTP ${response.status}`
+      );
+    }
+
+    console.info(
+      `[KOMBU waybill rematch] ${data.processed || 0}件を再照合 / matched=${data.matched || 0} / 要確認=${data.needs_review || 0} / 不一致=${data.unmatched || 0}`
+    );
+
+    window.dispatchEvent(new CustomEvent('kombu:waybill-rematch-complete', {
+      detail: data
+    }));
+
+    return data;
+  }
+
   async function syncRows(rows, token) {
     const queue = rows.slice();
     const errors = [];
@@ -175,6 +217,17 @@
         window.dispatchEvent(new CustomEvent('kombu:shipment-cloud-sync-complete', {
           detail: { count: result.success }
         }));
+
+        // 出荷依頼の同期後、すでにGmailから取り込み済みで
+        // 「要確認／不一致」になっている送り状を最新の出荷依頼で再照合。
+        try {
+          await rematchPending(token);
+        } catch (error) {
+          console.warn(
+            '[KOMBU waybill rematch] 再照合に失敗しました。',
+            error
+          );
+        }
       } else {
         console.warn(
           '[KOMBU shipment sync] 一部同期に失敗しました。',
@@ -205,5 +258,11 @@
 
   window.kombuSyncShipmentsForWaybill = function () {
     return syncNow(true);
+  };
+
+  window.kombuRematchPendingWaybills = async function () {
+    const token = readToken();
+    if (!token) throw new Error('同期トークンが見つかりません。');
+    return rematchPending(token);
   };
 })();
