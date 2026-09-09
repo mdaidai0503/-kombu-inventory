@@ -1,6 +1,6 @@
 /* =========================================================
    昆布在庫管理
-   送り状PDF連携 v161.4（会社ペア＋PDF名出荷先＋送り状日以降の出荷依頼・複数選択対応）
+   送り状PDF連携 v161.5（会社ペア＋PDF名出荷先＋送り状日以降の出荷依頼・複数選択対応）
    shipment_waybill_inbox 専用
    - 出荷履歴のPDF表示
    - 出荷指示詳細画面への浜中運輸送り状表示
@@ -18,7 +18,6 @@
   const ERROR_LOG_URL =
     'https://crltrozxztivkyxtjjxv.supabase.co/functions/v1/waybill-error-log';
   const SYNC_TOKEN_KEY = 'kombu_sync_token_v1';
-  const SHARED_SYNC_TOKEN_KEY = 'kombu_waybill_token_shared_v1';
 
   let waybillCache = [];
   let waybillLinkCache = [];
@@ -332,10 +331,38 @@
     window.open(result.data.signedUrl, '_blank', 'noopener');
   }
 
+  function reviewWaybillForShipment(product, shipmentId) {
+    const pid = String(product || '');
+    const sid = String(shipmentId || '');
+    if (!pid || !sid) return null;
+
+    return waybillCache.find(function (w) {
+      if (!w || !['review', 'needs_review'].includes(String(w.match_status || ''))) return false;
+      const parsed = w.parsed_data && typeof w.parsed_data === 'object' ? w.parsed_data : {};
+      const match = parsed.match && typeof parsed.match === 'object' ? parsed.match : {};
+      const candidates = Array.isArray(match.review_candidates) ? match.review_candidates : [];
+      return candidates.some(function (c) {
+        return String(c && c.app_shipment_id || '') === sid &&
+               String(c && c.kombu_type || '') === pid &&
+               String(c && c.status || '') !== 'cancelled';
+      });
+    }) || null;
+  }
+
   function makeWaybillCell(product, shipmentId) {
     const waybill = findWaybill(product, shipmentId);
 
     if (!waybill) {
+      const reviewWaybill = reviewWaybillForShipment(product, shipmentId);
+      if (reviewWaybill) {
+        return (
+          '<button class="mini v159-waybill-review-link" ' +
+          'data-waybill-id="' + esc(reviewWaybill.id) + '" ' +
+          'style="white-space:nowrap;font-weight:800;color:#8a5a00">' +
+          '⚠ 要確認' +
+          '</button>'
+        );
+      }
       return '<span class="muted">未着</span>';
     }
 
@@ -379,8 +406,15 @@
           const waybill = waybillCache.find(function (w) {
             return String(w.id) === String(button.dataset.waybillId);
           });
-
           openWaybillPdf(waybill);
+        };
+      });
+
+    (root || document)
+      .querySelectorAll('.v159-waybill-review-link')
+      .forEach(function (button) {
+        button.onclick = function () {
+          openManualLinkDialog(button.dataset.waybillId);
         };
       });
   }
@@ -523,9 +557,7 @@
 
   function readSyncToken() {
     return String(
-      localStorage.getItem(SYNC_TOKEN_KEY) ||
-      localStorage.getItem(SHARED_SYNC_TOKEN_KEY) ||
-      ''
+      localStorage.getItem(SYNC_TOKEN_KEY) || ''
     ).trim();
   }
 
@@ -1853,5 +1885,7 @@
   window.kombuWaybillErrorListOpen = async function () {
     await openErrorListModal();
   };
+
+  window.kombuOpenManualWaybillLinkDialog = openManualLinkDialog;
 
 })();
