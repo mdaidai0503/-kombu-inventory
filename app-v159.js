@@ -6851,10 +6851,36 @@ async function v130TopBackup(){
       return '処理中';
     };
 
+    const restoreCancelledHistory=it=>{
+      if(historyStatus(it)!=='取消済')return;
+      const ship=historyShipment(it);
+      if(!ship)return alert('取消解除する出荷依頼の元データが見つかりません。');
+      if(!confirm('この出荷依頼の取消を解除して、通常の依頼履歴へ戻しますか？\n在庫は再び出荷予定分として確保されます。'))return;
+      try{
+        if(typeof window.kombuApplyFaxboxInventory!=='function')throw new Error('在庫連動処理が見つかりません。');
+        window.kombuApplyFaxboxInventory(it.product,it.id,'confirm',{restored:true});
+        ship.cancelledAt='';
+        const now=new Date().toISOString();
+        it.faxboxStatus='restored';
+        it.cancelledAt='';
+        it.restoredAt=now;
+        it.snapshot=clone(ship);
+        const all=load(HIST_KEY);
+        const idx=all.findIndex(x=>String(x.key||'')===String(it.key||'') || (String(x.product)===String(it.product)&&String(x.id)===String(it.id)));
+        if(idx>=0)all[idx]={...all[idx],...it};
+        save(HIST_KEY,all);
+        alert('取消を解除しました。通常の依頼履歴へ戻します。');
+        shipmentHistory();
+      }catch(e){
+        console.error(e);
+        alert('取消解除できませんでした。\n'+String(e?.message||e));
+      }
+    };
+
     const statusBadge=it=>{
       const st=historyStatus(it);
       if(st==='取消済'){
-        return '<span style="display:inline-block;padding:4px 8px;border-radius:999px;background:#fee4e2;color:#b42318;font-weight:900">取消済</span>';
+        return '<span style="display:inline-block;padding:4px 8px;border-radius:999px;background:#fee4e2;color:#b42318;font-weight:900">取消済</span><br><button class="mini v16595-restore-cancel" style="margin-top:6px">取消解除</button>';
       }
       if(st==='FAX済'){
         return '<span style="display:inline-block;padding:4px 8px;border-radius:999px;background:#e8f5e9;color:#216e39;font-weight:900">FAX済</span>';
@@ -7056,6 +7082,11 @@ body.innerHTML=items.map(it=>`<tr data-hprod="${it.product}" data-hid="${escAttr
     if(body)body.onclick=e=>{
       const tr=e.target.closest('[data-hid]');
       if(!tr)return;
+      if(e.target.closest('.v16595-restore-cancel')){
+        const it=hist.find(x=>String(x.product)===String(tr.dataset.hprod)&&String(x.id)===String(tr.dataset.hid));
+        if(it)restoreCancelledHistory(it);
+        return;
+      }
       if(e.target.closest('[data-hpdf]')){
         const it=hist.find(x=>String(x.product)===String(tr.dataset.hprod)&&String(x.id)===String(tr.dataset.hid));
         if(it)openHistoryPdf(it);

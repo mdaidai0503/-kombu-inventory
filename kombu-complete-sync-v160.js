@@ -14,6 +14,8 @@
 
   const TABLE = 'kombu_app_state';
   const MIGRATION_KEY = 'kombu_v1607_complete_sync_ready';
+  const WAYBILL_TOKEN_LOCAL_KEY = 'kombu_sync_token_v1';
+  const WAYBILL_TOKEN_SHARED_KEY = 'kombu_waybill_token_shared_v1';
 
   const DO_NOT_SYNC = new Set([
     'kombu_sync_token_v1',
@@ -165,13 +167,13 @@
         await pushOne(key, rawValue);
 
         console.info(
-          '[KOMBU v160.7] Supabase保存:',
+          '[KOMBU v160.8] Supabase保存:',
           key
         );
 
       } catch (error) {
         console.error(
-          '[KOMBU v160.7] Supabase保存失敗:',
+          '[KOMBU v160.8] Supabase保存失敗:',
           key,
           error
         );
@@ -279,7 +281,7 @@
 
     if (!c) {
       console.warn(
-        '[KOMBU v160.7] Supabase client待機中'
+        '[KOMBU v160.8] Supabase client待機中'
       );
       return false;
     }
@@ -299,7 +301,7 @@
 
     if (result.error) {
       console.error(
-        '[KOMBU v160.7] Supabase読込失敗',
+        '[KOMBU v160.8] Supabase読込失敗',
         result.error
       );
       return false;
@@ -362,7 +364,7 @@
     }
 
     console.info(
-      '[KOMBU v160.7] 起動前同期完了:',
+      '[KOMBU v160.8] 起動前同期完了:',
       rows.length + ' keys'
     );
 
@@ -462,7 +464,7 @@
           );
 
           console.info(
-            '[KOMBU v160.7] 最新データ反映完了。現在画面を維持します。'
+            '[KOMBU v160.8] 最新データ反映完了。現在画面を維持します。'
           );
 
           button.disabled = false;
@@ -478,7 +480,7 @@
 
         } catch (error) {
           console.error(
-            '[KOMBU v160.7] 手動反映失敗',
+            '[KOMBU v160.8] 手動反映失敗',
             error
           );
 
@@ -501,7 +503,7 @@
     banner.style.display = 'flex';
 
     console.info(
-      '[KOMBU v160.7] 別端末変更を受信'
+      '[KOMBU v160.8] 別端末変更を受信'
     );
   }
 
@@ -550,7 +552,7 @@
             )
           ) {
             console.info(
-              '[KOMBU v160.7] 自端末Realtime反映:',
+              '[KOMBU v160.8] 自端末Realtime反映:',
               key
             );
             return;
@@ -583,7 +585,7 @@
             )
           ) {
             console.info(
-              '[KOMBU v160.7] 自端末Realtime反映:',
+              '[KOMBU v160.8] 自端末Realtime反映:',
               key
             );
             return;
@@ -614,7 +616,7 @@
             )
           ) {
             console.info(
-              '[KOMBU v160.7] 自端末Realtime削除:',
+              '[KOMBU v160.8] 自端末Realtime削除:',
               key
             );
             return;
@@ -626,7 +628,7 @@
 
       .subscribe(function (status) {
         console.info(
-          '[KOMBU v160.7] Realtime:',
+          '[KOMBU v160.8] Realtime:',
           status
         );
       });
@@ -651,7 +653,7 @@
     );
 
     console.info(
-      '[KOMBU v160.7] アプリ起動許可'
+      '[KOMBU v160.8] アプリ起動許可'
     );
   }
 
@@ -680,6 +682,18 @@
       started = true;
 
       try {
+        /* v165.9.5:
+         * PC側に既存の送り状同期トークンがある場合、pullAllより先に
+         * 認証済みSupabaseへ共有キーとして退避する。
+         * これでiPhone/PWAでも手動紐付けAPIを利用できる。
+         */
+        const localWaybillToken = String(
+          originalSetItem && localStorage.getItem(WAYBILL_TOKEN_LOCAL_KEY) || ''
+        ).trim();
+        if (localWaybillToken) {
+          await pushOne(WAYBILL_TOKEN_SHARED_KEY, localWaybillToken);
+        }
+
         /*
          * 最重要:
          * app-v159.js を読み込む前に必ずSupabaseを先に読む。
@@ -711,7 +725,7 @@
 
       } catch (error) {
         console.error(
-          '[KOMBU v160.7] 完全同期開始失敗',
+          '[KOMBU v160.8] 完全同期開始失敗',
           error
         );
 

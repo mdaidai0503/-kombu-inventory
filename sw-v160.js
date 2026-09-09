@@ -1,9 +1,9 @@
-const CACHE = 'kombu-inventory-v165-9-4';
+const CACHE = 'kombu-inventory-v165-9-5';
 
 const APP_SHELL = [
   './',
   './index.html',
-  './app-v159.js?v=165.9.3',
+  './app-v159.js?v=165.9.5',
   './kombu-nemuro-r8-import-v1.js?v=1.0',
   './kombu-ui-v165.6.js?v=165.9.3',
   './kombu-ui-v165.7.js?v=165.9.3',
@@ -15,8 +15,8 @@ const APP_SHELL = [
   './pdf-worker-v58.js',
   './PDFJS-LICENSE.txt',
   './supabase-auth-v159.js',
-  './shipment-waybill-inbox-v159.js?v=160.1',
-  './kombu-complete-sync-v160.js?v=160.3',
+  './shipment-waybill-inbox-v159.js?v=161.12',
+  './kombu-complete-sync-v160.js?v=160.8',
   './kombu-faxbox-bridge-v1.js?v=2.9',
   './kombu-faxbox-direct-v2.js?v=2.14'
 ];

@@ -18,6 +18,7 @@
   const ERROR_LOG_URL =
     'https://crltrozxztivkyxtjjxv.supabase.co/functions/v1/waybill-error-log';
   const SYNC_TOKEN_KEY = 'kombu_sync_token_v1';
+  const SHARED_SYNC_TOKEN_KEY = 'kombu_waybill_token_shared_v1';
 
   let waybillCache = [];
   let waybillLinkCache = [];
@@ -522,7 +523,9 @@
 
   function readSyncToken() {
     return String(
-      localStorage.getItem(SYNC_TOKEN_KEY) || ''
+      localStorage.getItem(SYNC_TOKEN_KEY) ||
+      localStorage.getItem(SHARED_SYNC_TOKEN_KEY) ||
+      ''
     ).trim();
   }
 
