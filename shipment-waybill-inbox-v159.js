@@ -1,4 +1,5 @@
 /* =========================================================
+   正式最新版 v161.16 通信量削減版
    昆布在庫管理
    送り状PDF連携 v161.5（会社ペア＋PDF名出荷先＋送り状日以降の出荷依頼・複数選択対応）
    shipment_waybill_inbox 専用
@@ -24,6 +25,12 @@
   let refreshTimer = null;
   let refreshing = false;
   let waybillCacheLoaded = false;
+
+  // v161.16 通信量削減:
+  // DOM再描画のたびにSupabase全件取得を繰り返さない。
+  // 通常表示は取得済みキャッシュを利用し、明示更新時だけ再取得する。
+  let waybillCacheLoadedAt = 0;
+  const WAYBILL_CACHE_TTL_MS = 5 * 60 * 1000;
 
   function client() {
     return window.kombuSupabase || null;
@@ -201,9 +208,19 @@
     );
   }
 
-  async function loadWaybills() {
+  async function loadWaybills(forceReload) {
+    const force = forceReload === true;
+
+    if (
+      !force &&
+      waybillCacheLoaded &&
+      (Date.now() - waybillCacheLoadedAt) < WAYBILL_CACHE_TTL_MS
+    ) {
+      return waybillCache;
+    }
+
     const sb = client();
-    if (!sb) return [];
+    if (!sb) return waybillCache;
 
     const [waybillResult, linkResult] = await Promise.all([
       sb
@@ -241,6 +258,7 @@
     waybillCache =
       Array.isArray(waybillResult.data) ? waybillResult.data : [];
     waybillCacheLoaded = true;
+    waybillCacheLoadedAt = Date.now();
 
     return waybillCache;
   }
@@ -1817,12 +1835,13 @@
   }
 
 
-  async function refreshWaybills() {
+  async function refreshWaybills(forceReload) {
     if (refreshing) return;
     refreshing = true;
 
     try {
-      await loadWaybills();
+      // 明示的な更新は最新状態を取得する。
+      await loadWaybills(forceReload !== false);
       patchHistoryTable();
       patchReviewButton();
     } finally {
@@ -1834,7 +1853,16 @@
     clearTimeout(refreshTimer);
 
     refreshTimer = setTimeout(function () {
-      refreshWaybills();
+      // v161.16:
+      // 画面の並び替え・再描画だけならSupabaseへ再アクセスしない。
+      if (waybillCacheLoaded) {
+        patchHistoryTable();
+        patchReviewButton();
+        return;
+      }
+
+      // 初回だけ取得する。
+      refreshWaybills(false);
     }, 150);
   }
 
@@ -1872,14 +1900,20 @@
     subtree: true
   });
 
-  window.addEventListener('kombu:supabase-login', scheduleRefresh);
-  window.addEventListener('load', scheduleRefresh);
+  // ログイン・初回ロードでは必要な1回だけ取得。
+  window.addEventListener('kombu:supabase-login', function () {
+    refreshWaybills(false);
+  });
+  window.addEventListener('load', function () {
+    refreshWaybills(false);
+  });
 
-  window.KOMBU_WAYBILL_UI_VERSION = '161.11';
+  window.KOMBU_WAYBILL_UI_VERSION = '161.16';
   window.kombuWaybillInboxRefresh = refreshWaybills;
   window.kombuWaybillPatchHistory = patchHistoryTable;
   window.kombuWaybillReviewOpen = async function () {
-    await loadWaybills();
+    // 送り状確認を開く時は最新状態を取得。
+    await loadWaybills(true);
     openReviewModal();
   };
   window.kombuWaybillErrorListOpen = async function () {
