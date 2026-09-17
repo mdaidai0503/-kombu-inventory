@@ -371,15 +371,56 @@
     return {total:targets.length,changed};
   }
 
+  function diagnosticStatus(w){
+    if(isTempSeptember2026(w)) return '9月一時保管（削除済）';
+    if(w && w.parsed_data && w.parsed_data.deleted_pdf && w.parsed_data.deleted_pdf.deleted===true) return '削除済';
+    const p=(w&&w.parsed_data)||{};
+    if((p.manual_link&&p.manual_link.linked===true) || w.match_status==='matched' || w.match_status==='auto_attached') return '添付済み';
+    if(w.match_status==='review' || w.match_status==='needs_review') return '要確認';
+    if(w.match_status==='unmatched') return '不一致';
+    if(w.match_status==='ignored') return '除外';
+    return '未判定';
+  }
+
+  function fmtJstDate(raw){
+    if(!raw) return '';
+    const d=new Date(raw);
+    if(Number.isNaN(d.getTime())) return String(raw).slice(0,10);
+    try{return new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).format(d);}
+    catch(_){return d.toLocaleString('ja-JP');}
+  }
+
+  async function showSeptember2026Diagnostic(){
+    const all=await fetchAllWaybills();
+    const rows=all.filter(isSeptember2026);
+    const counts={};
+    rows.forEach(w=>{const k=diagnosticStatus(w);counts[k]=(counts[k]||0)+1;});
+    const old=document.querySelector('.v165110-sept-diagnostic'); if(old) old.remove();
+    const ov=document.createElement('div');
+    ov.className='v165110-sept-diagnostic';
+    ov.style.cssText='position:fixed;inset:0;z-index:1000001;background:rgba(15,23,42,.5);padding:18px;overflow:auto';
+    const summary=Object.keys(counts).map(k=>esc(k)+' '+counts[k]+'件').join(' ／ ');
+    ov.innerHTML='<div style="max-width:1100px;margin:20px auto;background:#fff;border-radius:16px;padding:18px">'+
+      '<div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><div><h2 style="margin:0">2026年9月 浜中運輸FAX 全件診断</h2><div style="margin-top:5px;color:#627d98">状態に関係なく、9月受信分を全件表示します。</div></div><button class="btn secondary" data-close>閉じる</button></div>'+
+      '<div style="margin:14px 0;padding:12px;background:#eef6ff;border-radius:10px"><b>合計 '+rows.length+'件</b><div style="margin-top:5px">'+esc(summary||'該当なし')+'</div></div>'+
+      (rows.length?'<div class="tablewrap"><table style="min-width:900px"><tr><th>受信日時</th><th>現在の状態</th><th>PDF名</th><th>操作</th></tr>'+rows.map(w=>'<tr><td>'+esc(fmtJstDate(w.received_at||w.shipping_date))+'</td><td><b>'+esc(diagnosticStatus(w))+'</b></td><td>'+esc(w.original_filename||'')+'</td><td><button class="mini" data-diag-open="'+esc(w.id)+'">PDF</button></td></tr>').join('')+'</table></div>':'<div class="muted">2026年9月受信のFAX PDFは見つかりませんでした。</div>')+
+      '</div>';
+    document.body.appendChild(ov);
+    ov.querySelector('[data-close]').onclick=()=>ov.remove();
+    ov.onclick=e=>{if(e.target===ov)ov.remove();};
+    ov.querySelectorAll('[data-diag-open]').forEach(btn=>btn.onclick=async()=>{try{const w=await getWaybill(btn.dataset.diagOpen);const url=await makeUrl(w.storage_path);if(url)window.open(url,'_blank','noopener');else alert('PDFの保存先がありません。');}catch(e){console.error(e);alert('PDFを開けませんでした。');}});
+  }
+
   function ensureSeptemberTemporaryControls(){
     const panel=getReviewPanel();
     if(!panel || panel.querySelector('.v165109-september-controls')) return;
     const box=document.createElement('div');
     box.className='v165109-september-controls';
     box.style.cssText='display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0;padding:10px;border:1px solid #d9e2ec;border-radius:10px;background:#f8fafc';
-    box.innerHTML='<strong style="font-size:13px">2026年9月 浜中運輸FAX</strong><button class="mini" data-sept-move>9月分を削除済へ一時移動</button><button class="mini secondary" data-sept-restore>一時移動を元に戻す</button><span class="muted" style="font-size:12px">紐付け情報は保持します</span>';
+    box.innerHTML='<strong style="font-size:13px">2026年9月 浜中運輸FAX</strong><button class="mini" data-sept-diagnostic>9月FAX全件診断</button><button class="mini" data-sept-move>9月分を削除済へ一時移動</button><button class="mini secondary" data-sept-restore>一時移動を元に戻す</button><span class="muted" style="font-size:12px">紐付け情報は保持します</span>';
     const first=panel.querySelector('.tablewrap,details');
     if(first) first.insertAdjacentElement('beforebegin',box); else panel.appendChild(box);
+    box.querySelector('[data-sept-diagnostic]').onclick=async function(){ this.disabled=true; try{await showSeptember2026Diagnostic();}catch(e){console.error(e);alert('9月FAXの診断に失敗しました。');}finally{this.disabled=false;} };
     box.querySelector('[data-sept-move]').onclick=async function(){
       if(!confirm('2026年9月の浜中運輸送り状FAX PDFを、削除済へ一時的にまとめます。\n既存の紐付け情報は保持します。よろしいですか？')) return;
       this.disabled=true;
