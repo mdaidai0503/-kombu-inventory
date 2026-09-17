@@ -65,6 +65,20 @@
   }
 
   function classifyWaybill(waybill) {
+    // v161.18 / v165.10.4:
+    // shipment_waybill_links に1件でも確定リンクがあれば、元の
+    // match_status が needs_review / unmatched のままでも「添付済み」を正本とする。
+    // これにより手動紐付け後は「確認が必要なFAX」から外れ、
+    // 出荷依頼履歴ではPDFボタンとして開ける。
+    if (waybill && (waybill.__waybill_link || linksForWaybill(waybill.id).length)) {
+      return {
+        key: 'matched',
+        label: '添付済み',
+        icon: '✅',
+        score: null
+      };
+    }
+
     // v160.8:
     // match_status を判定の正本として最優先する。
     //
