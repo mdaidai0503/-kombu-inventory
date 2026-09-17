@@ -351,11 +351,10 @@
     return waybillCache.find(function (w) {
       if (!w || String(w.match_status || '') === 'ignored') return false;
 
-      // 既に別の出荷依頼へ確定添付されている送り状は、
-      // 通常の「要確認」候補には再掲しない。
-      if (classifyWaybill(w).key === 'matched' && linksForWaybill(w.id).length) {
-        return false;
-      }
+      // v165.10.7:
+      // 1枚の送り状PDFが複数の出荷依頼に対応する場合があるため、
+      // 既に別の出荷依頼へ添付済みでも候補判定から除外しない。
+      // 同じPDF＋同じ出荷依頼への二重登録だけはリンク処理側で防止する。
 
       const parsed = w.parsed_data && typeof w.parsed_data === 'object' ? w.parsed_data : {};
       const match = parsed.match && typeof parsed.match === 'object' ? parsed.match : {};
@@ -426,10 +425,10 @@
     const info = classifyWaybill(waybill);
     const scoreText = info.score !== null ? info.score + '点' : '';
     if (info.key === 'review') {
-      return '<span style="white-space:nowrap;font-weight:700;color:#8a5a00">⚠ ' + (scoreText || '要確認') + '</span>';
+      return '<button class="mini v159-waybill-review-link" data-waybill-id="' + esc(waybill.id) + '" style="white-space:nowrap;font-weight:800;color:#8a5a00">⚠ ' + (scoreText || '要確認') + '</button>';
     }
     if (info.key === 'unmatched') {
-      return '<span style="white-space:nowrap;font-weight:700;color:#9a1f1f">✕ ' + (scoreText || '不一致') + '</span>';
+      return '<button class="mini v159-waybill-review-link" data-waybill-id="' + esc(waybill.id) + '" style="white-space:nowrap;font-weight:800;color:#9a1f1f">✕ ' + (scoreText || '不一致') + '</button>';
     }
     return '<span class="muted">未判定</span>';
   }
