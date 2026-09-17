@@ -334,16 +334,10 @@
   }
 
   function isSeptember2026(w){
-    const raw=w && (w.received_at || w.shipping_date);
-    if(!raw) return false;
-    const d=new Date(raw);
-    if(Number.isNaN(d.getTime())) return /^2026-09(?:-|$)/.test(String(raw));
-    try{
-      const parts=new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit'}).formatToParts(d);
-      const y=parts.find(x=>x.type==='year')?.value;
-      const m=parts.find(x=>x.type==='month')?.value;
-      return y==='2026' && m==='09';
-    }catch(_){ return d.getFullYear()===2026 && d.getMonth()===8; }
+    // v165.10.11: 9月分の母集団はPDF内部の日付ではなくFAXファイル名で固定する。
+    // FAX_202609...pdf のみ対象。FAX_202608...pdf は最初から9月候補外。
+    const name=String(w && w.original_filename || '');
+    return /^FAX_202609\d*/i.test(name);
   }
 
   async function setSeptember2026TemporaryDeleted(flag){
@@ -401,14 +395,22 @@
     ov.style.cssText='position:fixed;inset:0;z-index:1000001;background:rgba(15,23,42,.5);padding:18px;overflow:auto';
     const summary=Object.keys(counts).map(k=>esc(k)+' '+counts[k]+'件').join(' ／ ');
     ov.innerHTML='<div style="max-width:1100px;margin:20px auto;background:#fff;border-radius:16px;padding:18px">'+
-      '<div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><div><h2 style="margin:0">2026年9月 浜中運輸FAX 全件診断</h2><div style="margin-top:5px;color:#627d98">状態に関係なく、9月受信分を全件表示します。</div></div><button class="btn secondary" data-close>閉じる</button></div>'+
+      '<div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><div><h2 style="margin:0">2026年9月 浜中運輸FAX 全件診断</h2><div style="margin-top:5px;color:#627d98">ファイル名が FAX_202609 で始まるPDFだけを全件表示します。</div></div><button class="btn secondary" data-close>閉じる</button></div>'+
       '<div style="margin:14px 0;padding:12px;background:#eef6ff;border-radius:10px"><b>合計 '+rows.length+'件</b><div style="margin-top:5px">'+esc(summary||'該当なし')+'</div></div>'+
-      (rows.length?'<div class="tablewrap"><table style="min-width:900px"><tr><th>受信日時</th><th>現在の状態</th><th>PDF名</th><th>操作</th></tr>'+rows.map(w=>'<tr><td>'+esc(fmtJstDate(w.received_at||w.shipping_date))+'</td><td><b>'+esc(diagnosticStatus(w))+'</b></td><td>'+esc(w.original_filename||'')+'</td><td><button class="mini" data-diag-open="'+esc(w.id)+'">PDF</button></td></tr>').join('')+'</table></div>':'<div class="muted">2026年9月受信のFAX PDFは見つかりませんでした。</div>')+
+      (rows.length?'<div class="tablewrap"><table style="min-width:900px"><tr><th>受信日時</th><th>現在の状態</th><th>PDF名</th><th>操作</th></tr>'+rows.map(w=>'<tr><td>'+esc(fmtJstDate(w.received_at||w.shipping_date))+'</td><td><b>'+esc(diagnosticStatus(w))+'</b></td><td>'+esc(w.original_filename||'')+'</td><td style="white-space:nowrap"><button class="mini" data-diag-open="'+esc(w.id)+'">PDF</button> <button class="mini danger" data-diag-delete="'+esc(w.id)+'">削除</button></td></tr>').join('')+'</table></div>':'<div class="muted">FAX_202609 で始まるFAX PDFは見つかりませんでした。</div>')+
       '</div>';
     document.body.appendChild(ov);
     ov.querySelector('[data-close]').onclick=()=>ov.remove();
     ov.onclick=e=>{if(e.target===ov)ov.remove();};
     ov.querySelectorAll('[data-diag-open]').forEach(btn=>btn.onclick=async()=>{try{const w=await getWaybill(btn.dataset.diagOpen);const url=await makeUrl(w.storage_path);if(url)window.open(url,'_blank','noopener');else alert('PDFの保存先がありません。');}catch(e){console.error(e);alert('PDFを開けませんでした。');}});
+    ov.querySelectorAll('[data-diag-delete]').forEach(btn=>btn.onclick=async()=>{
+      let w;
+      try{ w=await getWaybill(btn.dataset.diagDelete); }catch(e){ alert('PDF情報を取得できませんでした。'); return; }
+      if(!confirm('このFAX PDFを削除済みに移動します。\n\n'+String(w.original_filename||'')+'\n\nよろしいですか？')) return;
+      btn.disabled=true; btn.textContent='削除中…';
+      try{ await markDeleted(w); ov.remove(); await renderDeletedSection(); await showSeptember2026Diagnostic(); }
+      catch(e){ console.error(e); alert('削除できませんでした。'); btn.disabled=false; btn.textContent='削除'; }
+    });
   }
 
   function ensureSeptemberTemporaryControls(){

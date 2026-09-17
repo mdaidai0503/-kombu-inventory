@@ -494,10 +494,16 @@
 
     // 明示的な手動選択画面なので、自動判定の「要確認／不一致／除外」に
     // かかわらず、PDF実体があり、依頼日以降のものを表示する。
+    const requestMonthPrefix = reqDate && /^\d{4}-\d{2}/.test(reqDate)
+      ? 'FAX_' + reqDate.slice(0,7).replace('-', '')
+      : '';
     const candidates = waybillCache
       .filter(function (w) {
         if (!w || !w.storage_path) return false;
         if (alreadyIds.has(String(w.id || ''))) return false;
+        // v165.10.11: 候補月はFAXファイル名で厳密に限定する。
+        // 例: 2026-09の依頼では FAX_202609... のみ。FAX_202608... は候補外。
+        if (requestMonthPrefix && !String(w.original_filename || '').toUpperCase().startsWith(requestMonthPrefix)) return false;
         const d = waybillCandidateDate(w);
         if (reqDate && d && d < reqDate) return false;
         return true;
@@ -540,7 +546,7 @@
       '<h2 style="margin-top:0">未着：浜中運輸FAX PDFから選択</h2>' +
       '<div style="background:#eef6ff;padding:10px 12px;border-radius:10px;font-size:13px;line-height:1.7;margin-bottom:12px">' +
         '<b>対象出荷依頼：</b>' + esc(targetText) + '<br>' +
-        '<b>表示条件：</b>依頼日 ' + esc(reqDate || '不明') + ' 以降の浜中運輸FAX PDF<br>' +
+        '<b>表示条件：</b>ファイル名 ' + esc(requestMonthPrefix || 'FAX_YYYYMM') + ' で始まり、依頼日 ' + esc(reqDate || '不明') + ' 以降の浜中運輸FAX PDF<br>' +
         '「要確認」「不一致」などの自動判定に関係なく、PDFを確認して手動で紐付けできます。' +
       '</div>' +
       '<input id="v165108WaybillSearch" type="search" placeholder="PDF名・日付で絞り込み" ' +
