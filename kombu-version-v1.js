@@ -1,9 +1,9 @@
 /* 昆布在庫管理 表示バージョン同期 v1.1
-   v165.10.1: DOM全体MutationObserverを廃止し、フリーズを防止 */
+   v165.10.2: 送り状候補・手動紐付け範囲を拡張 */
 (function(){
   'use strict';
   const me=document.currentScript;
-  const VERSION=(me&&me.dataset&&me.dataset.version)||'v165.10.1';
+  const VERSION=(me&&me.dataset&&me.dataset.version)||'v165.10.2';
   window.KOMBU_APP_VERSION=VERSION;
 
   function setIfDifferent(el){
