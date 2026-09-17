@@ -403,8 +403,38 @@
     catch(_){return d.toLocaleString('ja-JP');}
   }
 
+  function loadShipmentHistoryForDiagnostic(){
+    try{
+      const a=JSON.parse(localStorage.getItem('kombu-v136-shipment-history')||'[]');
+      return Array.isArray(a)?a:[];
+    }catch(_){ return []; }
+  }
+
+  async function fetchWaybillLinksForDiagnostic(){
+    const c=sb();
+    if(!c) return [];
+    try{
+      const r=await c.from('shipment_waybill_links')
+        .select('waybill_inbox_id,app_shipment_id,product_code,decision,is_primary,created_at');
+      if(r.error){ console.warn('[v165.10.15] waybill links error',r.error); return []; }
+      return Array.isArray(r.data)?r.data:[];
+    }catch(e){ console.warn('[v165.10.15] waybill links exception',e); return []; }
+  }
+
+  function shipmentLabelForDiagnostic(link,hist){
+    const sid=String(link&&link.app_shipment_id||'');
+    const product=String(link&&link.product_code||'');
+    const h=hist.find(x=>String(x&&x.id||'')===sid && (!product || String(x&&x.product||'')===product))
+      || hist.find(x=>String(x&&x.id||'')===sid);
+    if(!h) return sid || '添付先ID不明';
+    const src=(h.source&&h.source.name)||'';
+    const dst=(h.dest&&h.dest.name)||'';
+    return [h.shipDate||'', product||h.product||'', src&&dst?(src+' → '+dst):(src||dst), sid].filter(Boolean).join('｜');
+  }
+
   async function showSeptember2026Diagnostic(){
-    const all=await fetchAllWaybills();
+    const [all,links]=await Promise.all([fetchAllWaybills(),fetchWaybillLinksForDiagnostic()]);
+    const hist=loadShipmentHistoryForDiagnostic();
     // v165.10.12: 全件診断の『削除』は永久削除済み一覧へ移す操作。
     // 削除済みにしたPDFは診断一覧から外す（削除済み欄では引き続き閲覧可能）。
     const rows=all.filter(w=>isSeptember2026(w) && !isDeleted(w));
@@ -418,12 +448,26 @@
     ov.innerHTML='<div style="max-width:1100px;margin:20px auto;background:#fff;border-radius:16px;padding:18px">'+
       '<div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><div><h2 style="margin:0">2026年9月 浜中運輸FAX 全件診断</h2><div style="margin-top:5px;color:#627d98">ファイル名が FAX_202609 で始まる未削除PDFを表示します。削除したPDFは「削除済のPDF」へ移動します。</div></div><button class="btn secondary" data-close>閉じる</button></div>'+
       '<div style="margin:14px 0;padding:12px;background:#eef6ff;border-radius:10px"><b>合計 '+rows.length+'件</b><div style="margin-top:5px">'+esc(summary||'該当なし')+'</div></div>'+
-      (rows.length?'<div class="tablewrap"><table style="min-width:900px"><tr><th>受信日時</th><th>現在の状態</th><th>PDF名</th><th>操作</th></tr>'+rows.map(w=>'<tr><td>'+esc(fmtJstDate(w.received_at||w.shipping_date))+'</td><td><b>'+esc(diagnosticStatus(w))+'</b></td><td>'+esc(w.original_filename||'')+'</td><td style="white-space:nowrap"><button class="mini" data-diag-open="'+esc(w.id)+'">PDF</button> <button class="mini danger" data-diag-delete="'+esc(w.id)+'">削除</button></td></tr>').join('')+'</table></div>':'<div class="muted">FAX_202609 で始まるFAX PDFは見つかりませんでした。</div>')+
+      (rows.length?'<div class="tablewrap"><table style="min-width:1250px"><tr><th>受信日時</th><th>現在の状態</th><th>添付先（出荷依頼履歴）</th><th>PDF名</th><th>操作</th></tr>'+rows.map(w=>{
+        const wl=links.filter(x=>String(x&&x.waybill_inbox_id||'')===String(w.id||''));
+        const legacy=(!wl.length && w.matched_shipment_id)?[{app_shipment_id:w.matched_shipment_id,product_code:w.matched_product||''}]:[];
+        const targets=(wl.length?wl:legacy);
+        const targetHtml=targets.length?targets.map((x,i)=>'<button class="mini secondary" style="margin:2px;white-space:normal;text-align:left" data-diag-shipment="'+esc(String(x.app_shipment_id||''))+'" data-diag-product="'+esc(String(x.product_code||''))+'">'+esc(shipmentLabelForDiagnostic(x,hist))+'</button>').join('<br>'):'<span class="muted">—</span>';
+        return '<tr><td>'+esc(fmtJstDate(w.received_at||w.shipping_date))+'</td><td><b>'+esc(diagnosticStatus(w))+'</b></td><td>'+targetHtml+'</td><td>'+esc(w.original_filename||'')+'</td><td style="white-space:nowrap"><button class="mini" data-diag-open="'+esc(w.id)+'">PDF</button> <button class="mini danger" data-diag-delete="'+esc(w.id)+'">削除</button></td></tr>';
+      }).join('')+'</table></div>':'<div class="muted">FAX_202609 で始まるFAX PDFは見つかりませんでした。</div>')+
       '</div>';
     document.body.appendChild(ov);
     ov.querySelector('[data-close]').onclick=()=>ov.remove();
     ov.onclick=e=>{if(e.target===ov)ov.remove();};
     ov.querySelectorAll('[data-diag-open]').forEach(btn=>btn.onclick=async()=>{try{const w=await getWaybill(btn.dataset.diagOpen);const url=await makeUrl(w.storage_path);if(url)window.open(url,'_blank','noopener');else alert('PDFの保存先がありません。');}catch(e){console.error(e);alert('PDFを開けませんでした。');}});
+    ov.querySelectorAll('[data-diag-shipment]').forEach(btn=>btn.onclick=()=>{
+      const sid=String(btn.dataset.diagShipment||'');
+      const product=String(btn.dataset.diagProduct||'');
+      const h=hist.find(x=>String(x&&x.id||'')===sid && (!product || String(x&&x.product||'')===product)) || hist.find(x=>String(x&&x.id||'')===sid);
+      if(!h){ alert('出荷依頼 '+sid+' に添付されています。'); return; }
+      const src=(h.source&&h.source.name)||''; const dst=(h.dest&&h.dest.name)||'';
+      alert('添付先の出荷依頼履歴\n\n出荷日：'+String(h.shipDate||'')+'\n産地：'+String(product||h.product||'')+'\n出荷元：'+src+'\n出荷先：'+dst+'\n数量：'+String(h.qty==null?'':h.qty)+'\n出荷依頼ID：'+sid);
+    });
     ov.querySelectorAll('[data-diag-delete]').forEach(btn=>btn.onclick=async()=>{
       let w;
       try{ w=await getWaybill(btn.dataset.diagDelete); }catch(e){ alert('PDF情報を取得できませんでした。'); return; }
