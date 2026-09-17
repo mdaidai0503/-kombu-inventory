@@ -265,59 +265,57 @@
     });
   }
 
-  function findLinkForShipment(product, shipmentId) {
+  function findLinksForShipment(product, shipmentId) {
     const idText = String(shipmentId || '');
     const productText = String(product || '');
+    if (!idText || !productText) return [];
 
-    // v160.5:
-    // 出荷指示番号は商品種類をまたいで重複するため、
-    // app_shipment_id + product_code の完全一致だけを採用する。
-    if (!idText || !productText) return null;
-
-    return waybillLinkCache.find(function (link) {
-      return (
-        String(link.app_shipment_id || '') === idText &&
-        String(link.product_code || '') === productText
-      );
-    }) || null;
+    // v165.10.6: 1出荷依頼に複数の異なる送り状PDFを許可する。
+    // 重複判定は waybill_inbox_id + app_shipment_id + product_code 単位。
+    return waybillLinkCache.filter(function (link) {
+      return String(link.app_shipment_id || '') === idText &&
+             String(link.product_code || '') === productText;
+    });
   }
 
-  function findWaybill(product, shipmentId) {
-    // v160.4:
-    // 新しい shipment_waybill_links を最優先。
-    // 1枚の送り状が複数出荷指示へ紐付いていても、
-    // 各出荷履歴から同じPDFを参照できる。
-    const link = findLinkForShipment(product, shipmentId);
+  function findLinkForShipment(product, shipmentId) {
+    return findLinksForShipment(product, shipmentId)[0] || null;
+  }
 
-    if (link) {
+  function findWaybills(product, shipmentId) {
+    const links = findLinksForShipment(product, shipmentId);
+    const result = [];
+    const seen = new Set();
+
+    links.forEach(function (link) {
       const linkedWaybill = waybillCache.find(function (w) {
         return String(w.id || '') === String(link.waybill_inbox_id || '');
       });
+      if (!linkedWaybill) return;
+      const key = String(linkedWaybill.id || '');
+      if (seen.has(key)) return;
+      seen.add(key);
+      result.push(Object.assign({}, linkedWaybill, { __waybill_link: link }));
+    });
 
-      if (linkedWaybill) {
-        // 表示用スコアはリンク単位の95点等を優先できるよう、
-        // 元レコードを壊さず一時情報だけ付加する。
-        return Object.assign({}, linkedWaybill, {
-          __waybill_link: link
-        });
-      }
+    // 後方互換: link tableに無い旧形式の確定添付も1件として拾う。
+    if (!result.length) {
+      const idText = String(shipmentId || '');
+      const productText = String(product || '');
+      const legacy = waybillCache.filter(function (w) {
+        return String(w.matched_shipment_id || '') === idText &&
+               String(w.matched_product || '') === productText;
+      });
+      legacy.forEach(function (w) {
+        const key = String(w.id || '');
+        if (!seen.has(key)) { seen.add(key); result.push(w); }
+      });
     }
+    return result;
+  }
 
-    // 後方互換:
-    // shipment_waybill_links に無い過去データも、
-    // matched_shipment_id + matched_product の両方一致時だけ表示する。
-    // S00001 のような番号が釧路・釧棹で重複しても取り違えない。
-    const idText = String(shipmentId || '');
-    const productText = String(product || '');
-
-    if (!idText || !productText) return null;
-
-    return waybillCache.find(function (w) {
-      return (
-        String(w.matched_shipment_id || '') === idText &&
-        String(w.matched_product || '') === productText
-      );
-    }) || null;
+  function findWaybill(product, shipmentId) {
+    return findWaybills(product, shipmentId)[0] || null;
   }
 
   async function openWaybillPdf(waybill) {
@@ -384,9 +382,9 @@
   }
 
   function makeWaybillCell(product, shipmentId) {
-    const waybill = findWaybill(product, shipmentId);
+    const waybills = findWaybills(product, shipmentId);
 
-    if (!waybill) {
+    if (!waybills.length) {
       const reviewWaybill = reviewWaybillForShipment(product, shipmentId);
       if (reviewWaybill) {
         return (
@@ -400,35 +398,39 @@
       return '<span class="muted">未着</span>';
     }
 
+    // v165.10.6: 異なるPDFは同じ出荷依頼へ複数表示・複数添付可能。
+    // 各PDFを個別ボタンにすることで、開くPDF・ドラッグするPDFを明確にする。
+    const matched = waybills.filter(function (waybill) {
+      return classifyWaybill(waybill).key === 'matched' && waybill.storage_path;
+    });
+    if (matched.length) {
+      return '<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">' +
+        matched.map(function (waybill, index) {
+          const info = classifyWaybill(waybill);
+          const scoreText = info.score !== null ? info.score + '点 ' : '';
+          const label = matched.length > 1 ? ('PDF' + (index + 1)) : 'PDF';
+          return (
+            '<button class="mini v159-waybill-pdf v165105-waybill-drag" ' +
+            'data-waybill-id="' + esc(waybill.id) + '" ' +
+            'draggable="true" title="' + esc(String(waybill.original_filename || label)) + ' / 別の出荷依頼行へドラッグして追加添付できます" ' +
+            'style="white-space:nowrap;cursor:grab">' +
+            '✅ ' + scoreText + label +
+            '</button>'
+          );
+        }).join('') +
+        (matched.length > 1 ? '<span class="muted" style="white-space:nowrap">' + matched.length + '件</span>' : '') +
+        '</div>';
+    }
+
+    const waybill = waybills[0];
     const info = classifyWaybill(waybill);
     const scoreText = info.score !== null ? info.score + '点' : '';
-
-    if (info.key === 'matched' && waybill.storage_path) {
-      return (
-        '<button class="mini v159-waybill-pdf" ' +
-        'data-waybill-id="' + esc(waybill.id) + '" ' +
-        'style="white-space:nowrap">' +
-        '✅ ' + scoreText + ' PDF' +
-        '</button>'
-      );
-    }
-
     if (info.key === 'review') {
-      return (
-        '<span style="white-space:nowrap;font-weight:700;color:#8a5a00">' +
-        '⚠ ' + (scoreText || '要確認') +
-        '</span>'
-      );
+      return '<span style="white-space:nowrap;font-weight:700;color:#8a5a00">⚠ ' + (scoreText || '要確認') + '</span>';
     }
-
     if (info.key === 'unmatched') {
-      return (
-        '<span style="white-space:nowrap;font-weight:700;color:#9a1f1f">' +
-        '✕ ' + (scoreText || '不一致') +
-        '</span>'
-      );
+      return '<span style="white-space:nowrap;font-weight:700;color:#9a1f1f">✕ ' + (scoreText || '不一致') + '</span>';
     }
-
     return '<span class="muted">未判定</span>';
   }
 
@@ -485,6 +487,91 @@
     });
 
     bindWaybillButtons(body);
+    bindWaybillDragAndDrop(body);
+  }
+
+  // v165.10.5: 履歴の添付済み送り状PDFを別の出荷依頼行へ
+  // ドラッグ＆ドロップして追加添付できるようにする。
+  function bindWaybillDragAndDrop(root) {
+    const scope = root || document;
+
+    scope.querySelectorAll('.v165105-waybill-drag').forEach(function (button) {
+      button.ondragstart = function (e) {
+        const id = String(button.dataset.waybillId || '');
+        if (!id || !e.dataTransfer) return;
+        e.dataTransfer.effectAllowed = 'copy';
+        e.dataTransfer.setData('text/x-kombu-waybill-id', id);
+        e.dataTransfer.setData('text/plain', id);
+        button.style.opacity = '.55';
+      };
+      button.ondragend = function () {
+        button.style.opacity = '';
+        scope.querySelectorAll('tr[data-hid]').forEach(function (tr) {
+          tr.style.outline = '';
+          tr.style.outlineOffset = '';
+        });
+      };
+    });
+
+    scope.querySelectorAll('tr[data-hid]').forEach(function (tr) {
+      tr.ondragover = function (e) {
+        if (!e.dataTransfer) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        tr.style.outline = '3px solid #4f8cff';
+        tr.style.outlineOffset = '-3px';
+      };
+      tr.ondragleave = function () {
+        tr.style.outline = '';
+        tr.style.outlineOffset = '';
+      };
+      tr.ondrop = async function (e) {
+        e.preventDefault();
+        tr.style.outline = '';
+        tr.style.outlineOffset = '';
+        const id = String(
+          (e.dataTransfer && (e.dataTransfer.getData('text/x-kombu-waybill-id') ||
+           e.dataTransfer.getData('text/plain'))) || ''
+        );
+        const shipmentId = String(tr.dataset.hid || '');
+        const product = String(tr.dataset.hprod || '');
+        if (!id || !shipmentId) return;
+
+        const already = linksForWaybill(id).some(function (link) {
+          return String(link.app_shipment_id || '') === shipmentId &&
+                 String(link.product_code || '') === product;
+        });
+        if (already) {
+          alert('この送り状PDFは、すでにこの出荷依頼へ添付済みです。');
+          return;
+        }
+
+        const wb = waybillCache.find(function (w) { return String(w.id) === id; });
+        const cells = tr.querySelectorAll('td');
+        const targetText = cells.length >= 5
+          ? [cells[0].textContent, cells[2].textContent, cells[3].textContent].map(function(x){return String(x||'').trim();}).join(' / ')
+          : shipmentId;
+
+        if (!window.confirm(
+          'この送り状PDFを次の出荷依頼へ追加添付します。\n\n' +
+          String((wb && wb.original_filename) || '送り状PDF') + '\n→ ' + targetText +
+          '\n\nよろしいですか？'
+        )) return;
+
+        try {
+          await manualLinkApi('link', {
+            waybill_inbox_id: id,
+            app_shipment_id: shipmentId,
+            kombu_type: product
+          });
+          await refreshWaybills();
+          patchHistoryTable();
+          alert('送り状PDFを追加添付しました。');
+        } catch (err) {
+          alert('ドラッグ＆ドロップ添付に失敗しました。\n' + String(err && err.message || err));
+        }
+      };
+    });
   }
 
   function detectShipmentIdFromDetail() {

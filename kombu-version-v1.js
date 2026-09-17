@@ -1,9 +1,9 @@
 /* 昆布在庫管理 表示バージョン同期 v1.1
-   v165.10.4: 手動紐付け済み送り状の表示・PDFボタンを修正 */
+   v165.10.6: 同一出荷依頼への複数送り状PDF添付・個別表示に対応 */
 (function(){
   'use strict';
   const me=document.currentScript;
-  const VERSION=(me&&me.dataset&&me.dataset.version)||'v165.10.4';
+  const VERSION=(me&&me.dataset&&me.dataset.version)||'v165.10.6';
   window.KOMBU_APP_VERSION=VERSION;
 
   function setIfDifferent(el){
