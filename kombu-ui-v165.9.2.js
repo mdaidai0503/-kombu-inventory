@@ -410,6 +410,46 @@
     }catch(_){ return []; }
   }
 
+  // v165.10.16: 履歴キーに残っていない出荷依頼IDも、各産地の現行データから逆引きする。
+  function loadAllShipmentsForDiagnostic(){
+    const defs=[
+      ['kombu_local_only_v3','kushiro'],
+      ['kombu_hidaka_local_v1','hidaka'],
+      ['kombu_nemuro_local_v1','nemuro'],
+      ['kombu_kushiro_sanmae_local_v1','sanmae']
+    ];
+    const out=[];
+    for(const [key,product] of defs){
+      try{
+        const store=JSON.parse(localStorage.getItem(key)||'null');
+        const shipments=Array.isArray(store&&store.shipments)?store.shipments:[];
+        for(const sh of shipments){
+          if(!sh||!sh.id) continue;
+          const dest=(product==='kushiro')
+            ? (sh.destInfo&&typeof sh.destInfo==='object'?sh.destInfo:{name:typeof sh.dest==='string'?sh.dest:'',address:'',phone:''})
+            : (sh.dest&&typeof sh.dest==='object'?sh.dest:{name:typeof sh.dest==='string'?sh.dest:'',address:'',phone:''});
+          out.push({
+            key:product+'::'+sh.id, product, id:sh.id, shipDate:sh.shipDate||'',
+            source:sh.source||{}, dest:dest||{},
+            qty:(Array.isArray(sh.lines)?sh.lines:[]).reduce((n,l)=>n+Number(l&&l.qty||0),0),
+            snapshot:sh
+          });
+        }
+      }catch(_){ }
+    }
+    return out;
+  }
+
+  function resolveShipmentForDiagnostic(sid,product,hist){
+    sid=String(sid||''); product=String(product||'');
+    const local=loadAllShipmentsForDiagnostic();
+    return hist.find(x=>String(x&&x.id||'')===sid && (!product || String(x&&x.product||'')===product))
+      || hist.find(x=>String(x&&x.id||'')===sid)
+      || local.find(x=>String(x&&x.id||'')===sid && (!product || String(x&&x.product||'')===product))
+      || local.find(x=>String(x&&x.id||'')===sid)
+      || null;
+  }
+
   async function fetchWaybillLinksForDiagnostic(){
     const c=sb();
     if(!c) return [];
@@ -424,9 +464,8 @@
   function shipmentLabelForDiagnostic(link,hist){
     const sid=String(link&&link.app_shipment_id||'');
     const product=String(link&&link.product_code||'');
-    const h=hist.find(x=>String(x&&x.id||'')===sid && (!product || String(x&&x.product||'')===product))
-      || hist.find(x=>String(x&&x.id||'')===sid);
-    if(!h) return sid || '添付先ID不明';
+    const h=resolveShipmentForDiagnostic(sid,product,hist);
+    if(!h) return (sid?sid+'｜該当する出荷依頼履歴なし':'添付先ID不明');
     const src=(h.source&&h.source.name)||'';
     const dst=(h.dest&&h.dest.name)||'';
     return [h.shipDate||'', product||h.product||'', src&&dst?(src+' → '+dst):(src||dst), sid].filter(Boolean).join('｜');
@@ -463,8 +502,8 @@
     ov.querySelectorAll('[data-diag-shipment]').forEach(btn=>btn.onclick=()=>{
       const sid=String(btn.dataset.diagShipment||'');
       const product=String(btn.dataset.diagProduct||'');
-      const h=hist.find(x=>String(x&&x.id||'')===sid && (!product || String(x&&x.product||'')===product)) || hist.find(x=>String(x&&x.id||'')===sid);
-      if(!h){ alert('出荷依頼 '+sid+' に添付されています。'); return; }
+      const h=resolveShipmentForDiagnostic(sid,product,hist);
+      if(!h){ alert('出荷依頼 '+sid+' に添付されていますが、現在の出荷依頼履歴・各産地データには該当IDが見つかりません。'); return; }
       const src=(h.source&&h.source.name)||''; const dst=(h.dest&&h.dest.name)||'';
       alert('添付先の出荷依頼履歴\n\n出荷日：'+String(h.shipDate||'')+'\n産地：'+String(product||h.product||'')+'\n出荷元：'+src+'\n出荷先：'+dst+'\n数量：'+String(h.qty==null?'':h.qty)+'\n出荷依頼ID：'+sid);
     });

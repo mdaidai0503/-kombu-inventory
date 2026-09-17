@@ -1,9 +1,9 @@
 /* 昆布在庫管理 表示バージョン同期 v1.1
-   v165.10.15: 添付済みPDFの別出荷依頼候補化・要確認/不一致から手動紐付け対応 */
+   v165.10.16: 添付済みPDFの別出荷依頼候補化・要確認/不一致から手動紐付け対応 */
 (function(){
   'use strict';
   const me=document.currentScript;
-  const VERSION=(me&&me.dataset&&me.dataset.version)||'v165.10.15';
+  const VERSION=(me&&me.dataset&&me.dataset.version)||'v165.10.16';
   window.KOMBU_APP_VERSION=VERSION;
 
   function setIfDifferent(el){
