@@ -394,7 +394,11 @@
           '</button>'
         );
       }
-      return '<span class="muted">未着</span>';
+      return '<button class="mini v165108-waybill-unreceived" ' +
+        'data-shipment-id="' + esc(shipmentId) + '" ' +
+        'data-product="' + esc(product) + '" ' +
+        'style="white-space:nowrap;color:#53657a;font-weight:700" ' +
+        'title="依頼日以降の浜中運輸FAX PDFから手動で選択">未着</button>';
     }
 
     // v165.10.6: 異なるPDFは同じ出荷依頼へ複数表示・複数添付可能。
@@ -452,6 +456,145 @@
           openManualLinkDialog(button.dataset.waybillId);
         };
       });
+
+    // v165.10.8: 「未着」から、依頼日以降の浜中運輸FAX PDFを
+    // 直接探して手動紐付けできるようにする。
+    (root || document)
+      .querySelectorAll('.v165108-waybill-unreceived')
+      .forEach(function (button) {
+        button.onclick = function () {
+          const tr = button.closest('tr[data-hid]');
+          const cells = tr ? tr.querySelectorAll('td') : [];
+          const requestDate = cells.length ? normalizeIsoDate(cells[0].textContent || '') : '';
+          openUnreceivedWaybillPicker(
+            button.dataset.product || '',
+            button.dataset.shipmentId || '',
+            requestDate,
+            tr
+          );
+        };
+      });
+  }
+
+  function waybillCandidateDate(waybill) {
+    const shipping = waybillShippingDate(waybill);
+    if (shipping) return shipping;
+    return normalizeIsoDate(waybill && waybill.received_at || '');
+  }
+
+  async function openUnreceivedWaybillPicker(product, shipmentId, requestDate, tr) {
+    if (!waybillCacheLoaded) await refreshWaybills();
+
+    const reqDate = normalizeIsoDate(requestDate || '');
+    const alreadyIds = new Set(
+      findLinksForShipment(product, shipmentId).map(function (link) {
+        return String(link.waybill_inbox_id || '');
+      })
+    );
+
+    // 明示的な手動選択画面なので、自動判定の「要確認／不一致／除外」に
+    // かかわらず、PDF実体があり、依頼日以降のものを表示する。
+    const candidates = waybillCache
+      .filter(function (w) {
+        if (!w || !w.storage_path) return false;
+        if (alreadyIds.has(String(w.id || ''))) return false;
+        const d = waybillCandidateDate(w);
+        if (reqDate && d && d < reqDate) return false;
+        return true;
+      })
+      .sort(function (a, b) {
+        return String(waybillCandidateDate(b) || b.received_at || '').localeCompare(
+          String(waybillCandidateDate(a) || a.received_at || '')
+        );
+      });
+
+    const overlay = document.createElement('div');
+    overlay.id = 'v165108UnreceivedPicker';
+    overlay.style.position = 'fixed';
+    overlay.style.inset = '0';
+    overlay.style.zIndex = '100001';
+    overlay.style.background = 'rgba(15,23,42,.5)';
+    overlay.style.padding = '20px';
+    overlay.style.overflow = 'auto';
+
+    function rowHtml(w) {
+      const info = classifyWaybill(w);
+      const d = waybillCandidateDate(w) || '日付不明';
+      const linkedCount = linksForWaybill(w.id).length;
+      return '<div style="display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;' +
+        'padding:10px 8px;border-bottom:1px solid #e2e8f0">' +
+        '<input type="radio" name="v165108WaybillPick" value="' + esc(w.id) + '">' +
+        '<div><div style="font-weight:800">' + esc(d + '　' + (w.original_filename || 'FAX PDF')) + '</div>' +
+        '<div style="font-size:12px;color:#64748b;margin-top:3px">' +
+          esc(info.label + (info.score !== null ? ' ' + info.score + '点' : '') +
+          (linkedCount ? '／他の出荷依頼へ' + linkedCount + '件添付済み' : '')) +
+        '</div></div>' +
+        '<button class="mini v165108-preview" data-waybill-id="' + esc(w.id) + '">PDFを開く</button>' +
+        '</div>';
+    }
+
+    const targetText = tr ? Array.from(tr.querySelectorAll('td')).slice(0,5)
+      .map(function (x) { return String(x.textContent || '').trim(); }).join(' / ') : shipmentId;
+
+    overlay.innerHTML = '<div style="max-width:980px;margin:35px auto;background:#fff;border-radius:16px;padding:18px">' +
+      '<h2 style="margin-top:0">未着：浜中運輸FAX PDFから選択</h2>' +
+      '<div style="background:#eef6ff;padding:10px 12px;border-radius:10px;font-size:13px;line-height:1.7;margin-bottom:12px">' +
+        '<b>対象出荷依頼：</b>' + esc(targetText) + '<br>' +
+        '<b>表示条件：</b>依頼日 ' + esc(reqDate || '不明') + ' 以降の浜中運輸FAX PDF<br>' +
+        '「要確認」「不一致」などの自動判定に関係なく、PDFを確認して手動で紐付けできます。' +
+      '</div>' +
+      '<input id="v165108WaybillSearch" type="search" placeholder="PDF名・日付で絞り込み" ' +
+        'style="width:100%;box-sizing:border-box;padding:9px 10px;margin-bottom:8px;border:1px solid #cbd5e1;border-radius:8px">' +
+      '<div id="v165108WaybillList" style="max-height:480px;overflow:auto;border:1px solid #e2e8f0;border-radius:10px">' +
+        (candidates.length ? candidates.map(rowHtml).join('') : '<div class="muted" style="padding:18px">依頼日以降のFAX PDFがありません。</div>') +
+      '</div>' +
+      '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">' +
+        '<button class="btn" id="v165108Attach">選択したPDFを紐付け</button>' +
+        '<button class="btn secondary" id="v165108Cancel">キャンセル</button>' +
+      '</div></div>';
+    document.body.appendChild(overlay);
+
+    overlay.querySelectorAll('.v165108-preview').forEach(function (btn) {
+      btn.onclick = function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const wb = waybillCache.find(function (w) { return String(w.id) === String(btn.dataset.waybillId); });
+        openWaybillPdf(wb);
+      };
+    });
+    const search = overlay.querySelector('#v165108WaybillSearch');
+    if (search) search.oninput = function () {
+      const q = normalizeHistoryCompanyName(search.value || '');
+      overlay.querySelectorAll('#v165108WaybillList > div').forEach(function (row) {
+        const hay = normalizeHistoryCompanyName(row.textContent || '');
+        row.style.display = !q || hay.includes(q) ? 'grid' : 'none';
+      });
+    };
+    overlay.querySelector('#v165108Cancel').onclick = function () { overlay.remove(); };
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+    overlay.querySelector('#v165108Attach').onclick = async function () {
+      const picked = overlay.querySelector('input[name="v165108WaybillPick"]:checked');
+      if (!picked) return alert('紐付けるFAX PDFを選択してください。');
+      const wb = waybillCache.find(function (w) { return String(w.id) === String(picked.value); });
+      if (!wb) return alert('選択したFAX PDFが見つかりません。');
+      if (!window.confirm('このFAX PDFを出荷依頼へ添付します。\n\n' + String(wb.original_filename || '') + '\n\nよろしいですか？')) return;
+      const saveBtn = overlay.querySelector('#v165108Attach');
+      saveBtn.disabled = true; saveBtn.textContent = '保存中…';
+      try {
+        await manualLinkApi('link', {
+          waybill_inbox_id: wb.id,
+          app_shipment_id: shipmentId,
+          kombu_type: product
+        });
+        overlay.remove();
+        await refreshWaybills();
+        patchHistoryTable();
+        alert('FAX PDFを紐付けました。');
+      } catch (err) {
+        alert('FAX PDFの紐付けに失敗しました。\n' + String(err && err.message || err));
+        saveBtn.disabled = false; saveBtn.textContent = '選択したPDFを紐付け';
+      }
+    };
   }
 
   function patchHistoryTable() {

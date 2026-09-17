@@ -1,4 +1,4 @@
-const CACHE = 'kombu-inventory-v165-10-7';
+const CACHE = 'kombu-inventory-v165-10-8';
 
 const APP_SHELL = [
   './',
@@ -16,7 +16,7 @@ const APP_SHELL = [
   './pdf-worker-v58.js',
   './PDFJS-LICENSE.txt',
   './supabase-auth-v159.js',
-  './shipment-waybill-inbox-v159.js?v=161.21',
+  './shipment-waybill-inbox-v159.js?v=161.22',
   './kombu-waybill-review-candidates-v1.js?v=1.0',
   './kombu-cancel-restore-v1.js?v=1.2',
   './kombu-version-v1.js?v=1.1',
