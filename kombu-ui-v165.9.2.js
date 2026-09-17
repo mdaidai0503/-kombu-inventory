@@ -325,8 +325,73 @@
     return r.data && r.data.signedUrl ? r.data.signedUrl : '';
   }
 
+  function isTempSeptember2026(w){
+    return !!(w && w.parsed_data && w.parsed_data.temp_september_2026_deleted === true);
+  }
+
   function isDeleted(w){
-    return !!(w && w.parsed_data && w.parsed_data.deleted_pdf && w.parsed_data.deleted_pdf.deleted === true);
+    return !!(w && w.parsed_data && ((w.parsed_data.deleted_pdf && w.parsed_data.deleted_pdf.deleted === true) || w.parsed_data.temp_september_2026_deleted === true));
+  }
+
+  function isSeptember2026(w){
+    const raw=w && (w.received_at || w.shipping_date);
+    if(!raw) return false;
+    const d=new Date(raw);
+    if(Number.isNaN(d.getTime())) return /^2026-09(?:-|$)/.test(String(raw));
+    try{
+      const parts=new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit'}).formatToParts(d);
+      const y=parts.find(x=>x.type==='year')?.value;
+      const m=parts.find(x=>x.type==='month')?.value;
+      return y==='2026' && m==='09';
+    }catch(_){ return d.getFullYear()===2026 && d.getMonth()===8; }
+  }
+
+  async function setSeptember2026TemporaryDeleted(flag){
+    const c=sb();
+    if(!c) throw new Error('Supabaseへ接続できません。');
+    const all=await fetchAllWaybills();
+    const targets=all.filter(isSeptember2026);
+    let changed=0;
+    for(const w of targets){
+      const parsed=Object.assign({},w.parsed_data||{});
+      if(flag){
+        if(parsed.temp_september_2026_deleted===true) continue;
+        parsed.temp_september_2026_deleted=true;
+        parsed.temp_september_2026_deleted_at=new Date().toISOString();
+      }else{
+        if(parsed.temp_september_2026_deleted!==true) continue;
+        delete parsed.temp_september_2026_deleted;
+        delete parsed.temp_september_2026_deleted_at;
+      }
+      // match_status / manual_link / 自動紐付け情報は変更しない。
+      const r=await c.from(TABLE).update({parsed_data:parsed}).eq('id',w.id);
+      if(r.error) throw r.error;
+      changed++;
+    }
+    return {total:targets.length,changed};
+  }
+
+  function ensureSeptemberTemporaryControls(){
+    const panel=getReviewPanel();
+    if(!panel || panel.querySelector('.v165109-september-controls')) return;
+    const box=document.createElement('div');
+    box.className='v165109-september-controls';
+    box.style.cssText='display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0;padding:10px;border:1px solid #d9e2ec;border-radius:10px;background:#f8fafc';
+    box.innerHTML='<strong style="font-size:13px">2026年9月 浜中運輸FAX</strong><button class="mini" data-sept-move>9月分を削除済へ一時移動</button><button class="mini secondary" data-sept-restore>一時移動を元に戻す</button><span class="muted" style="font-size:12px">紐付け情報は保持します</span>';
+    const first=panel.querySelector('.tablewrap,details');
+    if(first) first.insertAdjacentElement('beforebegin',box); else panel.appendChild(box);
+    box.querySelector('[data-sept-move]').onclick=async function(){
+      if(!confirm('2026年9月の浜中運輸送り状FAX PDFを、削除済へ一時的にまとめます。\n既存の紐付け情報は保持します。よろしいですか？')) return;
+      this.disabled=true;
+      try{ const r=await setSeptember2026TemporaryDeleted(true); alert('9月分 '+r.total+'件を確認し、'+r.changed+'件を一時移動しました。'); location.reload(); }
+      catch(e){ console.error(e); alert('一時移動に失敗しました。'); this.disabled=false; }
+    };
+    box.querySelector('[data-sept-restore]').onclick=async function(){
+      if(!confirm('2026年9月分の一時移動だけを元に戻します。\n通常の「削除」操作をしたPDFは削除済のまま残ります。')) return;
+      this.disabled=true;
+      try{ const r=await setSeptember2026TemporaryDeleted(false); alert(r.changed+'件の一時移動を元に戻しました。'); location.reload(); }
+      catch(e){ console.error(e); alert('元に戻せませんでした。'); this.disabled=false; }
+    };
   }
 
   async function markDeleted(w){
@@ -491,7 +556,7 @@
               const d=w.received_at ? new Date(w.received_at).toLocaleDateString('ja-JP') : '';
               return '<tr>'+
                 '<td>'+esc(d)+'</td>'+
-                '<td>'+esc(w.original_filename||'')+'</td>'+
+                '<td>'+esc(w.original_filename||'')+(isTempSeptember2026(w)?' <span style="font-size:11px;color:#8a5a00">［9月一時保管］</span>':'')+'</td>'+
                 '<td><button class="mini v16592-open" data-waybill-id="'+esc(w.id)+'">PDF</button></td>'+
               '</tr>';
             }).join('')+
@@ -608,6 +673,7 @@
 
     reviewBusy=true;
     try{
+      ensureSeptemberTemporaryControls();
       addDeleteButtons();
       await groupReviewByMonth();
       await renderDeletedSection();
