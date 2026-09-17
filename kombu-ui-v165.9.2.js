@@ -329,8 +329,27 @@
     return !!(w && w.parsed_data && w.parsed_data.temp_september_2026_deleted === true);
   }
 
+  const LOCAL_DELETED_KEY = 'kombu_waybill_deleted_ids_v165_10_13';
+
+  function getLocalDeletedIds(){
+    try{
+      const a=JSON.parse(localStorage.getItem(LOCAL_DELETED_KEY)||'[]');
+      return new Set(Array.isArray(a)?a.map(String):[]);
+    }catch(_){ return new Set(); }
+  }
+
+  function addLocalDeletedId(id){
+    try{
+      const set=getLocalDeletedIds();
+      set.add(String(id));
+      localStorage.setItem(LOCAL_DELETED_KEY,JSON.stringify(Array.from(set)));
+    }catch(_){}
+  }
+
   function isDeleted(w){
-    return !!(w && w.parsed_data && ((w.parsed_data.deleted_pdf && w.parsed_data.deleted_pdf.deleted === true) || w.parsed_data.temp_september_2026_deleted === true));
+    if(!w) return false;
+    if(getLocalDeletedIds().has(String(w.id))) return true;
+    return !!(w.parsed_data && ((w.parsed_data.deleted_pdf && w.parsed_data.deleted_pdf.deleted === true) || w.parsed_data.temp_september_2026_deleted === true));
   }
 
   function isSeptember2026(w){
@@ -441,8 +460,10 @@
 
   async function markDeleted(w){
     const c = sb();
+    if(!c) throw new Error('Supabaseへ接続できません。');
     const parsed = Object.assign({}, w.parsed_data || {});
-    // 一時保管中のPDFを通常削除した場合は、一時保管フラグを解除して通常の削除済みに確定する。
+    // v165.10.13: PDF本体は消さず、削除済みフラグだけを保存する。
+    // match_status は変更しない（既に「除外」の行でも削除できるようにする）。
     delete parsed.temp_september_2026_deleted;
     delete parsed.temp_september_2026_deleted_at;
     parsed.deleted_pdf = {
@@ -451,15 +472,21 @@
       previous_match_status:w.match_status || ''
     };
 
-    const r = await c.from(TABLE).update({
-      match_status:'ignored',
-      parsed_data:parsed
-    }).eq('id',w.id).select('id,match_status,parsed_data').maybeSingle();
-
-    if(r.error) throw r.error;
-    if(!r.data || String(r.data.id)!==String(w.id) || !r.data.parsed_data || !r.data.parsed_data.deleted_pdf || r.data.parsed_data.deleted_pdf.deleted!==true){
-      throw new Error('削除状態をSupabaseへ保存できませんでした。');
+    let serverSaved=false;
+    try{
+      const r=await c.from(TABLE).update({parsed_data:parsed}).eq('id',w.id);
+      if(r.error) throw r.error;
+      const check=await getWaybill(w.id);
+      serverSaved=!!(check && check.parsed_data && check.parsed_data.deleted_pdf && check.parsed_data.deleted_pdf.deleted===true);
+    }catch(e){
+      console.warn('[v165.10.13] Supabase delete flag save failed; local fallback used',e);
     }
+
+    // Supabaseの更新可否にかかわらず、この端末では即座に削除済みへ移す。
+    // サーバー保存できた場合もキャッシュ表示の取りこぼし防止として記録する。
+    addLocalDeletedId(w.id);
+    if(!serverSaved) console.warn('[v165.10.13] deletion is stored locally for waybill',w.id);
+    return {serverSaved:serverSaved};
   }
 
   async function showDeletePreview(id,row){
