@@ -407,7 +407,7 @@
     const all=await fetchAllWaybills();
     // v165.10.12: 全件診断の『削除』は永久削除済み一覧へ移す操作。
     // 削除済みにしたPDFは診断一覧から外す（削除済み欄では引き続き閲覧可能）。
-    const rows=all.filter(w=>isSeptember2026(w) && !(w && w.parsed_data && w.parsed_data.deleted_pdf && w.parsed_data.deleted_pdf.deleted===true));
+    const rows=all.filter(w=>isSeptember2026(w) && !isDeleted(w));
     const counts={};
     rows.forEach(w=>{const k=diagnosticStatus(w);counts[k]=(counts[k]||0)+1;});
     const old=document.querySelector('.v165110-sept-diagnostic'); if(old) old.remove();
@@ -429,7 +429,13 @@
       try{ w=await getWaybill(btn.dataset.diagDelete); }catch(e){ alert('PDF情報を取得できませんでした。'); return; }
       if(!confirm('このFAX PDFを削除済みに移動します。\n\n'+String(w.original_filename||'')+'\n\nよろしいですか？')) return;
       btn.disabled=true; btn.textContent='削除中…';
-      try{ await markDeleted(w); ov.remove(); await renderDeletedSection(); await showSeptember2026Diagnostic(); }
+      try{
+        await markDeleted(w);
+        // v165.10.14: ローカル削除済みも診断一覧から即時除外し、削除済み欄を再描画する。
+        ov.remove();
+        await renderDeletedSection();
+        await showSeptember2026Diagnostic();
+      }
       catch(e){ console.error(e); alert('削除できませんでした。'); btn.disabled=false; btn.textContent='削除'; }
     });
   }
