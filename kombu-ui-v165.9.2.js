@@ -386,7 +386,9 @@
 
   async function showSeptember2026Diagnostic(){
     const all=await fetchAllWaybills();
-    const rows=all.filter(isSeptember2026);
+    // v165.10.12: 全件診断の『削除』は永久削除済み一覧へ移す操作。
+    // 削除済みにしたPDFは診断一覧から外す（削除済み欄では引き続き閲覧可能）。
+    const rows=all.filter(w=>isSeptember2026(w) && !(w && w.parsed_data && w.parsed_data.deleted_pdf && w.parsed_data.deleted_pdf.deleted===true));
     const counts={};
     rows.forEach(w=>{const k=diagnosticStatus(w);counts[k]=(counts[k]||0)+1;});
     const old=document.querySelector('.v165110-sept-diagnostic'); if(old) old.remove();
@@ -395,7 +397,7 @@
     ov.style.cssText='position:fixed;inset:0;z-index:1000001;background:rgba(15,23,42,.5);padding:18px;overflow:auto';
     const summary=Object.keys(counts).map(k=>esc(k)+' '+counts[k]+'件').join(' ／ ');
     ov.innerHTML='<div style="max-width:1100px;margin:20px auto;background:#fff;border-radius:16px;padding:18px">'+
-      '<div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><div><h2 style="margin:0">2026年9月 浜中運輸FAX 全件診断</h2><div style="margin-top:5px;color:#627d98">ファイル名が FAX_202609 で始まるPDFだけを全件表示します。</div></div><button class="btn secondary" data-close>閉じる</button></div>'+
+      '<div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><div><h2 style="margin:0">2026年9月 浜中運輸FAX 全件診断</h2><div style="margin-top:5px;color:#627d98">ファイル名が FAX_202609 で始まる未削除PDFを表示します。削除したPDFは「削除済のPDF」へ移動します。</div></div><button class="btn secondary" data-close>閉じる</button></div>'+
       '<div style="margin:14px 0;padding:12px;background:#eef6ff;border-radius:10px"><b>合計 '+rows.length+'件</b><div style="margin-top:5px">'+esc(summary||'該当なし')+'</div></div>'+
       (rows.length?'<div class="tablewrap"><table style="min-width:900px"><tr><th>受信日時</th><th>現在の状態</th><th>PDF名</th><th>操作</th></tr>'+rows.map(w=>'<tr><td>'+esc(fmtJstDate(w.received_at||w.shipping_date))+'</td><td><b>'+esc(diagnosticStatus(w))+'</b></td><td>'+esc(w.original_filename||'')+'</td><td style="white-space:nowrap"><button class="mini" data-diag-open="'+esc(w.id)+'">PDF</button> <button class="mini danger" data-diag-delete="'+esc(w.id)+'">削除</button></td></tr>').join('')+'</table></div>':'<div class="muted">FAX_202609 で始まるFAX PDFは見つかりませんでした。</div>')+
       '</div>';
@@ -440,6 +442,9 @@
   async function markDeleted(w){
     const c = sb();
     const parsed = Object.assign({}, w.parsed_data || {});
+    // 一時保管中のPDFを通常削除した場合は、一時保管フラグを解除して通常の削除済みに確定する。
+    delete parsed.temp_september_2026_deleted;
+    delete parsed.temp_september_2026_deleted_at;
     parsed.deleted_pdf = {
       deleted:true,
       deleted_at:new Date().toISOString(),
@@ -449,9 +454,12 @@
     const r = await c.from(TABLE).update({
       match_status:'ignored',
       parsed_data:parsed
-    }).eq('id',w.id);
+    }).eq('id',w.id).select('id,match_status,parsed_data').maybeSingle();
 
     if(r.error) throw r.error;
+    if(!r.data || String(r.data.id)!==String(w.id) || !r.data.parsed_data || !r.data.parsed_data.deleted_pdf || r.data.parsed_data.deleted_pdf.deleted!==true){
+      throw new Error('削除状態をSupabaseへ保存できませんでした。');
+    }
   }
 
   async function showDeletePreview(id,row){
