@@ -1,9 +1,9 @@
 /* 昆布在庫管理 表示バージョン同期 v1.1
-   v165.10.2: 送り状候補・手動紐付け範囲を拡張 */
+   v165.10.3: 出荷依頼履歴 isMatchedStatus 未定義エラーを修正 */
 (function(){
   'use strict';
   const me=document.currentScript;
-  const VERSION=(me&&me.dataset&&me.dataset.version)||'v165.10.2';
+  const VERSION=(me&&me.dataset&&me.dataset.version)||'v165.10.3';
   window.KOMBU_APP_VERSION=VERSION;
 
   function setIfDifferent(el){

@@ -341,7 +341,7 @@
 
       // 既に別の出荷依頼へ確定添付されている送り状は、
       // 通常の「要確認」候補には再掲しない。
-      if (isMatchedStatus(w.match_status) && linksForWaybill(w.id).length) {
+      if (classifyWaybill(w).key === 'matched' && linksForWaybill(w.id).length) {
         return false;
       }
 
