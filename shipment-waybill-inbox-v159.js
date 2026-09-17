@@ -15,6 +15,8 @@
   const BUCKET_NAME = 'shipment-waybill-inbox';
   const MANUAL_LINK_URL =
     'https://crltrozxztivkyxtjjxv.supabase.co/functions/v1/waybill-manual-link';
+  const SPECIFIC_UNLINK_URL =
+    'https://crltrozxztivkyxtjjxv.supabase.co/functions/v1/waybill-manual-unlink-specific';
   const ERROR_LOG_URL =
     'https://crltrozxztivkyxtjjxv.supabase.co/functions/v1/waybill-error-log';
   const SYNC_TOKEN_KEY = 'kombu_sync_token_v1';
@@ -413,12 +415,20 @@
           const scoreText = info.score !== null ? info.score + '点 ' : '';
           const label = matched.length > 1 ? ('PDF' + (index + 1)) : 'PDF';
           return (
+            '<span class="v1651017-waybill-item" style="display:inline-flex;gap:3px;align-items:center">' +
             '<button class="mini v159-waybill-pdf v165105-waybill-drag" ' +
             'data-waybill-id="' + esc(waybill.id) + '" ' +
             'draggable="true" title="' + esc(String(waybill.original_filename || label)) + ' / 別の出荷依頼行へドラッグして追加添付できます" ' +
             'style="white-space:nowrap;cursor:grab">' +
             '✅ ' + scoreText + label +
-            '</button>'
+            '</button>' +
+            '<button class="mini secondary v1651017-waybill-detach" ' +
+            'data-waybill-id="' + esc(waybill.id) + '" ' +
+            'data-shipment-id="' + esc(shipmentId) + '" ' +
+            'data-product="' + esc(product) + '" ' +
+            'title="PDF本体は削除せず、この出荷依頼との紐付けだけ解除" ' +
+            'style="white-space:nowrap;color:#b42318">削除</button>' +
+            '</span>'
           );
         }).join('') +
         (matched.length > 1 ? '<span class="muted" style="white-space:nowrap">' + matched.length + '件</span>' : '') +
@@ -446,6 +456,46 @@
             return String(w.id) === String(button.dataset.waybillId);
           });
           openWaybillPdf(waybill);
+        };
+      });
+
+    (root || document)
+      .querySelectorAll('.v1651017-waybill-detach')
+      .forEach(function (button) {
+        button.onclick = async function (event) {
+          event.preventDefault();
+          event.stopPropagation();
+          const waybillId = String(button.dataset.waybillId || '');
+          const shipmentId = String(button.dataset.shipmentId || '');
+          const product = String(button.dataset.product || '');
+          const waybill = waybillCache.find(function (w) { return String(w.id) === waybillId; });
+          const name = waybill && waybill.original_filename ? waybill.original_filename : 'この送り状PDF';
+          if (!window.confirm(
+            name + '\n\nこの出荷依頼からPDFの紐付けを解除しますか？\nPDF本体は削除されません。'
+          )) return;
+          button.disabled = true;
+          button.textContent = '解除中…';
+          try {
+            await specificUnlinkApi({
+              waybill_inbox_id: waybillId,
+              app_shipment_id: shipmentId,
+              kombu_type: product
+            });
+            await refreshWaybills();
+            // 履歴表を即時再描画させる。既存画面の再描画処理が拾えるよう change を通知。
+            document.dispatchEvent(new CustomEvent('kombu-waybill-links-changed', {
+              detail: { waybill_inbox_id: waybillId, app_shipment_id: shipmentId, kombu_type: product }
+            }));
+            const cell = button.closest('td');
+            if (cell) {
+              cell.innerHTML = makeWaybillCell(product, shipmentId);
+              bindWaybillButtons(cell);
+            }
+          } catch (e) {
+            alert('紐付けを解除できませんでした。\n' + String(e && e.message || e));
+            button.disabled = false;
+            button.textContent = '削除';
+          }
         };
       });
 
@@ -864,6 +914,19 @@
       );
     }
 
+    return data;
+  }
+
+  async function specificUnlinkApi(payload) {
+    const token = readSyncToken();
+    if (!token) throw new Error('同期トークンが見つかりません。');
+    const res = await fetch(SPECIFIC_UNLINK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-kombu-sync-token': token },
+      body: JSON.stringify(payload || {})
+    });
+    const data = await res.json().catch(function () { return { ok:false, error:'HTTP ' + res.status }; });
+    if (!res.ok || !data.ok) throw new Error(data.error || ('HTTP ' + res.status));
     return data;
   }
 
