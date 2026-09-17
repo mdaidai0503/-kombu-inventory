@@ -1,14 +1,14 @@
-const CACHE = 'kombu-inventory-v165-10-17';
+const CACHE = 'kombu-inventory-v165-10-18';
 
 const APP_SHELL = [
   './',
   './index.html',
-  './app-v159.js?v=165.10.1',
+  './app-v159.js?v=165.10.18',
   './kombu-shipment-cloud-sync-v1.js?v=1.1',
   './kombu-nemuro-r8-import-v1.js?v=1.0',
   './kombu-ui-v165.6.js?v=165.9.3',
   './kombu-ui-v165.7.js?v=165.9.3',
-  './kombu-ui-v165.9.2.js?v=165.10.17',
+  './kombu-ui-v165.9.2.js?v=165.10.18',
   './kombu-pdf-filename-v1.js?v=1.4',
   './manifest.webmanifest',
   './icon-180.png',
@@ -16,7 +16,7 @@ const APP_SHELL = [
   './pdf-worker-v58.js',
   './PDFJS-LICENSE.txt',
   './supabase-auth-v159.js',
-  './shipment-waybill-inbox-v159.js?v=161.24',
+  './shipment-waybill-inbox-v159.js?v=161.25',
   './kombu-waybill-review-candidates-v1.js?v=1.0',
   './kombu-cancel-restore-v1.js?v=1.2',
   './kombu-version-v1.js?v=1.4',

@@ -1392,7 +1392,9 @@
           'margin-bottom:8px;cursor:pointer">' +
           '<input type="checkbox" class="v1612-candidate-check ' + cssClass + '" ' +
           'data-key="' + esc(key) + '" style="margin-top:4px;transform:scale(1.15)">' +
-          '<span style="line-height:1.45">' + esc(candidateOptionLabel(s)) + '</span>' +
+          '<span style="line-height:1.45;flex:1;min-width:0">' + esc(candidateOptionLabel(s)) + '</span>' +
+          '<button type="button" class="mini v1651018-shipment-pdf" data-key="' + esc(key) + '" ' +
+          'style="flex:0 0 auto;white-space:nowrap">📄 出荷依頼PDF</button>' +
           '</label>'
         );
       }).join('');
@@ -1443,6 +1445,24 @@
         });
       };
     }
+
+    // v165.10.18: 候補を選択する前に、その出荷依頼書PDFを別画面で確認する。
+    overlay.addEventListener('click', function (e) {
+      const btn = e.target && e.target.closest ? e.target.closest('.v1651018-shipment-pdf') : null;
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const s = selectableByKey.get(String(btn.dataset.key || ''));
+      if (!s) return;
+      if (typeof window.kombuOpenShipmentHistoryPdf !== 'function') {
+        alert('出荷依頼PDFを表示する機能を読み込めませんでした。画面を再読み込みしてください。');
+        return;
+      }
+      window.kombuOpenShipmentHistoryPdf(
+        s.app_shipment_id || '',
+        s.kombu_type || s.product_code || ''
+      );
+    });
 
     const cancel = document.getElementById('v159ManualLinkCancel');
     if (cancel) cancel.onclick = function () { overlay.remove(); };

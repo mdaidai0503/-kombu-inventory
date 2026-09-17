@@ -6931,6 +6931,21 @@ async function v130TopBackup(){
       }
     };
 
+    // v165.10.18: 送り状の手動紐付け候補から出荷依頼PDFを確認できるようにする。
+    // shipment-waybill-inbox-v159.js から ID + 産地コードで呼び出す。
+    window.kombuOpenShipmentHistoryPdf = function(appShipmentId, kombuType){
+      const id=String(appShipmentId||'');
+      const product=String(kombuType||'');
+      const it=hist.find(x=>String(x.id||'')===id && String(x.product||'')===product)
+        || hist.find(x=>String(x.id||'')===id);
+      if(!it){
+        alert('出荷依頼PDFの履歴が見つかりません。\n'+id);
+        return false;
+      }
+      openHistoryPdf(it);
+      return true;
+    };
+
     const getVal=(it,col)=>{
       if(col==='date')return historyRequestDate(it);
       if(col==='product')return label(it.product);
