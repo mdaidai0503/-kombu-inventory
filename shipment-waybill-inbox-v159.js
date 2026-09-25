@@ -436,6 +436,16 @@
       return classifyWaybill(waybill).key === 'matched' && hasWaybillPdf(waybill);
     });
     if (matched.length) {
+      // v3: 既存の確定PDFがあっても、新しく確認が必要な別PDFが届いた場合は
+      // 「✅ PDF」と「⚠ 要確認」を同時表示する。
+      const reviewWaybill = reviewWaybillForShipment(product, shipmentId);
+      const matchedIds = new Set(
+        matched.map(function (waybill) { return String(waybill.id || ''); })
+      );
+      const showReview =
+        reviewWaybill &&
+        !matchedIds.has(String(reviewWaybill.id || ''));
+
       return '<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">' +
         matched.map(function (waybill, index) {
           const info = classifyWaybill(waybill);
@@ -459,6 +469,14 @@
           );
         }).join('') +
         (matched.length > 1 ? '<span class="muted" style="white-space:nowrap">' + matched.length + '件</span>' : '') +
+        (showReview
+          ? (
+              '<button class="mini v159-waybill-review-link" ' +
+              'data-waybill-id="' + esc(reviewWaybill.id) + '" ' +
+              'style="white-space:nowrap;font-weight:800;color:#8a5a00">' +
+              '⚠ 要確認</button>'
+            )
+          : '') +
         '</div>';
     }
 
