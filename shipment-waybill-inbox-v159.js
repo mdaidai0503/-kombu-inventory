@@ -1012,11 +1012,40 @@
         ? match.multiple_match.matches
         : [];
 
-    const src = direct.length ? direct : nested;
+    const combinations =
+      match.multiple_match &&
+      Array.isArray(match.multiple_match.candidate_combinations)
+        ? match.multiple_match.candidate_combinations
+        : [];
+
+    const combinationShipments = [];
+    combinations.forEach(function (group) {
+      const shipments =
+        group && Array.isArray(group.shipments)
+          ? group.shipments
+          : [];
+      shipments.forEach(function (shipment) {
+        combinationShipments.push(
+          Object.assign({}, shipment || {}, {
+            __from_candidate_combination: true
+          })
+        );
+      });
+    });
+
+    const src =
+      direct.length
+        ? direct
+        : (nested.length ? nested : combinationShipments);
+
     const seen = new Set();
 
     return src
       .filter(function (x) {
+        // 新Drive方式の needs_review では score_breakdown を持たず、
+        // candidate_combinations だけ返る場合がある。
+        if (x && x.__from_candidate_combination) return true;
+
         const b = x && x.score_breakdown ? x.score_breakdown : {};
         const pair = Number(b.company_pair || 0);
         const legacyPair =
@@ -1322,7 +1351,9 @@
     // この追加条件だけでは落とさない。
     if (!pdfDate || !wbDate) return true;
 
-    const passed = pdfDate >= wbDate;
+    // 出荷依頼日が送り状の発送年月日より後なら候補外。
+    // 同日またはそれ以前の出荷依頼は候補として残す。
+    const passed = pdfDate <= wbDate;
 
     if (passed) {
       candidate.__history_pdf_date = pdfDate;
