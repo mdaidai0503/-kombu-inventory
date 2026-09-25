@@ -1429,12 +1429,44 @@
       waybill
     );
 
+    // v4: 要確認画面の通常候補を、送り状の発送年月日に近いものへ絞る。
+    // 発送日と依頼日は同日とは限らないため、0～7日前までを通常候補とする。
+    // それより古い候補は削除せず「その他の出荷依頼」に残す。
+    function isoDayDiff(laterIso, earlierIso) {
+      if (!laterIso || !earlierIso) return null;
+      const later = new Date(laterIso + 'T00:00:00');
+      const earlier = new Date(earlierIso + 'T00:00:00');
+      if (!Number.isFinite(later.getTime()) || !Number.isFinite(earlier.getTime())) return null;
+      return Math.round((later.getTime() - earlier.getTime()) / 86400000);
+    }
+
+    const wbShippingDateForReview = waybillShippingDate(waybill);
+    const narrowedCandidates = candidates
+      .filter(function (candidate) {
+        const candidateDate =
+          normalizeIsoDate(candidate && candidate.ship_date || '') ||
+          getHistoryPdfDate(candidate);
+        const diff = isoDayDiff(wbShippingDateForReview, candidateDate);
+        if (diff === null) return true;
+        return diff >= 0 && diff <= 7;
+      })
+      .sort(function (a, b) {
+        const ad = normalizeIsoDate(a && a.ship_date || '') || getHistoryPdfDate(a);
+        const bd = normalizeIsoDate(b && b.ship_date || '') || getHistoryPdfDate(b);
+        const da = isoDayDiff(wbShippingDateForReview, ad);
+        const db = isoDayDiff(wbShippingDateForReview, bd);
+        if (da === null && db === null) return 0;
+        if (da === null) return 1;
+        if (db === null) return -1;
+        return da - db;
+      });
+
     function shipmentKey(s) {
       return String(s && s.app_shipment_id || '') + '||' +
              String(s && (s.kombu_type || s.product_code) || '');
     }
 
-    const candidateKeys = new Set(candidates.map(shipmentKey));
+    const candidateKeys = new Set(narrowedCandidates.map(shipmentKey));
 
     // v165.10.2: 「不一致」判定を含め、通常候補以外も人が選んで添付できる。
     // 取消済だけは誤添付防止のため除外する。
@@ -1443,7 +1475,7 @@
     });
 
     const selectableByKey = new Map();
-    candidates.concat(otherCandidates).forEach(function (s) {
+    narrowedCandidates.concat(otherCandidates).forEach(function (s) {
       selectableByKey.set(shipmentKey(s), s);
     });
 
@@ -1479,18 +1511,24 @@
     overlay.innerHTML =
       '<div style="max-width:960px;margin:40px auto;background:#fff;border-radius:16px;padding:18px">' +
       '<h2 style="margin-top:0">送り状PDFの添付候補</h2>' +
-      '<div style="font-size:13px;color:#627d98;margin-bottom:10px">' +
-        esc(waybill.original_filename || '') +
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">' +
+        '<div style="font-size:13px;color:#627d98;flex:1;min-width:240px">' +
+          esc(waybill.original_filename || '') +
+        '</div>' +
+        (hasWaybillPdf(waybill)
+          ? '<button type="button" class="btn secondary" id="v4IncomingWaybillPdf" ' +
+            'style="white-space:nowrap">📄 届いた送り状PDFを開く</button>'
+          : '') +
       '</div>' +
       '<div style="background:#eef6ff;padding:10px 12px;border-radius:10px;' +
       'font-size:13px;line-height:1.7;margin-bottom:12px">' +
         '<b>通常候補</b><br>' +
-        '出荷人＋出荷先が一致した時点で「要確認」の候補として扱います。<br>' +
-        '100％一致は従来どおり自動添付します。数量の不一致だけでは候補から外しません。' +
+        '出荷人・出荷先の照合結果に加え、送り状の発送年月日に近い出荷依頼を優先表示します。<br>' +
+        '発送日と依頼日はずれることがあるため、発送日の0～7日前を通常候補に残します。数量の不一致だけでは候補から外しません。' +
       '</div>' +
       '<div style="font-weight:800;margin-bottom:8px">一致候補（複数選択可）</div>' +
       '<div id="v1612CandidateList" style="max-height:330px;overflow:auto">' +
-        buildRows(candidates, 'v165102-primary') +
+        buildRows(narrowedCandidates, 'v165102-primary') +
       '</div>' +
       '<details style="margin-top:14px;border-top:1px solid #d6dee8;padding-top:12px">' +
         '<summary style="cursor:pointer;font-weight:800">その他の出荷依頼から選ぶ（' +
@@ -1510,6 +1548,15 @@
       '</div></div>';
 
     document.body.appendChild(overlay);
+
+    const incomingPdfButton = document.getElementById('v4IncomingWaybillPdf');
+    if (incomingPdfButton) {
+      incomingPdfButton.onclick = function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        openWaybillPdf(waybill);
+      };
+    }
 
     const otherSearch = document.getElementById('v165102OtherSearch');
     if (otherSearch) {
