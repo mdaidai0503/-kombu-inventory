@@ -380,6 +380,12 @@
     return waybillCache.find(function (w) {
       if (!w || String(w.match_status || '') === 'ignored') return false;
 
+      // v5:
+      // この送り状が既に1件以上の出荷依頼へ正式に紐付け済みなら、
+      // 他の候補行には「要確認」を残さない。
+      // 確定済みの送り状は shipment_waybill_links を正本とする。
+      if (linksForWaybill(w.id).length > 0) return false;
+
       // v165.10.7:
       // 1枚の送り状PDFが複数の出荷依頼に対応する場合があるため、
       // 既に別の出荷依頼へ添付済みでも候補判定から除外しない。
