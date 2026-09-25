@@ -225,7 +225,7 @@
       sb
         .from(TABLE_NAME)
         .select(
-          'id,storage_path,original_filename,match_status,matched_product,matched_shipment_id,received_at,shipping_date,parsed_data'
+          'id,storage_path,drive_file_id,drive_web_view_url,drive_folder_name,original_filename,match_status,matched_product,matched_shipment_id,received_at,shipping_date,parsed_data'
         )
         .order('received_at', { ascending: false }),
 
@@ -320,12 +320,39 @@
     return findWaybills(product, shipmentId)[0] || null;
   }
 
+  function hasWaybillPdf(waybill) {
+    return !!(
+      waybill &&
+      (
+        waybill.drive_web_view_url ||
+        waybill.drive_file_id ||
+        waybill.storage_path
+      )
+    );
+  }
+
   async function openWaybillPdf(waybill) {
-    if (!waybill || !waybill.storage_path) {
+    if (!hasWaybillPdf(waybill)) {
       alert('送り状PDFが見つかりません。');
       return;
     }
 
+    // 新方式: PDF本体はGoogle Driveに保存。
+    // SupabaseにはDriveのID/URLだけを保持する。
+    if (waybill.drive_web_view_url || waybill.drive_file_id) {
+      const driveUrl =
+        waybill.drive_web_view_url ||
+        (
+          'https://drive.google.com/file/d/' +
+          encodeURIComponent(String(waybill.drive_file_id || '')) +
+          '/view'
+        );
+
+      window.open(driveUrl, '_blank', 'noopener');
+      return;
+    }
+
+    // 旧方式との後方互換: Supabase Storageに残っている過去PDF。
     const sb = client();
     if (!sb) {
       alert('Supabaseへ接続できません。');
@@ -406,7 +433,7 @@
     // v165.10.6: 異なるPDFは同じ出荷依頼へ複数表示・複数添付可能。
     // 各PDFを個別ボタンにすることで、開くPDF・ドラッグするPDFを明確にする。
     const matched = waybills.filter(function (waybill) {
-      return classifyWaybill(waybill).key === 'matched' && waybill.storage_path;
+      return classifyWaybill(waybill).key === 'matched' && hasWaybillPdf(waybill);
     });
     if (matched.length) {
       return '<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">' +
@@ -549,7 +576,7 @@
       : '';
     const candidates = waybillCache
       .filter(function (w) {
-        if (!w || !w.storage_path) return false;
+        if (!hasWaybillPdf(w)) return false;
         if (alreadyIds.has(String(w.id || ''))) return false;
         // v165.10.11: 候補月はFAXファイル名で厳密に限定する。
         // 例: 2026-09の依頼では FAX_202609... のみ。FAX_202608... は候補外。
@@ -1552,7 +1579,7 @@
     const info = classifyWaybill(w);
     const multiLinks = linksForWaybill(w.id);
 
-    const pdfButton = w.storage_path
+    const pdfButton = hasWaybillPdf(w)
       ? (
           '<button class="mini v159-waybill-pdf" ' +
           'data-waybill-id="' + esc(w.id) + '">' +
