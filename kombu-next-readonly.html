@@ -1,0 +1,183 @@
+<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#19584e"><title>昆布帳 v0.1.21 読み込み専用</title><style>
+*{box-sizing:border-box}body{font:16px system-ui,-apple-system,sans-serif;margin:0;color:#203c37;background:#f3f5f2}main{max-width:1150px;margin:auto;padding:24px}h1{font-size:26px}small{color:#577065}section,.panel{background:white;border:1px solid #dce4de;border-radius:12px;padding:20px;margin:18px 0}.notice{background:#e7efdf;padding:14px;border-radius:8px}.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0}button,input,select{font:inherit;border-radius:7px;padding:12px;min-height:44px}button{border:0;background:#19584e;color:white;cursor:pointer}button:disabled{opacity:.5}button[aria-pressed="false"]{background:#e3ebe7;color:#203c37}input,select{border:1px solid #cad8cf;max-width:100%;background:white}label{display:block;margin:16px 0}label input{display:block;width:100%;margin-top:8px}.tablewrap{overflow:auto;max-width:100%}table{border-collapse:collapse;width:100%;min-width:350px}td,th{padding:12px;text-align:left;border-bottom:1px solid #e0e7e2;white-space:nowrap}#metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}#metrics>div{background:white;padding:18px;border-radius:10px;border:1px solid #dce4de}strong{display:block;font-size:28px;margin-top:8px}details{padding:15px;border-bottom:1px solid #dce4de}summary{cursor:pointer;min-height:44px;overflow-wrap:anywhere}#status{white-space:pre-wrap;overflow-wrap:anywhere}#login{max-width:480px}#search{flex:1;min-width:180px}[hidden]{display:none!important}@media(max-width:600px){main{padding:16px;padding-bottom:calc(20px + env(safe-area-inset-bottom))}section{padding:12px}#metrics{grid-template-columns:1fr 1fr}#metrics>div:last-child{grid-column:1/-1}h1{font-size:23px}strong{font-size:25px}.toolbar button{flex:1}#tabs{position:sticky;top:0;z-index:2;background:#f3f5f2;padding:8px 0}#product,#year{flex:1}#search{width:100%;flex-basis:100%}}
+#content[data-view="stock"] table{min-width:0}#content[data-view="stock"] td:nth-child(2){white-space:normal;overflow-wrap:anywhere}#content[data-view="stock"] td:last-child{font-weight:600}</style><main><small>山三商事 · 昆布管理</small><h1>昆布帳 <small>v0.1.21</small></h1><p class="notice">本番データの読み込み専用です。入出庫の登録・出荷依頼の変更・FAX送信は、引き続き現行アプリで行ってください。</p><section id="login"><form id="loginForm"><h2>現行アプリのアカウントでログイン</h2><label>メールアドレス<input id="email" type="email" autocomplete="username" required></label><label>パスワード<input id="password" type="password" autocomplete="current-password" required></label><button id="loginButton">ログインして在庫を表示</button></form><small>この画面を閉じると、再ログインが必要です。</small></section><p id="status" role="status">ログイン待ち</p><div id="workspace" hidden><div class="toolbar"><button id="reload">最新データを読み込む</button><button id="logout">ログアウト</button></div><div id="metrics"></div><div id="tabs" class="toolbar"><button data-view="stock" aria-pressed="true">在庫</button><button data-view="logs" aria-pressed="false">入出庫履歴</button><button data-view="shipments" aria-pressed="false">出荷依頼</button></div><div class="toolbar"><select id="product" aria-label="産地"><option value="kushiro">釧路</option><option value="hidaka">日高</option><option value="nemuro">根室</option><option value="sanmae">釧棹</option></select><select id="year" aria-label="年産"><option value="">全年産</option></select><input id="search" aria-label="検索" placeholder="漁協・等級・会社名で検索"></div><small id="subtitle"></small><section id="content"></section></div></main><script>(function(root){
+'use strict';
+const PRODUCTS={kushiro:'釧路',nemuro:'根室',hidaka:'日高',sanmae:'釧棹'};
+const keys={kushiro:'kombu_local_only_v3',nemuro:'kombu_nemuro_local_v1',hidaka:'kombu_hidaka_local_v1',sanmae:'kombu_kushiro_sanmae_local_v1'};
+const clone=x=>JSON.parse(JSON.stringify(x));
+function empty(){return {schema:'kombu-next-v1',products:Object.fromEntries(Object.keys(PRODUCTS).map(p=>[p,{records:[],shipments:[],companies:[]}])),waybills:[],links:[],reconciliations:[],audit:[],legacy:null};}
+function importBackup(raw){
+ if(!raw||typeof raw!=='object')throw Error('JSON形式が違います');
+ if(raw.schema==='kombu-next-v1'){const x=clone(raw);validate(x);return x;}
+ const next=empty();let found=0;
+ for(const p of Object.keys(PRODUCTS)){
+  let v=raw[p]??raw[keys[p]];if(typeof v==='string')v=JSON.parse(v);
+  if(v){if(!Array.isArray(v.records)||!Array.isArray(v.shipments))throw Error(PRODUCTS[p]+'の入出庫・出荷依頼形式を確認してください');next.products[p]=clone(v);found++;}
+ }
+ if(!found)throw Error('旧アプリの「全データバックアップ」JSONを選んでください。産地別バックアップは未対応です。');
+ if(found!==4)throw Error('4産地がそろっていません。全データバックアップを使用してください');
+ next.legacy=clone(raw);validate(next);return next;
+}
+function validate(db){
+ for(const p of Object.keys(PRODUCTS)){
+  const data=db.products?.[p];if(!data||!Array.isArray(data.records)||!Array.isArray(data.shipments))throw Error('データが不足しています: '+p);
+  for(const r of data.records)if(!Number.isFinite(Number(r.qty))||Number(r.qty)<0)throw Error('数量が不正です: '+p);
+  for(const s of data.shipments){if(!Array.isArray(s.lines))throw Error('出荷明細形式が不正です: '+s.id);for(const l of s.lines)if(!Number.isFinite(Number(l.qty))||Number(l.qty)<0)throw Error('明細数量が不正です: '+s.id);}
+ }
+ if(!Array.isArray(db.waybills)||!Array.isArray(db.links)||!Array.isArray(db.audit)||!Array.isArray(db.reconciliations))throw Error('新アプリの形式が不正です');
+}
+function key(p,r){return JSON.stringify(p==='hidaka'?[r.year||'R7',r.location||'',r.section||'',r.grade||'']:[r.year||'R7',r.coop||'',r.season||(p==='kushiro'?'夏':''),r.group||'',r.item||'']);}
+function stock(db,p){
+ const rows=new Map();const add=(r,amount)=>{const k=key(p,r);if(!rows.has(k))rows.set(k,{...r,stockKey:k,qty:0});rows.get(k).qty+=amount;};
+ for(const r of db.products[p].records)add(r,(r.type==='out'?-1:1)*Number(r.qty));
+ for(const s of db.products[p].shipments)if(s.status==='confirmed')for(const l of s.lines)add(l,-Number(l.qty));
+ return [...rows.values()].sort((a,b)=>key(p,a).localeCompare(key(p,b),'ja'));
+}
+function id(){return 'NEXT-'+(globalThis.crypto?.randomUUID?.()||Date.now()+'-'+Math.random());}
+function log(db,action,detail){db.audit.push({at:new Date().toISOString(),action,detail});}
+function movement(db,p,line,type,date,memo){
+ if(!['in','out'].includes(type)||!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(Number(line.qty))||Number(line.qty)<=0)throw Error('日付・数量を確認してください');
+ if(type==='out'){const have=stock(db,p).find(r=>key(p,r)===key(p,line))?.qty||0;if(Number(line.qty)>have)throw Error('在庫を超える出庫です');}
+ db.products[p].records.push({...clone(line),id:id(),type,date,memo});log(db,'入出庫登録',{product:p,type,qty:line.qty});
+}
+function createShipment(db,p,lines,source,dest,date){
+ if(!lines.length||!source.trim()||!dest.trim()||!date)throw Error('出荷元・出荷先・依頼日・明細を入力してください');
+ for(const l of lines)if(Number(l.qty)<=0||!Number.isFinite(Number(l.qty)))throw Error('明細数量を確認してください');
+ const s={id:id(),status:'draft',shipDate:date,requestDate:date,source:{name:source},destInfo:{name:dest},lines:clone(lines),createdAt:new Date().toISOString()};
+ db.products[p].shipments.push(s);log(db,'出荷下書き作成',{product:p,id:s.id});return s;
+}
+function confirmShipment(db,p,s,date){
+ if(s.status!=='draft')throw Error('下書きだけ確定できます');
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(date||s.requestDate||s.shipDate||''))throw Error('確定日を入力してください');
+ const demand=new Map();for(const l of s.lines)demand.set(key(p,l),(demand.get(key(p,l))||0)+Number(l.qty));
+ const have=new Map(stock(db,p).map(r=>[r.stockKey,r.qty]));
+ for(const [k,q]of demand)if(q>(have.get(k)||0))throw Error('在庫を超える数量です');
+ s.status='confirmed';s.confirmationDate=date||s.requestDate||s.shipDate;s.confirmedAt=new Date().toISOString();log(db,'出荷確定',{product:p,id:s.id});
+}
+function cancelShipment(db,p,s){if(!['draft','confirmed'].includes(s.status))throw Error('出荷済みは取消できません');s.previousStatus=s.status;s.cancellationDate=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Tokyo'});s.status='cancelled';s.cancelledAt=new Date().toISOString();log(db,'出荷取消',{product:p,id:s.id});}
+function linkedOuts(db,p,s){return db.products[p].records.filter(r=>r.type==='out'&&(String(r.shipmentId||'')===String(s.id)||String(r.faxboxShipmentId||'')===String(s.id)));}
+function sameShipmentQuantities(p,lines,records){
+ const totals=xs=>{const m=new Map();for(const r of xs){const k=key(p,r);m.set(k,(m.get(k)||0)+Number(r.qty));}return m;};
+ const a=totals(lines),b=totals(records);return a.size===b.size&&[...a].every(([k,q])=>b.has(k)&&b.get(k)===q);
+}
+function completeShipment(db,p,s,date,meta={}){
+ if(!db.products[p]||!db.products[p].shipments.includes(s))throw Error('産地・依頼の対応を確認してください');
+ if(!['confirmed','shipped'].includes(s.status))throw Error('確定した依頼だけ出荷済みにできます。下書き・取消済みは確認が必要です');
+ const old=linkedOuts(db,p,s);
+ if(old.some(r=>r.shipmentId&&r.faxboxShipmentId&&String(r.shipmentId)!==String(r.faxboxShipmentId)))throw Error('既存出庫の依頼参照が矛盾しています');
+ if(old.length&&!sameShipmentQuantities(p,s.lines,old))throw Error('既存出庫と依頼明細が一致しません。出庫は追加せず確認してください');
+ if(s.status==='shipped'&&!old.length)throw Error('出荷済み依頼の出庫記録がありません。自動再作成せず確認してください');
+ if(s.status!=='shipped'){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date||''))throw Error('出庫記帳日を確認してください');
+  if(meta.kind!=='fax'&&date<(s.confirmationDate||''))throw Error('手動出荷日は確定日以降にしてください');
+ }
+ // Validate everything before making changes. A complete existing OUT is reused.
+ const fresh=s.status!=='shipped'&&!old.length;
+ if(fresh){for(const l of s.lines){db.products[p].records.push({...clone(l),id:id(),type:'out',date,memo:(meta.kind==='fax'?'FAX送信完了 出荷依頼 ':'出荷依頼 ')+s.id,shipmentId:s.id,...(meta.kind==='fax'?{faxboxShipmentId:s.id,faxboxJobId:meta.jobId}:{} )});}}
+ if(s.status!=='shipped'){s.status='shipped';s.shippedAt=meta.detectedAt||new Date().toISOString();s.completionKind=meta.kind||'manual';if(meta.kind!=='fax')s.actualShipDate=date;else s.faxAccountingDate=old.length?old.map(r=>r.date).filter(Boolean).sort().at(-1):date;}
+ if(meta.kind==='fax'){
+  s.faxboxStatus='sent';s.faxboxJobId=meta.jobId;
+  s.faxCompletions=Array.isArray(s.faxCompletions)?s.faxCompletions:[];
+  if(!s.faxCompletions.some(x=>x.jobId===meta.jobId)){s.faxCompletions.push({jobId:meta.jobId,detectedAt:meta.detectedAt,serverSentAt:meta.serverSentAt||null});log(db,'FAX送信成功反映',{product:p,id:s.id,jobId:meta.jobId,outCreated:fresh});}
+ }else if(fresh){log(db,'手動出荷登録',{product:p,id:s.id,date});}
+ return {created:fresh,reused:!fresh,product:p,shipmentId:s.id};
+}
+function ship(db,p,s,date){return completeShipment(db,p,s,date,{kind:'manual'});}
+function applyFaxSuccess(db,job){
+ if(!job||!['sent','completed','success','succeeded'].includes(job.status)||!String(job.id||'').trim()||job.source_app!=='kombu_inventory')throw Error('昆布アプリのFAX送信成功情報を確認してください');
+ if(!Array.isArray(job.targets)||!job.targets.length)throw Error('産地と依頼IDの明示的な対応が必要です。旧配列から推測しません');
+ const ids=new Set();const planned=[];
+ for(const target of job.targets){
+  if(!target||!Object.hasOwn(PRODUCTS,target.product)||!String(target.shipmentId||'').trim())throw Error('FAX対象の産地・依頼IDが不正です');
+  const token=JSON.stringify([target.product,String(target.shipmentId)]);if(ids.has(token))throw Error('FAX対象が重複しています');ids.add(token);
+  const matches=db.products[target.product].shipments.filter(x=>String(x.id)===String(target.shipmentId));if(matches.length!==1)throw Error('FAX対象の依頼を一意に特定できません');
+  const s=matches[0];if(s.faxboxJobId&&s.faxboxJobId!==job.id)throw Error('現在のFAXジョブと一致しません。古い成功情報を自動反映しません');
+  if(!Array.isArray(target.lines)||!sameShipmentQuantities(target.product,s.lines,target.lines))throw Error('送信した明細と現在の依頼が一致しません');
+  // Preserve the current accounting date rule; never invent an actual shipment date.
+  if(!s.shipDate&&s.status!=='shipped')throw Error('依頼日がありません。出庫記帳日を確認してください');
+  planned.push({p:target.product,s,date:s.shipDate});
+ }
+ const detectedAt=new Date().toISOString();
+ // Run on a clone first so a failure in any target cannot partially finish a job.
+ const probe=clone(db);
+ for(const x of planned){const ps=probe.products[x.p].shipments.find(y=>String(y.id)===String(x.s.id));completeShipment(probe,x.p,ps,x.date,{kind:'fax',jobId:job.id,detectedAt,serverSentAt:job.sent_at||null});}
+ validate(probe);
+ const results=[];for(const x of planned)results.push(completeShipment(db,x.p,x.s,x.date,{kind:'fax',jobId:job.id,detectedAt,serverSentAt:job.sent_at||null}));
+ return results;
+}
+
+function source(s){return s.source?.name||(typeof s.source==='string'?s.source:'')||s.source_name||'';}function dest(s){return s.destInfo?.name||s.dest_name||(typeof s.dest==='object'?s.dest?.name:s.dest)||'';}
+function receipt(w){const m=String(w.original_filename||'').match(/^FAX_(20\d{2})(\d{2})(\d{2})\d{6}(?:_|\.|$)/i);return w.receiptDate||(m?`${m[1]}-${m[2]}-${m[3]}`:'');}
+const norm=x=>String(x||'').normalize('NFKC').replace(/株式会社|\(株\)|有限会社|\(有\)|\s/g,'').toLowerCase();
+function candidates(db,p,s){const req=s.requestDate||s.shipDate||s.ship_date||'';return db.waybills.filter(w=>!w.deleted&&(!req||!receipt(w)||receipt(w)>=req)&&!db.links.some(l=>l.product===p&&l.shipmentId===s.id&&l.waybillId===w.id)).map(w=>{
+ const f=w.parsed_data?.analysis||w.parsed_data||w;const ws=w.source_name||f.raw_shipper_name||f.source_name,wd=w.destination_name||f.raw_consignee_name||f.dest_name,wq=w.total_qty??f.total_qty;
+ const eq=(a,b)=>!a||!b?'未読':norm(a)===norm(b)?'一致':'相違';
+ const sq=s.lines.reduce((t,l)=>t+Number(l.qty),0);const labels=[eq(source(s),ws),eq(dest(s),wd),Number(wq)>0?(Number(wq)===sq?'一致':'相違'):'未読'];
+ return {...w,source:ws||'',dest:wd||'',quantity:wq,agreement:labels,score:labels.filter(x=>x==='一致').length};
+ }).sort((a,b)=>b.score-a.score||receipt(b).localeCompare(receipt(a)));}
+function attach(db,p,s,w){if(db.links.some(l=>l.product===p&&l.shipmentId===s.id&&l.waybillId===w.id))return;db.links.push({product:p,shipmentId:s.id,waybillId:w.id,at:new Date().toISOString()});log(db,'FAX添付',{product:p,id:s.id,waybillId:w.id});}
+function snapshot(db,p,date){
+ const out=new Map();let uncertain=0;
+ const add=(r,qty,kind)=>{const k=key(p,r);if(!out.has(k))out.set(k,{...r,stockKey:k,book:0,pending:0});out.get(k)[kind]+=qty;};
+ for(const r of db.products[p].records){if(!r.date){uncertain++;continue;}if(r.date<=date)add(r,(r.type==='out'?-1:1)*Number(r.qty),'book');}
+ for(const s of db.products[p].shipments){
+  if(s.status==='draft')continue;
+  const confirmed=s.confirmationDate;
+  if(!confirmed){if(['confirmed','shipped'].includes(s.status))uncertain++;continue;}
+  if(confirmed>date||s.cancellationDate&&s.cancellationDate<=date)continue;
+  const completedDate=s.actualShipDate||s.faxAccountingDate;if(completedDate&&completedDate<=date)continue;
+  for(const l of s.lines){add(l,-Number(l.qty),'book');add(l,Number(l.qty),'pending');}
+ }
+ return {rows:[...out.values()].map(r=>({...r,warehouseExpected:r.book+r.pending})),uncertain};
+}
+root.KombuModel={snapshot,PRODUCTS,empty,importBackup,validate,key,stock,movement,createShipment,confirmShipment,cancelShipment,ship,completeShipment,applyFaxSuccess,source,dest,receipt,candidates,attach,id,log};
+})(typeof window!=='undefined'?window:globalThis);
+</script><script>(function(){
+'use strict';
+const base='https://crltrozxztivkyxtjjxv.supabase.co',key='sb_publishable_znOVYKMnJiZuxrsXPaLPxA_EbUdenvN',M=KombuModel;
+let session=null,db=null,product='kushiro',view='stock',lastRead='',revisions={};
+const el=id=>document.getElementById(id),esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),fmt=x=>Number(x||0).toLocaleString('ja-JP');
+const detail=r=>([r.location,r.section,r.grade,r.coop,r.season,r.group,r.item].filter(Boolean).join(' / '));
+const table=(heads,rows)=>'<div class="tablewrap"><table><thead><tr>'+heads.map(x=>'<th>'+esc(x)+'</th>').join('')+'</tr></thead><tbody>'+rows.map(row=>'<tr>'+row.map(x=>'<td>'+esc(x)+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>';
+function render(){
+ if(!db)return; el('content').dataset.view=view;
+ const p=db.products[product],all=Object.values(db.products);
+ el('metrics').innerHTML=[['帳簿在庫',fmt(Object.keys(M.PRODUCTS).reduce((n,k)=>n+M.stock(db,k).reduce((t,r)=>t+r.qty,0),0))],['入出庫記録',fmt(all.reduce((n,d)=>n+d.records.length,0))+'件'],['出荷依頼',fmt(all.reduce((n,d)=>n+d.shipments.length,0))+'件']].map(([name,value])=>'<div><small>'+name+'</small><strong>'+value+'</strong></div>').join('');
+ el('subtitle').textContent=M.PRODUCTS[product]+'／更新番号 '+revisions[product]+'／読込 '+lastRead;
+ const query=el('search').value.trim(),year=el('year').value;
+ const years=[...new Set([...p.records,...p.shipments.flatMap(s=>s.lines||[])].map(r=>r.year||'R7'))].sort();
+ el('year').innerHTML='<option value="">全年産</option>'+years.map(y=>'<option '+(y===year?'selected':'')+'>'+esc(y)+'</option>').join('');
+ let rows;
+ if(view==='stock'){
+  rows=M.stock(db,product).filter(r=>(!year||(r.year||'R7')===year)&&(!query||detail(r).includes(query)));
+  el('content').innerHTML=table(['年産','明細','数量'],rows.map(r=>[r.year||'R7',detail(r),fmt(r.qty)]));
+ }else if(view==='logs'){
+  rows=p.records.filter(r=>(!year||(r.year||'R7')===year)&&(!query||[detail(r),r.memo].join(' ').includes(query))).slice().sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+  el('content').innerHTML=table(['日付','区分','年産','明細','数量','備考'],rows.map(r=>[r.date,r.type==='out'?'出庫':'入庫',r.year||'R7',detail(r),fmt(r.qty),r.memo]));
+ }else{
+  rows=p.shipments.filter(s=>(!year||(s.lines||[]).some(r=>(r.year||'R7')===year))&&(!query||[M.source(s),M.dest(s),s.id,...(s.lines||[]).map(detail)].join(' ').includes(query))).slice().reverse();
+  const statuses={draft:'下書き',confirmed:'確定',shipped:'出荷済み',cancelled:'取消済み'};
+  el('content').innerHTML=rows.map(s=>'<details><summary>'+esc(s.requestDate||s.shipDate||'日付不明')+'　'+esc(M.dest(s))+'　'+esc(statuses[s.status]||s.status)+'</summary><p>依頼番号：'+esc(s.id)+'<br>出荷元：'+esc(M.source(s))+'<br>出荷先：'+esc(M.dest(s))+'</p>'+table(['年産','明細','数量'],(s.lines||[]).map(r=>[r.year||'R7',detail(r),fmt(r.qty)]))+'<p>FAX状態：'+esc(s.faxboxStatus||'記録なし')+'<br>備考：'+esc(s.memo)+'</p></details>').join('')||'<p>該当する出荷依頼はありません。</p>';
+ }
+ el('tabs').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===view)));
+}
+async function load(){
+ if(!session)throw Error('先にログインしてください。');
+ if(Date.now()/1000>session.expires_at-60){
+  const r=await fetch(base+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{apikey:key,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:session.refresh_token})});
+  if(!r.ok){session=null;throw Error('ログインの期限が切れました。再度ログインしてください。');}session=await r.json();
+ }
+ const response=await fetch(base+'/functions/v1/kombu-next-shadow',{method:'POST',headers:{apikey:key,authorization:'Bearer '+session.access_token,'Content-Type':'application/json'},body:JSON.stringify({kind:'read'})});
+ const result=await response.json();
+ if(!response.ok){const messages={LEGACY_UPDATE_REQUIRES_REBASE:'現行データが初期コピー後に更新されています。再照合が必要です。',FORBIDDEN:'このアカウントには読み込みの許可がありません。',SERVER_CONNECTION_SETTING_REQUIRED:'サーバーの接続設定を確認する必要があります。'};throw Error(messages[result.error]||'読み込めませんでした（'+response.status+'）。');}
+ M.validate(result.db);db=result.db;revisions=result.productRevisions;lastRead=new Date().toLocaleTimeString('ja-JP');
+ el('login').hidden=true;el('workspace').hidden=false;render();el('status').textContent='現行4産地と一致したデータを表示しています。';
+}
+el('loginForm').onsubmit=async ev=>{ev.preventDefault();const b=el('loginButton');b.disabled=true;el('status').textContent='ログインして読み込んでいます…';
+ try{const password=el('password').value;el('password').value='';const response=await fetch(base+'/auth/v1/token?grant_type=password',{method:'POST',headers:{apikey:key,'Content-Type':'application/json'},body:JSON.stringify({email:el('email').value,password})});if(!response.ok)throw Error('ログインできませんでした。現行アプリのアカウントを確認してください。');session=await response.json();await load();}catch(error){el('status').textContent=error.message==='Failed to fetch'?'通信できませんでした。ネット接続を確認してください。':error.message;}finally{b.disabled=false;}};
+el('reload').onclick=async()=>{el('reload').disabled=true;try{await load();}catch(error){el('status').textContent='最新データを読み込めませんでした。表示中のデータは '+lastRead+' 時点です。 '+error.message;}finally{el('reload').disabled=false;}};
+el('logout').onclick=()=>{session=null;db=null;el('workspace').hidden=true;el('login').hidden=false;el('content').replaceChildren();el('metrics').replaceChildren();el('email').value='';el('status').textContent='この画面からログアウトしました。';};
+el('product').onchange=()=>{product=el('product').value;el('year').value='';render();};el('year').onchange=render;el('search').oninput=render;
+el('tabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{view=b.dataset.view;render();});
+})();
+</script></html>
