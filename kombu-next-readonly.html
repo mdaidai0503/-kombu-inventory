@@ -218,18 +218,8 @@ function rausuShipmentNormalize(db,p,line,changed){
 function rausuShipmentMake(db,p,preferredYear){const stock=rausuShipmentStock(db,p),year=preferredYear||db.products[p].activeYear||[...new Set(stock.map(r=>r.year))].sort((a,b)=>b.localeCompare(a,'ja',{numeric:true}))[0];const row=stock.find(r=>r.year===year)||{year};return {product:p,...Object.fromEntries(rausuShipmentFields.map(f=>[f,row[f]||''])),qty:''};}
 root.KombuRausuShipment={fields:rausuShipmentFields,choices:rausuShipmentChoices,normalize:rausuShipmentNormalize,make:rausuShipmentMake};
 
-function renderRausu(db,product,year,search){
- const sections={natural:{coop:'天然',items:['黒','赤']},cultivated:{coop:'養殖',items:['自然','人工']},misc:{coop:'雑系',items:['数量']}};
- const data=M.stock(db,product).filter(r=>!search||label(product,r).includes(search));
- const years=[...new Set([...data.map(r=>r.year),...(year?[year]:[])].filter(Boolean))].sort().reverse();
- if(!years.length)years.push('R'+(new Date().getFullYear()-2018));
- const field=(value,cls='',aria='')=>'<input readonly tabindex="-1" class="'+cls+'" aria-label="'+e(aria)+'" value="'+e(String(value??''))+'">';
- const columns=misc=>'<colgroup><col class="rausu-col-product"><col class="rausu-col-grade"><col class="rausu-col-qty">'+(misc?'':'<col class="rausu-col-qty">')+'<col '+(misc?'style="width:42.86%"':'class="rausu-col-memo"')+'></colgroup>';
- const date=new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',year:'numeric',month:'numeric',day:'numeric'}).format(new Date());
- return '<p>年産・数量単位ごとの在庫残数です。空欄は0です。</p>'+years.filter(y=>!year||y===year).map(y=>{
-  const units=[...new Set(data.filter(r=>r.year===y).map(r=>r.unit||r.purchase_unit||''))];if(!units.length)units.push('');
-  return units.map(unit=>{
-   const stock=data.filter(r=>r.year===y&&(r.unit||r.purchase_unit||'')===unit);
+const rausuLayoutSections={natural:{coop:'天然',items:['黒','赤']},cultivated:{coop:'養殖',items:['自然','人工']},misc:{coop:'雑系',items:['数量']}};
+function rausuLayoutSheets(stock){const sections=rausuLayoutSections;
    const pending={},first={};
    for(const [key,def] of Object.entries(sections)){
     pending[key]=[];
@@ -251,6 +241,23 @@ function renderRausu(db,product,year,search){
     }
     sheets.push(sheet);
    }
+
+return sheets;
+}
+root.KombuRausuLayout={groups:rausuGroups,sections:rausuLayoutSections,sheets:rausuLayoutSheets};
+function renderRausu(db,product,year,search){
+ const sections={natural:{coop:'天然',items:['黒','赤']},cultivated:{coop:'養殖',items:['自然','人工']},misc:{coop:'雑系',items:['数量']}};
+ const data=M.stock(db,product).filter(r=>!search||label(product,r).includes(search));
+ const years=[...new Set([...data.map(r=>r.year),...(year?[year]:[])].filter(Boolean))].sort().reverse();
+ if(!years.length)years.push('R'+(new Date().getFullYear()-2018));
+ const field=(value,cls='',aria='')=>'<input readonly tabindex="-1" class="'+cls+'" aria-label="'+e(aria)+'" value="'+e(String(value??''))+'">';
+ const columns=misc=>'<colgroup><col class="rausu-col-product"><col class="rausu-col-grade"><col class="rausu-col-qty">'+(misc?'':'<col class="rausu-col-qty">')+'<col '+(misc?'style="width:42.86%"':'class="rausu-col-memo"')+'></colgroup>';
+ const date=new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',year:'numeric',month:'numeric',day:'numeric'}).format(new Date());
+ return '<p>年産・数量単位ごとの在庫残数です。空欄は0です。</p>'+years.filter(y=>!year||y===year).map(y=>{
+  const units=[...new Set(data.filter(r=>r.year===y).map(r=>r.unit||r.purchase_unit||''))];if(!units.length)units.push('');
+  return units.map(unit=>{
+   const stock=data.filter(r=>r.year===y&&(r.unit||r.purchase_unit||'')===unit);
+   const sheets=rausuLayoutSheets(stock);
    return sheets.map((sheet,page)=>{
     const totals={};
     function table(key){
@@ -722,33 +729,58 @@ hStockCanvas=function(y){
 
 
 
+
 function vRausuShipmentCanvases(p,s){
- const sheets=[],buckets=new Map();
- for(const line of s.lines||[]){const unit=line.unit||line.purchase_unit||'',key=JSON.stringify([line.year,unit]);if(!buckets.has(key))buckets.set(key,{year:line.year,unit,lines:[]});buckets.get(key).lines.push(line);}
+ const result=[],buckets=new Map(),W=2000,H=1118,tx=35,half=(W-2*tx)/2,rowH=36,tableTop=105;
+ const num=q=>Number(q||0).toLocaleString('ja-JP',{maximumFractionDigits:10});
+ for(const l of s.lines||[]){const unit=l.unit||l.purchase_unit||'',key=JSON.stringify([l.year,unit]);if(!buckets.has(key))buckets.set(key,{year:l.year||'',unit,lines:[]});buckets.get(key).lines.push({...l,qty:Number(l.qty)});}
  if(!buckets.size)buckets.set('',{year:'',unit:'',lines:[]});
  for(const bucket of buckets.values()){
-  const memo=String(s.memo||'');
-  for(let start=0;start<Math.max(bucket.lines.length,1);start+=12){
-   const canvas=document.createElement('canvas');canvas.width=2000;canvas.height=1414;const c=canvas.getContext('2d');c.fillStyle='#fff';c.fillRect(0,0,2000,1414);c.fillStyle='#111';c.strokeStyle='#555';
-   const text=(v,x,y,width,size=26)=>{c.font=size+'px "Yu Gothic",Meiryo,sans-serif';let str='',row=0;for(const ch of String(v??'')){if(c.measureText(str+ch).width>width){c.fillText(str,x,y+size*1.4*row++);str='';}str+=ch;}c.fillText(str,x,y+size*1.4*row);return (row+1)*size*1.4;};
-   c.font='bold 46px "Yu Gothic",Meiryo,sans-serif';c.fillText('出 荷 依 頼 書　'+KombuModel.PRODUCTS[p],70,80);
-   text('依頼番号：'+(s.documentNumber||s.id),70,135,1840);text('依頼日：'+(s.requestDate||s.shipDate||'')+'　着希望日：'+(s.arrivalDate||''),70,180,1840);
-   const source=s.source||{},dest=s.destInfo||s.dest||{};
-   for(const [party,x,name]of [[source,70,KombuModel.source(s)],[dest,1030,KombuModel.dest(s)]]){text((x===70?'出荷人：':'出荷先：')+name,x,245,870,30);text([party.postal,party.address].filter(Boolean).join(' '),x,295,870,24);text('電話：'+(party.phone||''),x,365,870,24);}
-   text((bucket.year||'年産未設定')+'年産　数量単位：'+bucket.unit+'　配送・袋入等：'+(s.deliveryPack||''),70,420,1840,26);
-   const cols=[70,250,560,1110,1340,1650,1930];const labels=['年産','天然・養殖・雑系','品名・区分','等級','色・区分','数量'];
-   const row=(values,y,header=false)=>{for(let i=0;i<6;i++){c.strokeRect(cols[i],y,cols[i+1]-cols[i],54);c.font=(header?24:23)+'px "Yu Gothic",Meiryo,sans-serif';c.fillText(String(values[i]??''),cols[i]+10,y+36,cols[i+1]-cols[i]-20);}};
-   row(labels,450,true);const pageLines=bucket.lines.slice(start,start+12);
-   pageLines.forEach((l,i)=>row([l.year,l.coop,l.season,l.group,l.item,String(l.qty)+' '+bucket.unit],504+i*54));
-   text('このページの数量：'+pageLines.reduce((n,l)=>n+Number(l.qty),0).toLocaleString('ja-JP')+' '+bucket.unit,1250,1190,680,28);
-   text('備考：'+(memo.length>110?memo.slice(0,110)+'（続きは別紙）':memo),70,1240,1840,24);
-   sheets.push(canvas);
+  const sheets=KombuRausuLayout.sheets(bucket.lines);
+  for(const [page,sheet]of sheets.entries()){
+   const canvas=document.createElement('canvas');canvas.width=W;canvas.height=H;const c=canvas.getContext('2d');c.fillStyle='#fff';c.fillRect(0,0,W,H);c.fillStyle='#111';c.strokeStyle='#333';
+   const text=(value,x,y,width,height,size=22,bold=false)=>{
+    const str=String(value??'');if(!str)return;
+    const font=z=>(bold?'700 ':'400 ')+z+'px -apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif';
+    let z=size,lines=[];const wrap=()=>{c.font=font(z);lines=[];for(const part of str.split('\n')){let line='';for(const ch of part){if(line&&c.measureText(line+ch).width>width-10){lines.push(line);line=ch;}else line+=ch;}lines.push(line);}};
+    wrap();while(lines.length*z*1.12>height-4&&z>1){z*=.92;wrap();}
+    c.save();c.fillStyle='#111';c.font=font(z);c.textAlign='center';c.textBaseline='middle';const top=y+height/2-(lines.length-1)*z*1.12/2;lines.forEach((l,i)=>c.fillText(l,x+width/2,top+i*z*1.12));c.restore();
+   };
+   const cell=(value,x,y,w,h=rowH,bold=false,size=22)=>{c.lineWidth=.8;c.strokeRect(x,y,w,h);text(value,x,y,w,h,size,bold);};
+   text('《 天 然 》',tx,70,half,35,25,true);
+   text('《 養 殖 》'+(p==='rausu_long'?'　　　　　　　長　切':''),tx+half,70,half,35,25,true);
+   const totals={};
+   function table(key,left,top){
+    const misc=key==='misc',def=KombuRausuLayout.sections[key],widths=misc?[2/7,1/7,1/7,3/7]:[2/7,1/7,1/7,1/7,2/7];
+    let y=top;
+    if(misc){cell('《 雑 系 》',left,y,half,rowH,true,25);y+=rowH;}
+    const heads=misc?['品　名','等 級','数 量','備　考']:['品　名','等 級',...(key==='natural'?['黒','赤']:['自 然','人 工']),'備　考'];
+    let x=left;heads.forEach((h,i)=>{cell(h,x,y,half*widths[i],rowH,true);x+=half*widths[i];});y+=rowH;
+    totals[key]=def.items.map(()=>0);
+    for(const g of sheet[key]){
+     const groupH=g.count*rowH;cell('',left,y,half*widths[0],groupH);
+     if(g.count>1){text(g.product,left,y+groupH/2-30,half*widths[0],30,24,true);text(g.kind,left,y+groupH/2,half*widths[0],27,21,true);}else text(g.product,left,y,half*widths[0],groupH,22,true);
+     for(let row=0;row<g.count;row++){
+      x=left+half*widths[0];cell(g.grades[row],x,y,half*widths[1],rowH,true);x+=half*widths[1];
+      for(let col=0;col<def.items.length;col++){const q=g.values[row][col];totals[key][col]+=q;cell(q?num(q):'',x,y,half*widths[col+2]);x+=half*widths[col+2];}
+      cell((g.extra||[]).join(' ／ '),x,y,half*widths.at(-1));y+=rowH;
+     }
+    }
+    cell('計',left,y,half*(widths[0]+widths[1]),rowH,true);x=left+half*(widths[0]+widths[1]);
+    totals[key].forEach((q,i)=>{cell(num(q),x,y,half*widths[i+2],rowH,true);x+=half*widths[i+2];});cell('',x,y,half*widths.at(-1));y+=rowH;
+    c.lineWidth=2;c.strokeRect(left,top,half,y-top);return y;
+   }
+   const bottom=table('natural',tx,tableTop),right=table('cultivated',tx+half,tableTop);table('misc',tx+half,right);
+   const total=Object.values(totals).flat().reduce((a,b)=>a+b,0),grandX=tx+half+half*.42,grandW=half*.5;
+   text('総計　'+num(total)+' '+bucket.unit,grandX,bottom+22,grandW,38,27,true);
+   c.beginPath();c.moveTo(grandX,bottom+60);c.lineTo(grandX+grandW,bottom+60);c.moveTo(grandX,bottom+64);c.lineTo(grandX+grandW,bottom+64);c.stroke();
+   if(sheets.length>1)text('明細 '+(page+1)+' / '+sheets.length,tx,bottom+30,half,30,20);
+   // Reuse the exact Kushiro/Nemuro header, logo, address, party cells and memo formatter.
+   result.push(v55RetitleStockCanvas(canvas,KombuModel.PRODUCTS[p]+'　出 荷 依 頼 書',bucket.year,s,70,tx));
   }
  }
- if(String(s.memo||'').length>110){let offset=110;while(offset<String(s.memo).length){const canvas=document.createElement('canvas');canvas.width=2000;canvas.height=1414;const c=canvas.getContext('2d');c.fillStyle='white';c.fillRect(0,0,2000,1414);c.fillStyle='#111';c.font='30px "Yu Gothic",Meiryo,sans-serif';c.fillText('出荷依頼 備考（続き）　'+KombuModel.PRODUCTS[p]+' ／ '+(s.documentNumber||s.id),70,80);const rest=String(s.memo).slice(offset,offset+1200);for(let i=0;i<rest.length;i+=48)c.fillText(rest.slice(i,i+48),70,150+Math.floor(i/48)*44);offset+=1200;sheets.push(canvas);}}
- return sheets;
+ return result;
 }
-
 globalThis.KombuOriginalPdf={canvases(p,s){if(p.startsWith('rausu_'))return vRausuShipmentCanvases(p,s);const makers={kushiro:v55CanvasKushiro,hidaka:v55CanvasHidaka,nemuro:v55CanvasNemuro,sanmae:v55CanvasSanmae};return v55ShipmentYears(s,"R7").map(y=>makers[p](s,y));},blob:v65LandscapePdfBlobFromCanvases,ready:()=>V161_YAMASAN_LOGO_IMG.decode().catch(()=>{})};
 })();
 </script><script>(function(root){
