@@ -32,6 +32,7 @@ for(const p of ['rausu_normal','rausu_long']){
  const layouts=C.rausuPages(p,'R8','kg',db,[]),lines=layouts.flatMap(pg=>pg.cells).map((c,i)=>({...c.line,qty:100000+i}));
  const canvases=sandbox.KombuOriginalPdf.canvases(p,{id:'TEST',lines});let i=0;
  assert.equal(canvases.length,layouts.length);
+ for(const canvas of canvases){assert.equal(canvas.kombuPageOrientation,'portrait');assert.equal(canvas.width,1400);assert.equal(canvas.height,1980);}
  for(const [n,pg]of layouts.entries())for(const c of pg.cells){const expected=(100000+i++).toLocaleString('ja-JP'),op=canvases[n].ops.find(o=>o.t===expected);assert.ok(op,p+' quantity printed '+(i-1)+' '+JSON.stringify(c.line)+' PAGE '+n+' '+canvases[n].ops.filter(x=>/^100/.test(x.t)).slice(-8).map(x=>x.t));assert.ok(Math.abs(op.x-c.x-c.w/2)<.001,p+' x');assert.ok(Math.abs(op.y-c.y-c.h/2)<.001,p+' y');}
  console.log(p+': '+layouts.length+' PDF pages and continuation cell centers matched');
 }

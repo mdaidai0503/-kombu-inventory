@@ -57,13 +57,13 @@ function rausuPages(p,year,unit,db,lines){
  for(const l of [...M.stock(db,p),...lines.filter(l=>l.product===p)])if(l.year===year&&unitOf(l)===unit)map.set(M.key(p,l),{year,coop:l.coop,season:l.season,group:l.group,item:l.item,unit,qty:0});
  const sheets=root.KombuRausuLayout.sheets([...map.values()]);
  return sheets.map(sheet=>{
-  const cells=[];const half=965,h=36;
-  function table(key,left,top){const d=root.KombuRausuLayout.sections[key],misc=key==='misc';let y=top+(misc?72:36);
+  const cells=[],layout=root.KombuOriginalPdf.rausuLayout,tx=layout.left,half=(layout.width-2*tx)/2,h=layout.rowHeight;
+  function table(key,left,top){const d=root.KombuRausuLayout.sections[key],misc=key==='misc';let y=top+(misc?2*h:h);
    for(const g of sheet[key])for(let r=0;r<g.count;r++){
     if(g.product&&g.grades[r])d.items.forEach((item,j)=>cells.push({line:{year,coop:d.coop,season:g.product+g.kind,group:g.grades[r],item,unit},x:left+half*(3+j)/7,y,w:half/7,h}));y+=h;
    }return y+h;
   }
-  table('natural',35,401);const right=table('cultivated',1000,401);table('misc',1000,right);
+  table('natural',tx,layout.tableTop);const right=table('cultivated',tx+half,layout.tableTop);table('misc',tx+half,right);
   return {cells};
  });
 }
