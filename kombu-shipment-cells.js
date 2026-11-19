@@ -1,0 +1,147 @@
+(function(root){
+'use strict';
+const clone=x=>JSON.parse(JSON.stringify(x));
+const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const norm=x=>String(x??'').normalize('NFKC').replace(/[\s,，]+/g,'');
+const number=x=>{const s=norm(x);return s!==''&&/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(s)?Number(s):NaN;};
+const unitOf=r=>r.unit||r.purchase_unit||'';
+const fmt=x=>Number(x||0).toLocaleString('ja-JP',{maximumFractionDigits:10});
+function token(p,r){return p+':'+root.KombuModel.key(p,r);}
+function label(p,r){return [root.KombuModel.PRODUCTS[p],r.year,...(p==='hidaka'?[r.location,r.section,r.grade]:[r.coop,r.season,r.group,r.item]),...(p.startsWith('rausu_')?[unitOf(r)]:[])].filter(Boolean).join(' / ');}
+function quantity(item,p,unit){return p.startsWith('rausu_')&&/^(kg|キロ|㎏|キログラム)$/i.test(norm(unit))?number(item.quantity):number(item.count);}
+function setQuantity(lines,p,line,value){
+ const q=number(value);if(!Number.isFinite(q)||q<0)throw Error('数量は0以上の数値で入力してください。');
+ const k=token(p,line),old=lines.filter(l=>token(l.product,l)===k);
+ const refs=old.flatMap(l=>l.quoteRefs||[]);
+ for(let i=lines.length-1;i>=0;i--)if(token(lines[i].product,lines[i])===k)lines.splice(i,1);
+ const fields=p==='hidaka'?['year','location','section','grade']:['year','coop','season','group','item',...(p.startsWith('rausu_')?['unit']:[])];
+ const dimensions=Object.fromEntries(fields.map(f=>[f,f==='unit'?unitOf(line):line[f]]));
+ if(q>0)lines.push({...dimensions,product:p,qty:q,...(refs.length?{quoteRefs:refs}:{})});
+}
+function regularCells(p,year){
+ const m=root.KombuStockTable.masters[p],out=[];
+ if(p==='hidaka'){
+  const rows=m.sections.flatMap(s=>s.items.map(grade=>({section:s.name,grade}))),n=rows.length;
+  const scale=(n*26+32-11*34)/((n-11)*26+32),w=(1684-70-70-95-60)/m.locations.length;
+  let y=414;
+  rows.forEach((r,i)=>{const h=i<11?34:26*scale;m.locations.forEach((location,j)=>out.push({line:{year,location,...r},x:200+j*w,y,w,h}));y+=h;});
+ }else{
+  const columns=m.groups.flatMap(g=>g.items.map(item=>({group:g.name,item}))),k=p==='kushiro';
+  const left=k?44:34,coopW=k?126:92,seasonW=k?52:45,totalW=k?62:58;
+  const w=(1684-left*2-coopW-seasonW-totalW)/columns.length,h=k?42:p==='nemuro'?70:64;
+  m.coops.forEach((coop,i)=>m.seasons.forEach((season,j)=>columns.forEach((c,n)=>out.push({line:{year,coop,season,...c},x:left+coopW+seasonW+n*w,y:366+(k?66:88)+(i*(m.seasons.length+1)+j)*h,w,h}))));
+ }
+ return out;
+}
+function rausuPages(p,year,unit,db,lines){
+ const M=root.KombuModel,map=new Map();
+ for(const l of [...M.stock(db,p),...lines.filter(l=>l.product===p)])if(l.year===year&&unitOf(l)===unit)map.set(M.key(p,l),{year,coop:l.coop,season:l.season,group:l.group,item:l.item,unit,qty:0});
+ const sheets=root.KombuRausuLayout.sheets([...map.values()]);
+ return sheets.map(sheet=>{
+  const cells=[];const half=965,h=36;
+  function table(key,left,top){const d=root.KombuRausuLayout.sections[key],misc=key==='misc';let y=top+(misc?72:36);
+   for(const g of sheet[key])for(let r=0;r<g.count;r++){
+    if(g.product&&g.grades[r])d.items.forEach((item,j)=>cells.push({line:{year,coop:d.coop,season:g.product+g.kind,group:g.grades[r],item,unit},x:left+half*(3+j)/7,y,w:half/7,h}));y+=h;
+   }return y+h;
+  }
+  table('natural',35,401);const right=table('cultivated',1000,401);table('misc',1000,right);
+  return {cells};
+ });
+}
+function pages(p,year,unit,db,lines){return p.startsWith('rausu_')?rausuPages(p,year,unit,db,lines):[{cells:regularCells(p,year)}];}
+function allocateQuote(db,lines,quote,rows,stockRows){
+ const M=root.KombuModel,next=clone(lines),used=new Set(next.flatMap(l=>(l.quoteRefs||[]).map(r=>r.allocationId)));let count=0;
+ for(const r of rows){if(r.skip)continue;for(const [j,a]of r.allocations.entries()){
+  const stock=stockRows.find(s=>s.key===a.stock),q=number(a.qty);if(!stock||!Number.isFinite(q)||q<=0)throw Error('商品 '+(r.index+1)+' の在庫と出荷数を指定するか、「今回は取り込まない」を選んでください。');
+  const allocationId=quote.quoteId+':'+r.index+':'+j;if(used.has(allocationId))throw Error('この見積明細はすでに取込み済みです。数量変更は帳票セルで行ってください。');
+  if(!stock.p.startsWith('rausu_')&&!regularCells(stock.p,stock.line.year).some(c=>M.key(stock.p,c.line)===M.key(stock.p,stock.line)))throw Error(label(stock.p,stock.line)+' は標準帳票の分類と一致しません。在庫の分類を確認してください。');
+  const old=next.find(l=>token(l.product,l)===stock.key),total=Number(old?.qty||0)+q,available=M.stock(db,stock.p).find(r=>M.key(stock.p,r)===M.key(stock.p,stock.line))?.qty||0;
+  if(total>available)throw Error(label(stock.p,stock.line)+' の出荷可能在庫を超えています。');
+  setQuantity(next,stock.p,stock.line,total);next.find(l=>token(l.product,l)===stock.key).quoteRefs=[...(old?.quoteRefs||[]),{quoteId:quote.quoteId,itemIndex:r.index,itemName:r.item.name,allocationId,qty:q,unit:stock.p.startsWith('rausu_')?unitOf(stock.line):'個'}];used.add(allocationId);count++;
+ }}if(!count)throw Error('取り込む明細を選択してください。');return {lines:next,count};
+}
+function mount({host,lines,getDb,getShipment,onChange,product,year}){
+ const M=root.KombuModel;let selectedProduct=product||'kushiro',selectedYear=year||'R8',selectedUnit='',serial=0,quotes=[],quoteRows=[],quote=null;
+ const sheets=new Map();
+ function addSheet(p,y,u=''){sheets.set(JSON.stringify([p,y,u]),{p,y,u});}
+ for(const l of lines)addSheet(l.product,l.year,l.product.startsWith('rausu_')?unitOf(l):'');
+ if(!sheets.size)addSheet(selectedProduct,selectedYear);
+ host.innerHTML=`<style>
+ .shipment-paper-scroll{overflow:auto;max-height:80vh;background:#e5eae6;padding:10px;margin:10px 0}.shipment-paper{position:relative;margin:auto;background:white;box-shadow:0 1px 5px #0003}.shipment-paper canvas{display:block;width:100%;height:100%}
+ #actionBody .shipment-paper input.shipment-cell{position:absolute;display:block!important;min-width:0!important;max-width:none!important;min-height:0!important;margin:0!important;border:0;border-radius:0;padding:0 1px!important;text-align:center;background:#e9f8efb3;color:#12412a;box-sizing:border-box;font-family:inherit;appearance:textfield;-moz-appearance:textfield} .shipment-cell::-webkit-inner-spin-button,.shipment-cell::-webkit-outer-spin-button{appearance:none;margin:0}.shipment-cell:focus{outline:2px solid #307c51;background:#fff8d2!important;z-index:2}.shipment-cell[aria-invalid=true]{background:#ffe2deb3!important;color:#9b1717!important}.shipment-cell-status{min-height:24px;font-weight:600}.shipment-import{border:1px solid #bbcbbd;padding:12px;background:#f5faf5}.shipment-import input,.shipment-import select{max-width:100%;width:100%}.shipment-import .allocation{border-top:1px solid #cad8cf;padding:10px 0}.shipment-import input[type=checkbox]{width:auto!important;display:inline!important}.shipment-quote-summary{white-space:pre-wrap}.shipment-controls label{margin:4px 0}.shipment-import-error{color:#952020}
+ </style><div class="shipment-import"><h4>見積から読み込む</h4><div class="toolbar"><button type="button" data-quotes="cloud">同期済みの見積を選ぶ</button><button type="button" data-quotes="pc">このPCの最新見積を選ぶ</button><label>見積JSONを読み込む<input type="file" data-quote-file accept=".json,application/json"></label></div><p>見積の本数・重量を確認し、各商品に対応する在庫を選択して帳票へ取り込みます。取込みだけでは在庫は変わりません。</p><p data-quote-error role="status"></p><div data-quote-list></div><div data-quote-items></div></div><div class="toolbar shipment-controls"><label>昆布<select data-paper-product>${Object.entries(M.PRODUCTS).map(([p,n])=>`<option value="${p}">${esc(n)}</option>`).join('')}</select></label><label>年産<select data-paper-year></select></label><label data-unit-label hidden>数量単位<select data-paper-unit></select></label><button type="button" data-add-paper>帳票を追加・表示</button></div><p>緑色の数量セルへ出荷数を直接入力してください。空欄・0は出荷対象から外れます。Tabキーで次のセルへ移動できます。</p><p class="shipment-cell-status" role="status"></p><div data-paper-pages></div>`;
+ const el=s=>host.querySelector(s),error=message=>{el('[data-quote-error]').textContent=message;};
+ function available(p,l){return M.stock(getDb(),p).find(r=>M.key(p,r)===M.key(p,l))?.qty||0;}
+ function changed(){onChange();drawCanvases();}
+ function controls(){
+  el('[data-paper-product]').value=selectedProduct;
+  const ys=[...new Set([selectedYear,...Array.from({length:8},(_,i)=>'R'+(i+3)),...M.stock(getDb(),selectedProduct).map(r=>r.year)])].filter(Boolean).sort((a,b)=>a.localeCompare(b,'ja',{numeric:true}));
+  el('[data-paper-year]').innerHTML=ys.map(y=>`<option ${y===selectedYear?'selected':''}>${esc(y)}</option>`).join('');
+  const units=[...new Set([...M.stock(getDb(),selectedProduct),...lines.filter(l=>l.product===selectedProduct)].filter(l=>l.year===selectedYear).map(unitOf).filter(Boolean))];
+  if(!units.includes(selectedUnit))selectedUnit=units[0]||'';
+  el('[data-unit-label]').hidden=!selectedProduct.startsWith('rausu_');el('[data-paper-unit]').innerHTML=units.map(u=>`<option ${u===selectedUnit?'selected':''}>${esc(u)}</option>`).join('');
+ }
+ el('[data-paper-product]').onchange=e=>{selectedProduct=e.target.value;controls();};
+ el('[data-paper-year]').onchange=e=>{selectedYear=e.target.value;controls();};
+ el('[data-paper-unit]').onchange=e=>selectedUnit=e.target.value;
+ el('[data-add-paper]').onclick=()=>{if(selectedProduct.startsWith('rausu_')&&!selectedUnit){error('この年産の羅臼在庫に数量単位がありません。入庫データを先に確認してください。');return;}addSheet(selectedProduct,selectedYear,selectedProduct.startsWith('rausu_')?selectedUnit:'');drawPapers();};
+ let active=[];
+ function context(p,y,u){const base=getShipment(),actual=lines.filter(l=>l.product===p&&l.year===y&&(!p.startsWith('rausu_')||unitOf(l)===u));
+  const seeds=p.startsWith('rausu_')?M.stock(getDb(),p).filter(r=>r.year===y&&unitOf(r)===u).map(r=>({...r,qty:0})):[];
+  return {...base,lines:[...seeds,...actual.map(l=>({...l,unit:unitOf(l)})),...(actual.length||seeds.length?[]:[{year:y,qty:0}])]};
+ }
+ function drawCanvases(){for(const {p,y,u,holders}of active){const canvases=root.KombuOriginalPdf.canvases(p,context(p,y,u));holders.forEach((h,i)=>{if(!canvases[i])return;const old=h.querySelector('canvas');canvases[i].setAttribute('aria-label',M.PRODUCTS[p]+' '+y+'年産 出荷依頼書');old.replaceWith(canvases[i]);});}}
+ function drawPapers(){active=[];const area=el('[data-paper-pages]');area.replaceChildren();const visible=new Set();
+  for(const {p,y,u}of sheets.values()){
+   const group=document.createElement('section');group.innerHTML=`<h4>${esc(M.PRODUCTS[p])} · ${esc(y)}年産 ${esc(u)}</h4>`;area.append(group);
+   const info=pages(p,y,u,getDb(),lines),canvases=root.KombuOriginalPdf.canvases(p,context(p,y,u)),holders=[];
+   info.forEach((page,index)=>{const canvas=canvases[index];if(!canvas)return;const scroll=document.createElement('div');scroll.className='shipment-paper-scroll';const paper=document.createElement('div');paper.className='shipment-paper';paper.style.width=canvas.width+'px';paper.style.height=canvas.height+'px';paper.append(canvas);scroll.append(paper);group.append(scroll);holders.push(paper);
+    page.cells.forEach(cell=>{const input=document.createElement('input'),k=token(p,cell.line),existing=lines.filter(l=>token(l.product,l)===k).reduce((a,l)=>a+Number(l.qty),0),av=available(p,cell.line);visible.add(k);
+     input.type='number';input.min='0';input.step='any';input.inputMode='decimal';input.className='shipment-cell';input.value=existing||'';
+     input.style.cssText=`left:${cell.x/canvas.width*100}%;top:${cell.y/canvas.height*100}%;width:${cell.w/canvas.width*100}%;height:${cell.h/canvas.height*100}%;font-size:${Math.min(24,cell.h*.62)}px`;
+     const caption=label(p,cell.line)+' ／ 出荷可能在庫 '+fmt(av)+' '+(u||'個');input.title=caption;input.setAttribute('aria-label',caption);input.setAttribute('aria-invalid',String(existing>av));
+     input.onfocus=()=>el('.shipment-cell-status').textContent=caption;
+     input.oninput=()=>{const q=input.value===''?0:number(input.value);input.setAttribute('aria-invalid',String(input.validity.badInput||!Number.isFinite(q)||q<0||q>av));try{if(input.validity.badInput)throw Error('数量を確認してください。');setQuantity(lines,p,cell.line,q);el('.shipment-cell-status').textContent=caption+(q>av?'　⚠ 在庫不足':'');changed();}catch(e){el('.shipment-cell-status').textContent=e.message;}};
+     paper.append(input);
+    });
+   });active.push({p,y,u,holders});
+  }
+  const missing=lines.filter(l=>Number(l.qty)>0&&!visible.has(token(l.product,l)));
+  if(missing.length){const warning=document.createElement('div');warning.dataset.unmappedShipment='true';warning.innerHTML='<p class="shipment-import-error" role="alert">標準帳票に表示できない分類があります。このままでは保存できません。在庫の分類を確認してください。</p>'+missing.map(l=>'<p>'+esc(label(l.product,l))+' ／ '+esc(l.qty)+'</p>').join('');area.append(warning);}
+ }
+ // Parent header fields update the same canvas, so displayed paper and saved PDF agree.
+ const body=host.closest('#actionBody');const headerChanged=e=>{if(host.contains(e.target))return;if(/^v(?:114|161|229)/.test(e.target.id)){onChange();drawCanvases();}};
+ body?.addEventListener('input',headerChanged);body?.addEventListener('change',headerChanged);
+ const dlg=host.closest('dialog');dlg?.addEventListener('close',()=>{serial++;body?.removeEventListener('input',headerChanged);body?.removeEventListener('change',headerChanged);},{once:true});
+ function setQuotes(data){quotes=(Array.isArray(data)?data:[data]).filter(q=>q&&Array.isArray(q.items)&&q.status!=='削除済').map(q=>({quoteId:q.quoteId||q.quote_id,customer:q.customer||'',quoteDate:q.quoteDate||q.quote_date||'',items:q.items,status:q.status,updatedAt:q.updatedAt||q.updated_at}));
+  el('[data-quote-list]').innerHTML=`<label>見積を検索<input data-quote-search placeholder="見積番号・得意先"></label><label>見積<select data-quote-select></select></label>`;
+  const select=el('[data-quote-select]');function filter(){const q=norm(el('[data-quote-search]').value);select.innerHTML='<option value="">選択してください</option>'+quotes.map((r,i)=>({r,i})).filter(({r})=>norm([r.quoteId,r.customer,r.quoteDate].join(' ')).includes(q)).sort((a,b)=>b.r.quoteDate.localeCompare(a.r.quoteDate)).map(({r,i})=>`<option value="${i}">${esc(r.quoteDate+' '+r.quoteId+' '+r.customer)}</option>`).join('');}
+  el('[data-quote-search]').oninput=filter;select.onchange=()=>{if(select.value==='')return;quote=quotes[Number(select.value)];quoteRows=quote.items.map((item,i)=>({item,index:i,allocations:[{stock:'',qty:''}],skip:/^(※|計$|小計$|合計$|消費税)/.test(norm(item.name))||!String(item.name||'').trim()}));drawQuote();};filter();error(quotes.length+'件の見積を読み込みました。');
+ }
+ async function loadQuotes(mode){const generation=++serial;error('見積を読み込んでいます…');try{
+  const A=root.KombuCloud;let data;
+  if(mode==='pc'){const r=await fetch('http://localhost:18765/api/quotes',{cache:'no-store',signal:AbortSignal.timeout(15000)});if(!r.ok)throw Error('PCの見積を読み込めません。');data=await r.json();}
+  else{if(!A.session?.user?.id)throw Error('先に昆布帳へログインしてください。');const params=new URLSearchParams({select:'quote_id,quote_date,customer,status,items,updated_at',owner_id:'eq.'+A.session.user.id,order:'quote_date.desc,quote_id.desc',limit:'1000'});const r=await fetch('https://crltrozxztivkyxtjjxv.supabase.co/rest/v1/bp_quotes?'+params,{headers:{apikey:A.key,Authorization:'Bearer '+A.session.access_token},signal:AbortSignal.timeout(15000)});if(!r.ok)throw Error('同期済み見積を取得できません（'+r.status+'）。PCの見積またはJSONから読み込んでください。');data=await r.json();}
+  if(host.isConnected&&generation===serial)setQuotes(data);
+ }catch(e){if(host.isConnected)error((mode==='pc'?'PC見積への接続を確認できません。見積管理アプリを起動し、ブラウザのローカル接続設定を確認するか、同期済み見積を選んでください。 ':'')+e.message);}}
+ host.querySelectorAll('[data-quotes]').forEach(b=>b.onclick=()=>loadQuotes(b.dataset.quotes));
+ el('[data-quote-file]').onchange=async e=>{try{const text=await e.target.files[0].text();const data=JSON.parse(text.replace(/^\uFEFF/,''));setQuotes(data.quotes||data);}catch(err){error('見積JSONを読み込めません：'+err.message);}};
+ function stockOptions(){return Object.keys(M.PRODUCTS).flatMap(p=>M.stock(getDb(),p).filter(r=>r.qty>0).map(r=>({p,line:r,key:token(p,r)})));}
+ let stockRows=[];
+ function drawQuote(){stockRows=stockOptions();const holder=el('[data-quote-items]');holder.innerHTML=`<h4>${esc(quote.quoteId+' '+quote.customer)}</h4><p>取込先を選ぶと、通常は本数、羅臼のkg在庫には重量を候補表示します。数量は修正できます。複数の漁協に分ける場合は「割当を追加」を使ってください。</p>`+quoteRows.map((r,i)=>`<div class="allocation"><b>${i+1}. ${esc(r.item.name)}</b><p>入数 ${esc(r.item.unit)} ／ 本数 ${esc(r.item.count)} ／ 重量・見積数量 ${esc(r.item.quantity)}</p><label><input type="checkbox" data-skip="${i}" ${r.skip?'checked':''}>今回は取り込まない</label>${r.allocations.map((a,j)=>`<div><label>対応する在庫<select data-stock="${i}:${j}"><option value="">在庫を選択してください</option>${stockRows.map((s,n)=>`<option value="${n}" ${s.key===a.stock?'selected':''}>${esc(label(s.p,s.line)+' ／ 在庫 '+fmt(s.line.qty))}</option>`).join('')}</select></label><label>出荷数<input data-allocation="${i}:${j}" type="number" min="0" step="any" value="${esc(a.qty)}"></label></div>`).join('')}<button type="button" data-split="${i}">割当を追加</button></div>`).join('')+'<p data-allocation-error role="status" class="shipment-import-error"></p><button type="button" data-import>確認した割当を帳票へ追加</button>';
+  holder.querySelectorAll('[data-skip]').forEach(e=>e.onchange=()=>quoteRows[+e.dataset.skip].skip=e.checked);
+  holder.querySelectorAll('[data-stock]').forEach(e=>e.onchange=()=>{const [i,j]=e.dataset.stock.split(':').map(Number),a=quoteRows[i].allocations[j],s=stockRows[+e.value];a.stock=e.value!==''?s.key:'';if(e.value!==''&&a.qty===''){const q=quantity(quoteRows[i].item,s.p,unitOf(s.line));a.qty=Number.isFinite(q)&&q>0?q:'';}drawQuote();});
+  holder.querySelectorAll('[data-allocation]').forEach(e=>e.oninput=()=>{const [i,j]=e.dataset.allocation.split(':').map(Number);quoteRows[i].allocations[j].qty=e.value;});
+  holder.querySelectorAll('[data-split]').forEach(e=>e.onclick=()=>{quoteRows[+e.dataset.split].allocations.push({stock:'',qty:''});drawQuote();});
+  el('[data-import]').onclick=()=>{try{
+   const imported=allocateQuote(getDb(),lines,quote,quoteRows,stockRows),count=imported.count;
+   lines.splice(0,lines.length,...imported.lines);for(const l of lines)addSheet(l.product,l.year,l.product.startsWith('rausu_')?unitOf(l):'');
+   const dest=document.getElementById('v114DestName');if(dest&&!dest.value.trim())dest.value=quote.customer;
+   error(quote.quoteId+'：'+count+'件を帳票へ追加しました。出荷先と出荷元を確認してください。');onChange();drawPapers();
+  }catch(e){el('[data-allocation-error]').textContent=e.message;}};
+ }
+ controls();if(selectedProduct.startsWith('rausu_')&&!lines.length){sheets.clear();if(selectedUnit)addSheet(selectedProduct,selectedYear,selectedUnit);}drawPapers();
+ return {refresh:drawCanvases};
+}
+root.KombuShipmentCells={mount,regularCells,rausuPages,pages,setQuantity,quantity,number,label,allocateQuote};
+})(typeof window!=='undefined'?window:globalThis);
