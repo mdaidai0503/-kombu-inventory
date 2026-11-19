@@ -73,4 +73,32 @@ for(const p of Object.keys(M.PRODUCTS)){
  assert.throws(()=>C.quotePackWeight({unit:'15',count:'2',quantity:'40'}),/一致/);
  console.log('Destination and Rausu count-to-kg/PDF count checks passed');
 }
+{
+ const db=M.empty(),cases=[
+ ['rausu_normal',{coop:'天然',season:'元揃（走）',group:'2等',item:'黒',unit:'ダ'},'2026ラウス天然黒走2等'],
+ ['rausu_normal',{coop:'天然',season:'元揃（白走）',group:'3等',item:'黒',unit:'ダ'},'2026ラウス天然黒走白3等'],
+ ['rausu_normal',{coop:'天然',season:'元揃（傷）',group:'2等',item:'黒',unit:'ダ'},'2026ラウス天然黒走傷2等'],
+ ['rausu_normal',{coop:'天然',season:'元揃（傷羅）',group:'2等',item:'黒',unit:'ダ'},'2026ラウス天然黒羅傷2等'],
+ ['rausu_normal',{coop:'雑系',season:'赤葉',group:'A',item:'数量',unit:'ダ'},'2026ラウス赤葉A'],
+ ['rausu_long',{coop:'天然',season:'元揃（走）',group:'2等',item:'黒',unit:'ダ'},'ラウス長切天然黒走2等'],
+ ['kushiro',{coop:'昆布森漁協',season:'夏',group:'特長',item:'葉②'},'R7年産昆布森特長葉2等'],
+ ['nemuro',{coop:'歯舞漁協',season:'夏',group:'あつば(夏)',item:'①'},'2026歯舞厚葉1等'],
+ ['nemuro',{coop:'歯舞漁協',season:'夏',group:'貝殻棹前',item:'棹①'},'貝殻棹前1等'],
+ ['sanmae',{coop:'厚岸漁協',season:'採り',group:'棹前',item:'特②'},'釧路棹前厚岸特2等'],
+ ['hidaka',{location:'三石',section:'走り',grade:'(尺)4等'},'日高三石尺4等']
+ ];
+ for(const [p,line]of cases)for(const year of ['R7','R8'])db.products[p].records.push({...line,year,type:'in',qty:100});
+ const choices=C.classificationChoices(db);assert.equal(choices.length,cases.length);
+ for(const [p,line,name]of cases)for(const variant of [name,name.replace('ラウス','羅臼')]){const r=C.recognizeQuoteItem({name:variant,count:'1'},choices);assert.equal(r.matches.length,1,variant);assert.equal(r.product,p,variant);assert.equal(r.key,C.classificationKey(p,line),variant);}
+ const parsed=C.recognizeQuoteItem({name:cases[0][2]},choices),rows=[{index:0,item:{name:cases[0][2],count:'1'},allocations:[{stock:parsed.key,qty:1}]}];
+ assert.throws(()=>C.resolveQuoteRows(db,rows,choices,'','rausu_normal','ダ'),/年産/);
+ const resolved=C.resolveQuoteRows(db,rows,choices,'R7','rausu_normal','ダ');assert.equal(resolved.stocks[0].line.year,'R7');
+ const result=C.allocateQuote(db,[],{quoteId:'YEAR-MANUAL'},resolved.rows,resolved.stocks);assert.equal(result.lines[0].qty,1);assert.equal(result.lines[0].year,'R7');
+ assert.equal(C.recognizeQuoteItem({name:'日高三石尺5等'},choices).matches.length,0);
+ assert.equal(C.recognizeQuoteItem({name:'不明商品'},choices).matches.length,0);
+ assert.equal(C.recognizeQuoteItem({name:'ラウス天然黒走6等'},choices).matches.length,0);
+ assert.equal(C.recognizeQuoteItem({name:'ラウス天然黒走'},choices).matches.length,0);
+ const extra={...cases[0][1],year:'R8',unit:'kg',type:'in',qty:100};db.products.rausu_normal.records.push(extra);assert.equal(C.classificationChoices(db).length,cases.length);assert.throws(()=>C.resolveQuoteRows(db,rows,choices,'R8','rausu_normal',''),/一意/);assert.equal(C.resolveQuoteRows(db,rows,choices,'R8','rausu_normal','ダ').stocks.length,1);
+ console.log('Quote recognition: all six kinds, ignored source year, explicit year/unit and bulk transfer OK');
+}
 console.log('All shipment cell checks passed');
