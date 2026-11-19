@@ -13,7 +13,7 @@ vm.runInContext(fs.readFileSync(__dirname+'/kombu-shipment-cells.js','utf8'),san
 const M=sandbox.KombuModel,C=sandbox.KombuShipmentCells;
 assert.equal(C.number('１,０００.'),1000);assert.ok(Number.isNaN(C.number('')));assert.ok(Number.isNaN(C.number('10kg')));
 assert.equal(C.quantity({count:'3',quantity:'45'},'kushiro',''),3);
-assert.equal(C.quantity({count:'3',quantity:'45'},'rausu_normal','kg'),45);
+assert.equal(C.quantity({count:'3',quantity:'45'},'rausu_normal','kg'),3);
 assert.equal(C.quantity({count:'3',quantity:'45'},'rausu_long','本'),3);
 // Every input rectangle is centered on the original PDF's quantity text, including
 // Hidaka's stretched upper rows and Rausu continuation tables.
@@ -51,14 +51,26 @@ for(const p of Object.keys(M.PRODUCTS)){
  const db=M.empty(),quote={quoteId:'TEST-QUOTE'},stocks=[],rows=[];
  for(const [i,p]of ['kushiro','rausu_normal','rausu_long'].entries()){
   const line=p.startsWith('rausu_')?{year:'R8',coop:'天然',season:'元揃（走）',group:'1等',item:'黒',unit:'kg'}:C.regularCells(p,'R8')[0].line;
-  db.products[p].records.push({...line,type:'in',id:'in',qty:100});const stock=M.stock(db,p)[0],key=p+':'+M.key(p,line);stocks.push({p,line:stock,key});rows.push({index:i,item:{name:p},allocations:[{stock:key,qty:i?30:3}]});
+  db.products[p].records.push({...line,type:'in',id:'in',qty:100});const stock=M.stock(db,p)[0],key=p+':'+M.key(p,line);stocks.push({p,line:stock,key});rows.push({index:i,item:{name:p,unit:'15',count:i?'2':'3',quantity:i?'30':'45'},allocations:[{stock:key,qty:i?2:3}]});
  }
- const imported=C.allocateQuote(db,[],quote,rows,stocks);assert.equal(imported.count,3);assert.equal(imported.lines[0].qty,3);assert.equal(imported.lines[1].qty,30);assert.equal(imported.lines[1].unit,'kg');assert.equal(imported.lines[1].quoteRefs[0].quoteId,'TEST-QUOTE');assert.ok(!imported.lines[1].id&&!imported.lines[1].type&&!imported.lines[1].stockKey);
+ const imported=C.allocateQuote(db,[],quote,rows,stocks);assert.equal(imported.count,3);assert.equal(imported.lines[0].qty,3);assert.equal(imported.lines[1].qty,30);assert.equal(imported.lines[1].unit,'kg');assert.equal(imported.lines[1].shipmentCount,2);assert.equal(imported.lines[1].kgPerCount,15);assert.equal(imported.lines[1].quoteRefs[0].quoteId,'TEST-QUOTE');assert.ok(!imported.lines[1].id&&!imported.lines[1].type&&!imported.lines[1].stockKey);
  assert.throws(()=>C.allocateQuote(db,imported.lines,quote,rows,stocks),/すでに/);
  const before=JSON.stringify(imported.lines),bad=structuredClone(rows);bad[2].allocations[0].qty=101;assert.throws(()=>C.allocateQuote(db,[],quote,bad,stocks),/超え/);assert.equal(JSON.stringify(imported.lines),before);
  const edit=[{...imported.lines[0],qty:'3',quoteRefs:[]}],another=C.allocateQuote(db,edit,{quoteId:'ANOTHER'},[rows[0]],stocks);assert.equal(another.lines[0].qty,6);
  const split=structuredClone(rows[0]);split.allocations=[{stock:stocks[0].key,qty:2},{stock:stocks[0].key,qty:1}];assert.equal(C.allocateQuote(db,[],quote,[split],stocks).lines[0].qty,3);
  assert.throws(()=>C.allocateQuote(db,[],quote,[{...rows[0],allocations:[{stock:'',qty:3}]}],stocks));
  console.log('Quote import: units/references/duplicate/atomic failure/split allocation OK');
+}
+{
+ const db=M.empty();db.products.kushiro.companies=[{name:'㈱山海通商',address:'登録住所',postal:'123-4567',phone:'123'}];
+ let d=C.quoteDestination(db,'㈱山海通商 御中 山田社長様');assert.equal(d.name,'㈱山海通商');assert.equal(d.address,'登録住所');
+ d=C.quoteDestination(db,'未登録会社 御中');assert.equal(d.address,'');assert.equal(d.name,'未登録会社 御中');
+ db.products.kushiro.companies.push({name:'株式会社 山海通商',address:'別住所'});d=C.quoteDestination(db,'山海通商 御中');assert.equal(d.address,'');
+ const p='rausu_normal',line={year:'R8',coop:'天然',season:'元揃（走）',group:'1等',item:'黒',unit:'kg'},lines=[];
+ assert.throws(()=>C.setShipmentCount(lines,p,line,2),/1本/);C.setShipmentCount(lines,p,line,2,15);assert.equal(lines[0].qty,30);assert.equal(lines[0].shipmentCount,2);
+ C.setShipmentCount(lines,p,line,3);assert.equal(lines[0].qty,45);assert.equal(lines[0].shipmentCount,3);
+ const [canvas]=sandbox.KombuOriginalPdf.canvases(p,{id:'TEST',lines});const cells=C.rausuPages(p,'R8','kg',db,lines)[0].cells,cell=cells.find(c=>M.key(p,c.line)===M.key(p,line));assert.ok(canvas.ops.some(o=>o.t==='3'&&Math.abs(o.x-cell.x-cell.w/2)<.001&&Math.abs(o.y-cell.y-cell.h/2)<.001));
+ assert.throws(()=>C.quotePackWeight({unit:'15',count:'2',quantity:'40'}),/一致/);
+ console.log('Destination and Rausu count-to-kg/PDF count checks passed');
 }
 console.log('All shipment cell checks passed');
